@@ -1,59 +1,143 @@
-# Expensetracker
+# FinTrack Pro — Personal Finance Tracker
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.12.
+A professional, multi-user expense tracker built with **Angular 21 + Express + Google OAuth 2.0**.  
+Each user signs in with their Google account and gets their own private Google Spreadsheet as a database.
 
-## Development server
+## Features
 
-To start a local development server, run:
+- 🔐 **Google Sign-In** — OAuth 2.0, no passwords, no user database needed
+- 📊 **Dashboard** — Income/expense summary, net balance, savings rate, live charts
+- 💳 **Transactions** — Add, edit, delete, filter, search, tag, export to CSV
+- 🎯 **Budgets** — Monthly spending limits with visual progress and alerts
+- 🏷️ **Categories** — Custom categories with emoji icons and colors
+- 📈 **Reports** — Monthly/yearly analytics with charts and breakdowns
+- 📋 **Google Sheets** — Each user's data lives in their own private spreadsheet
+- 🌙 **Dark theme** — Professional dark UI
 
-```bash
-ng serve
+## How it works
+
+```
+User clicks "Sign in with Google"
+        ↓
+Google OAuth consent screen (Sheets + Drive.file scopes)
+        ↓
+App creates "FinTrack Pro — My Finances" spreadsheet in user's Drive
+        ↓
+All transactions/budgets/categories read & written to that spreadsheet
+        ↓
+User can also open the spreadsheet directly in Google Sheets
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+## Quick Start
 
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+### 1. Install dependencies
 
 ```bash
-ng generate component component-name
+npm install
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+### 2. Create Google OAuth credentials
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Create a new project (or use an existing one)
+3. Enable these APIs:
+   - **Google Sheets API**
+   - **Google Drive API**
+   - **Google OAuth2 API** (People API)
+4. Go to **APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID**
+5. Application type: **Web application**
+6. Add Authorized redirect URIs:
+   - `http://localhost:4000/auth/google/callback` (development)
+   - `https://yourdomain.com/auth/google/callback` (production)
+7. Copy the **Client ID** and **Client Secret**
+
+### 3. Configure environment
 
 ```bash
-ng generate --help
+cp .env.example .env
 ```
 
-## Building
+Edit `.env`:
 
-To build the project run:
+```env
+GOOGLE_CLIENT_ID=your_client_id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_client_secret
+GOOGLE_REDIRECT_URI=http://localhost:4000/auth/google/callback
+SESSION_SECRET=generate_with_node_-e_crypto_randomBytes_32_hex
+PORT=4000
+```
+
+Generate a session secret:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+### 4. Build and run
 
 ```bash
-ng build
+npm run build
+npm run serve:ssr:Expensetracker
 ```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+Open **http://localhost:4000** → click **Continue with Google** → done.
 
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
+### Development
 
 ```bash
-ng test
+npm start
 ```
 
-## Running end-to-end tests
+> In dev mode the Angular dev server runs on port 4200. For full OAuth + API functionality, run the SSR server (`npm run serve:ssr:Expensetracker`) and visit port 4000.
 
-For end-to-end (e2e) testing, run:
+## Deployment
 
-```bash
-ng e2e
+Set these environment variables on your server/platform:
+
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_CLIENT_ID` | OAuth client ID from Google Console |
+| `GOOGLE_CLIENT_SECRET` | OAuth client secret |
+| `GOOGLE_REDIRECT_URI` | `https://yourdomain.com/auth/google/callback` |
+| `SESSION_SECRET` | Long random string (32+ chars) |
+| `PORT` | Server port (default: 4000) |
+| `NODE_ENV` | Set to `production` |
+
+In production, also add your domain to the **Authorized redirect URIs** in Google Console.
+
+## Project Structure
+
+```
+src/
+├── app/
+│   ├── core/
+│   │   ├── guards/          # authGuard, guestGuard
+│   │   ├── models/          # TypeScript interfaces
+│   │   └── services/        # AuthService, ApiService, TransactionService…
+│   ├── features/
+│   │   ├── auth/            # Login page
+│   │   ├── dashboard/       # Dashboard with charts
+│   │   ├── transactions/    # Transaction list + form
+│   │   ├── budgets/         # Budget management
+│   │   ├── categories/      # Category management
+│   │   ├── reports/         # Analytics & reports
+│   │   └── settings/        # Account + preferences
+│   ├── layout/              # Sidebar (with user avatar), header
+│   └── shared/              # Pipes, toast component
+└── server/
+    ├── auth/
+    │   ├── oauth.ts         # OAuth2 client, session types, token refresh
+    │   └── auth.routes.ts   # /auth/google, /auth/google/callback, /auth/logout, /auth/me
+    ├── sheets.service.ts    # Google Sheets read/write (per-user OAuth client)
+    └── api.routes.ts        # REST API — all routes protected by requireAuth
 ```
 
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+## Google Sheets structure
 
-## Additional Resources
+Each user gets one spreadsheet with four sheets:
 
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+| Sheet | Contents |
+|-------|----------|
+| `Transactions` | id, type, amount, category, description, date, tags, … |
+| `Categories` | id, name, type, icon, color, budget |
+| `Budgets` | id, categoryId, amount, period, month, year |
+| `Settings` | key/value pairs (currency, dateFormat, …) |
