@@ -1,0 +1,130 @@
+<section class="quick-log-page">
+  <div class="quick-log-card card">
+
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Quick Log</p>
+        <h1>Fast entry</h1>
+        <p class="subtitle">Capture spending or income instantly — no navigation needed.</p>
+      </div>
+      <a routerLink="/transactions" class="btn btn-ghost btn-sm">View all →</a>
+    </div>
+
+    <!-- Success flash -->
+    @if (justSaved()) {
+      <div class="success-flash" role="status" aria-live="polite">
+        <span class="success-icon">✅</span>
+        <div>
+          <span class="success-title">Logged!</span>
+          <span class="success-sub">{{ lastSavedDesc() }} — {{ lastSavedAmount() }}</span>
+        </div>
+      </div>
+    }
+
+    <!-- Type toggle -->
+    <div class="type-toggle">
+      <button type="button" class="type-btn" [class.active-income]="form.type === 'income'"
+              (click)="setType('income')">📈 Income</button>
+      <button type="button" class="type-btn" [class.active-expense]="form.type === 'expense'"
+              (click)="setType('expense')">📉 Expense</button>
+    </div>
+
+    <form class="quick-form" (ngSubmit)="submit()">
+
+      <!-- Amount -->
+      <div class="form-group">
+        <label for="amount">Amount *</label>
+        <div class="input-prefix">
+          <span class="prefix">$</span>
+          <input id="amount" type="number" min="0" step="0.01" class="form-control"
+                 [(ngModel)]="form.amount" name="amount" placeholder="0.00" required>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div class="form-group">
+        <label for="description">Description *</label>
+        <input id="description" type="text" class="form-control" [(ngModel)]="form.description"
+               name="description" placeholder="What was this for?" required>
+      </div>
+
+      <!-- Category -->
+      <div class="form-group">
+        <label for="category">Category *</label>
+        <select id="category" class="form-control" [(ngModel)]="form.category" name="category" required>
+          <option value="">Choose a category</option>
+          @for (cat of (form.type === 'income' ? categoryService.incomeCategories() : categoryService.expenseCategories()); track cat.id) {
+            <option [value]="cat.id">{{ cat.icon }} {{ cat.name }}</option>
+          }
+        </select>
+      </div>
+
+      <!-- Date + Payment -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="date">Date *</label>
+          <input id="date" type="date" class="form-control" [(ngModel)]="form.date" name="date" required>
+        </div>
+        <div class="form-group">
+          <label for="paymentMethod">Payment</label>
+          <select id="paymentMethod" class="form-control" [(ngModel)]="form.paymentMethod" name="paymentMethod">
+            <option value="">Auto / other</option>
+            <option value="Cash">Cash</option>
+            <option value="Credit Card">Credit Card</option>
+            <option value="Debit Card">Debit Card</option>
+            <option value="Bank Transfer">Bank Transfer</option>
+            <option value="PayPal">PayPal</option>
+            <option value="Venmo">Venmo</option>
+            <option value="Crypto">Crypto</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="form-group">
+        <label for="notes">Notes <span class="optional">(optional)</span></label>
+        <input id="notes" type="text" class="form-control" [(ngModel)]="form.notes"
+               name="notes" placeholder="Any extra details...">
+      </div>
+
+      <!-- Submit -->
+      <button class="btn btn-lg" type="submit"
+              [disabled]="submitting() || !isValid()"
+              [class.btn-success]="form.type === 'income'"
+              [class.btn-danger]="form.type === 'expense'"
+              [class.btn-primary]="form.type !== 'income' && form.type !== 'expense'">
+        @if (submitting()) {
+          <span class="btn-spinner-sm"></span>
+          <span>Saving...</span>
+        } @else {
+          <span>{{ form.type === 'income' ? '📈 Log Income' : '📉 Log Expense' }}</span>
+        }
+      </button>
+
+    </form>
+
+    <!-- Recent entries -->
+    @if (recentLogs().length > 0) {
+      <div class="recent-section">
+        <p class="recent-label">Recent entries</p>
+        <div class="recent-list">
+          @for (txn of recentLogs().slice(0, 5); track txn.id) {
+            <div class="recent-item">
+              <span class="recent-icon">{{ getCategoryIcon(txn.category) }}</span>
+              <div class="recent-info">
+                <span class="recent-desc">{{ txn.description }}</span>
+                <span class="recent-cat">{{ getCategoryName(txn.category) }}</span>
+              </div>
+              <span class="recent-amount"
+                    [class.text-income]="txn.type === 'income'"
+                    [class.text-expense]="txn.type === 'expense'">
+                {{ txn.type === 'income' ? '+' : '-' }}{{ txn.amount | currencyFormat }}
+              </span>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+  </div>
+</section>

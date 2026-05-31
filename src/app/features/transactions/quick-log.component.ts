@@ -1,191 +1,63 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
 import { ToastService } from '../../core/services/toast.service';
+import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 
 @Component({
   selector: 'app-quick-log',
   standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
-    <section class="quick-log-page">
-      <div class="quick-log-card card">
-        <div class="page-header">
-          <div>
-            <p class="eyebrow">Quick Log</p>
-            <h1>Fast expense entry</h1>
-            <p class="subtitle">Capture spending or income with a simple mobile-friendly form.</p>
-          </div>
-          <button class="btn btn-ghost" (click)="router.navigate(['/transactions'])">Back to transactions</button>
-        </div>
-
-        <div class="type-toggle">
-          <button type="button" class="type-btn" [class.active-income]="form.type === 'income'"
-                  (click)="setType('income')">📈 Income</button>
-          <button type="button" class="type-btn" [class.active-expense]="form.type === 'expense'"
-                  (click)="setType('expense')">📉 Expense</button>
-        </div>
-
-        <form class="quick-form" (ngSubmit)="submit()">
-          <div class="form-group">
-            <label for="amount">Amount *</label>
-            <div class="input-prefix">
-              <span class="prefix">$</span>
-              <input id="amount" type="number" min="0" step="0.01" class="form-control"
-                     [(ngModel)]="form.amount" name="amount" placeholder="0.00" required>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="description">Description *</label>
-            <input id="description" type="text" class="form-control" [(ngModel)]="form.description"
-                   name="description" placeholder="What was this for?" required>
-          </div>
-
-          <div class="form-group">
-            <label for="category">Category *</label>
-            <select id="category" class="form-control" [(ngModel)]="form.category" name="category" required>
-              <option value="">Choose a category</option>
-              @for (cat of (form.type === 'income' ? categoryService.incomeCategories() : categoryService.expenseCategories()); track cat.id) {
-                <option [value]="cat.id">{{ cat.icon }} {{ cat.name }}</option>
-              }
-            </select>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label for="date">Date *</label>
-              <input id="date" type="date" class="form-control" [(ngModel)]="form.date" name="date" required>
-            </div>
-
-            <div class="form-group">
-              <label for="paymentMethod">Payment</label>
-              <select id="paymentMethod" class="form-control" [(ngModel)]="form.paymentMethod" name="paymentMethod">
-                <option value="">Auto / other</option>
-                <option value="Cash">Cash</option>
-                <option value="Credit Card">Credit Card</option>
-                <option value="Debit Card">Debit Card</option>
-                <option value="Bank Transfer">Bank Transfer</option>
-                <option value="PayPal">PayPal</option>
-              </select>
-            </div>
-          </div>
-
-          <button class="btn btn-primary btn-lg" type="submit" [disabled]="submitting() || !isValid()">
-            {{ submitting() ? 'Saving...' : 'Save transaction' }}
-          </button>
-        </form>
-      </div>
-    </section>
-  `,
+  imports: [CommonModule, FormsModule, RouterLink, CurrencyFormatPipe],
+  templateUrl: './quick-log.component.html',
   styles: [`
-    .quick-log-page {
-      padding: 1.5rem 1rem;
-      display: flex;
-      justify-content: center;
-      min-height: calc(100vh - 4rem);
-      background: var(--bg-page);
-    }
-    .quick-log-card {
-      width: min(100%, 600px);
-      display: flex;
-      flex-direction: column;
-      gap: 1.25rem;
-      padding: 1.5rem;
-      border-radius: var(--radius-lg);
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-    }
-    .page-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 1rem;
-    }
-    .eyebrow {
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--accent-blue-light);
-      margin-bottom: 0.25rem;
-    }
-    h1 {
-      margin: 0;
-      font-size: 1.5rem;
-      line-height: 1.2;
-    }
-    .subtitle {
-      margin: 0.5rem 0 0;
-      color: var(--text-muted);
-      max-width: 44rem;
-    }
-    .type-toggle {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.75rem;
-    }
-    .type-btn {
-      appearance: none;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      padding: 0.9rem;
-      font-size: 0.95rem;
-      background: var(--bg-input);
-      color: var(--text-primary);
-      cursor: pointer;
-      transition: var(--transition);
-    }
-    .type-btn.active-income { background: rgba(76, 175, 80, 0.18); border-color: rgba(76, 175, 80, 0.4); }
-    .type-btn.active-expense { background: rgba(239, 83, 80, 0.18); border-color: rgba(239, 83, 80, 0.4); }
-    .quick-form {
-      display: grid;
-      gap: 1rem;
-    }
-    .form-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-    }
-    .form-group { display: grid; gap: 0.5rem; }
-    .form-group label { font-size: 0.9rem; color: var(--text-secondary); }
-    .form-control {
-      width: 100%;
-      padding: 0.9rem 1rem;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      background: var(--bg-input);
-      color: var(--text-primary);
-      font: inherit;
-    }
+    .quick-log-page { padding: 1.5rem 1rem; display: flex; justify-content: center; min-height: calc(100vh - 4rem); }
+    .quick-log-card { width: min(100%, 580px); display: flex; flex-direction: column; gap: 1.25rem; padding: 1.75rem; align-self: flex-start; }
+    .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+    .eyebrow { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent-blue-light); margin-bottom: 0.25rem; }
+    h1 { margin: 0; font-size: 1.5rem; line-height: 1.2; color: var(--text-primary); }
+    .subtitle { margin: 0.375rem 0 0; color: var(--text-muted); font-size: 0.875rem; }
+    .success-flash { display: flex; align-items: center; gap: 0.875rem; padding: 0.875rem 1rem; background: rgba(76,175,80,0.12); border: 1px solid rgba(76,175,80,0.3); border-radius: var(--radius-md); animation: slideUp 0.25s ease; }
+    .success-icon { font-size: 1.25rem; flex-shrink: 0; }
+    .success-title { display: block; font-size: 0.875rem; font-weight: 600; color: var(--income-color); }
+    .success-sub { display: block; font-size: 0.75rem; color: var(--text-muted); }
+    .type-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .type-btn { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 0.875rem; font-size: 0.9375rem; font-family: inherit; background: var(--bg-input); color: var(--text-secondary); cursor: pointer; transition: var(--transition); font-weight: 500; }
+    .type-btn:hover { border-color: var(--border-light); color: var(--text-primary); }
+    .type-btn.active-income { background: rgba(76,175,80,0.15); border-color: rgba(76,175,80,0.4); color: var(--income-color); font-weight: 600; }
+    .type-btn.active-expense { background: rgba(239,83,80,0.15); border-color: rgba(239,83,80,0.4); color: var(--expense-color); font-weight: 600; }
+    .quick-form { display: grid; gap: 1rem; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-group { display: grid; gap: 0.375rem; }
+    .form-group label { font-size: 0.8125rem; font-weight: 500; color: var(--text-secondary); }
+    .optional { color: var(--text-muted); font-weight: 400; }
     .input-prefix { position: relative; }
-    .prefix {
-      position: absolute;
-      left: 1rem;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--text-muted);
-      font-weight: 600;
-    }
-    .input-prefix .form-control { padding-left: 2.4rem; }
-    .btn-lg { width: 100%; padding: 0.95rem 1rem; }
-
-    @media (max-width: 760px) {
-      .quick-log-card { padding: 1.25rem; }
-      .page-header { flex-direction: column; align-items: stretch; }
-      .form-row { grid-template-columns: 1fr; }
-    }
+    .prefix { position: absolute; left: 0.875rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-weight: 600; }
+    .input-prefix .form-control { padding-left: 1.75rem; }
+    .btn-lg { width: 100%; padding: 0.9rem; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+    .btn-spinner-sm { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .recent-section { border-top: 1px solid var(--border); padding-top: 1rem; }
+    .recent-label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.625rem; }
+    .recent-list { display: flex; flex-direction: column; gap: 0.375rem; }
+    .recent-item { display: flex; align-items: center; gap: 0.625rem; padding: 0.5rem 0.625rem; border-radius: var(--radius-sm); transition: var(--transition); }
+    .recent-item:hover { background: var(--bg-card-hover); }
+    .recent-icon { font-size: 1rem; flex-shrink: 0; width: 24px; text-align: center; }
+    .recent-desc { flex: 1; font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .recent-amount { font-size: 0.8125rem; font-weight: 600; flex-shrink: 0; }
+    @media (max-width: 600px) { .quick-log-card { padding: 1.25rem; } .page-header { flex-direction: column; } .form-row { grid-template-columns: 1fr; } }
   `]
 })
 export class QuickLogComponent implements OnInit {
-  router = inject(Router);
   txnService = inject(TransactionService);
   categoryService = inject(CategoryService);
-  toast = inject(ToastService);
+  private toast = inject(ToastService);
 
   submitting = signal(false);
+  justSaved = signal(false);
+  lastSavedDesc = signal('');
+  lastSavedAmount = signal('');
 
   form = {
     type: 'expense' as 'income' | 'expense',
@@ -197,36 +69,36 @@ export class QuickLogComponent implements OnInit {
     notes: ''
   };
 
+  recentLogs = this.txnService.recentTransactions;
+
   ngOnInit() {
     this.categoryService.loadCategories().subscribe();
+    this.txnService.loadTransactions().subscribe();
   }
 
   setType(type: 'income' | 'expense') {
     this.form.type = type;
-    if (type === 'income' && this.categoryService.expenseCategories().some(cat => cat.id === this.form.category)) {
-      this.form.category = '';
-    }
-    if (type === 'expense' && this.categoryService.incomeCategories().some(cat => cat.id === this.form.category)) {
-      this.form.category = '';
-    }
+    const inIncome = this.categoryService.incomeCategories().some(c => c.id === this.form.category);
+    const inExpense = this.categoryService.expenseCategories().some(c => c.id === this.form.category);
+    if (type === 'income' && !inIncome) this.form.category = '';
+    if (type === 'expense' && !inExpense) this.form.category = '';
   }
 
   isValid() {
-    return !!this.form.amount && this.form.amount > 0 && this.form.category && this.form.description.trim();
+    return !!this.form.amount && this.form.amount > 0 && !!this.form.category && !!this.form.description.trim();
   }
 
   submit() {
-    if (!this.isValid()) {
-      this.toast.error('Please fill in the required fields');
-      return;
-    }
-
+    if (!this.isValid()) { this.toast.error('Please fill in the required fields'); return; }
     this.submitting.set(true);
+    const savedDesc = this.form.description.trim();
+    const savedAmount = '$' + Number(this.form.amount).toLocaleString();
+
     this.txnService.createTransaction({
       type: this.form.type,
       amount: Number(this.form.amount),
       category: this.form.category,
-      description: this.form.description.trim(),
+      description: savedDesc,
       date: this.form.date,
       tags: [],
       isRecurring: false,
@@ -235,11 +107,29 @@ export class QuickLogComponent implements OnInit {
     }).subscribe(res => {
       this.submitting.set(false);
       if (res?.success) {
-        this.toast.success('Transaction logged');
-        this.router.navigate(['/transactions']);
+        this.lastSavedDesc.set(savedDesc);
+        this.lastSavedAmount.set(savedAmount);
+        this.justSaved.set(true);
+        setTimeout(() => this.justSaved.set(false), 3000);
+        this.resetForm();
       } else {
         this.toast.error('Could not save transaction');
       }
     });
+  }
+
+  getCategoryIcon(id: string) { return this.categoryService.getCategoryIcon(id); }
+  getCategoryName(id: string) { return this.categoryService.getCategoryById(id)?.name ?? id; }
+
+  private resetForm() {
+    this.form = {
+      type: this.form.type,
+      amount: null,
+      category: this.form.category,
+      description: '',
+      date: new Date().toISOString().split('T')[0],
+      paymentMethod: this.form.paymentMethod,
+      notes: ''
+    };
   }
 }

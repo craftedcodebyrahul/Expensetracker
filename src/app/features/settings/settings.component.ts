@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
 import { AuthService } from '../../core/services/auth.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { HeaderComponent } from '../../layout/header.component';
 
 @Component({
@@ -344,6 +345,7 @@ import { HeaderComponent } from '../../layout/header.component';
 export class SettingsComponent implements OnInit {
   private api = inject(ApiService);
   private toast = inject(ToastService);
+  private settingsService = inject(SettingsService);
   auth = inject(AuthService);
 
   syncStatus = signal<any>(null);
@@ -352,11 +354,10 @@ export class SettingsComponent implements OnInit {
 
   ngOnInit() {
     this.checkSync();
-    this.api.getSettings().subscribe(res => {
-      if (res.success) {
-        this.settings.currencySymbol = res.data.currencySymbol ?? '$';
-        this.settings.dateFormat = res.data.dateFormat ?? 'MM/dd/yyyy';
-      }
+    // Load current settings from Sheets and pre-fill the form
+    this.settingsService.load().subscribe(() => {
+      this.settings.currencySymbol = this.settingsService.currencySymbol();
+      this.settings.dateFormat = this.settingsService.dateFormat();
     });
   }
 
@@ -369,9 +370,8 @@ export class SettingsComponent implements OnInit {
 
   saveSettings() {
     this.saving.set(true);
-    this.api.updateSettings(this.settings).subscribe({
-      next: () => { this.saving.set(false); this.toast.success('Preferences saved!'); },
-      error: () => { this.saving.set(false); this.toast.error('Failed to save preferences'); }
+    this.settingsService.save(this.settings).subscribe(() => {
+      this.saving.set(false);
     });
   }
 
