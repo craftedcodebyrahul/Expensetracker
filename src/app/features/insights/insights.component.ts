@@ -77,8 +77,12 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
 
   avgSavingsRate = computed(() => {
     const b = this.monthBuckets();
+    // Only include months that had income to avoid dividing by zero
     const rates = b.filter(m => m.income > 0).map(m => (m.net / m.income) * 100);
-    return rates.length ? rates.reduce((s, r) => s + r, 0) / rates.length : 0;
+    if (!rates.length) return 0;
+    const avg = rates.reduce((s, r) => s + r, 0) / rates.length;
+    // Clamp to -100% minimum for display sanity
+    return Math.round(Math.max(avg, -100));
   });
 
   dailyBurnRate = computed(() => {
@@ -95,7 +99,9 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
   runway = computed(() => {
     const avgExpenses = this.monthBuckets().reduce((s, b) => s + b.expenses, 0) / (this.period || 1);
     const saved = this.totalSaved();
-    return avgExpenses > 0 && saved > 0 ? saved / avgExpenses : 0;
+    // Only meaningful when you have positive savings AND expenses
+    if (avgExpenses <= 0 || saved <= 0) return 0;
+    return saved / avgExpenses;
   });
 
   // ── Projections ───────────────────────────────────────────────────────────
@@ -149,27 +155,49 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
 
   autoInsights = computed<AutoInsight[]>(() => {
     const insights: AutoInsight[] = [];
-    const sr = this.avgSavingsRate();
+    const sr  = this.avgSavingsRate();
     const avg = this.avgMonthlySavings();
-    const burn = this.dailyBurnRate();
     const run = this.runway();
     const trends = this.categoryTrends();
 
-    if (sr >= 20) insights.push({ icon: '🌟', text: `Great job! You're saving ${sr.toFixed(1)}% of your income on average.`, type: 'good' });
-    else if (sr >= 10) insights.push({ icon: '👍', text: `You're saving ${sr.toFixed(1)}% of income. Aim for 20%+ for financial security.`, type: 'info' });
-    else if (sr < 0) insights.push({ icon: '⚠️', text: `You're spending more than you earn. Review your expenses urgently.`, type: 'bad' });
-    else insights.push({ icon: '💡', text: `Savings rate is ${sr.toFixed(1)}%. Small cuts in top categories can make a big difference.`, type: 'warn' });
+    // Savings rate insight
+    if (sr >= 20) {
+      insights.push({ icon: '🌟', text: `Great job! You're saving ${sr.toFixed(1)}% of your income on average.`, type: 'good' });
+    } else if (sr >= 10) {
+      insights.push({ icon: '👍', text: `You're saving ${sr.toFixed(1)}% of income. Aim for 20%+ for financial security.`, type: 'info' });
+    } else if (sr >= 0) {
+      insights.push({ icon: '💡', text: `Savings rate is ${sr.toFixed(1)}%. Small cuts in top categories can make a big difference.`, type: 'warn' });
+    } else {
+      // In deficit — show how much over budget
+      const deficit = Math.abs(avg);
+      insights.push({ icon: '⚠️', text: `You're spending ${deficit > 0 ? '$' + deficit.toFixed(0) + ' more than you earn' : 'more than you earn'} on average. Review your top expenses.`, type: 'bad' });
+    }
 
-    if (run >= 6) insights.push({ icon: '🛡️', text: `Your savings cover ${run.toFixed(1)} months of expenses — solid emergency fund.`, type: 'good' });
-    else if (run > 0) insights.push({ icon: '⚡', text: `Only ${run.toFixed(1)} months of expense runway. Build your emergency fund.`, type: 'warn' });
+    // Runway insight
+    if (run >= 6) {
+      insights.push({ icon: '🛡️', text: `Your net savings cover ${run.toFixed(1)} months of expenses — solid buffer.`, type: 'good' });
+    } else if (run >= 1) {
+      insights.push({ icon: '⚡', text: `Only ${run.toFixed(1)} months of expense coverage from savings. Build your buffer.`, type: 'warn' });
+    } else if (avg < 0) {
+      insights.push({ icon: '🔴', text: `You're in a spending deficit. Focus on reducing your top expense categories.`, type: 'bad' });
+    }
 
+    // Category trend insights
     const bigRise = trends.find(t => t.change > 30);
-    if (bigRise) insights.push({ icon: '📈', text: `${bigRise.name} spending rose ${bigRise.change}% vs last period.`, type: 'warn' });
+    if (bigRise) {
+      insights.push({ icon: '📈', text: `${bigRise.name} spending rose ${bigRise.change}% vs last period — worth reviewing.`, type: 'warn' });
+    }
 
     const bigDrop = trends.find(t => t.change < -20);
-    if (bigDrop) insights.push({ icon: '✂️', text: `${bigDrop.name} spending dropped ${Math.abs(bigDrop.change)}% — nice cut!`, type: 'good' });
+    if (bigDrop) {
+      insights.push({ icon: '✂️', text: `${bigDrop.name} spending dropped ${Math.abs(bigDrop.change)}% — nice reduction!`, type: 'good' });
+    }
 
-    if (avg > 0) insights.push({ icon: '🚀', text: `At your current rate you'll save ${(avg * 12).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} this year.`, type: 'info' });
+    // Projection insight (only when positive)
+    if (avg > 0) {
+      const annual = avg * 12;
+      insights.push({ icon: '🚀', text: `At your current rate you'll save $${annual.toLocaleString('en-US', { maximumFractionDigits: 0 })} over the next 12 months.`, type: 'info' });
+    }
 
     return insights.slice(0, 5);
   });

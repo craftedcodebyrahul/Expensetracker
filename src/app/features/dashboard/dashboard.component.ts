@@ -37,9 +37,16 @@ Chart.register(...registerables);
         <div class="month-divider"></div>
         <div class="month-stat">
           <span class="ms-label">Expense Change</span>
-          <span class="ms-value" [class.text-income]="expenseChange() <= 0" [class.text-expense]="expenseChange() > 0">
-            {{ expenseChange() > 0 ? '▲' : '▼' }} {{ Math.abs(expenseChange()) | number:'1.1-1' }}%
-          </span>
+          @if (lastMonthExpenses() === 0) {
+            <span class="ms-value text-muted">No prior data</span>
+          } @else {
+            <span class="ms-value"
+                  [class.text-income]="expenseChange() <= 0"
+                  [class.text-expense]="expenseChange() > 0">
+              {{ expenseChange() > 0 ? '▲' : '▼' }}
+              {{ Math.min(Math.abs(expenseChange()), 999) | number:'1.0-0' }}%
+            </span>
+          }
         </div>
         <div class="month-divider"></div>
         <div class="month-stat">
@@ -76,7 +83,9 @@ Chart.register(...registerables);
             <span class="summary-value" [class.text-income]="txnService.summary().netBalance >= 0" [class.text-expense]="txnService.summary().netBalance < 0">
               {{ txnService.summary().netBalance | currencyFormat }}
             </span>
-            <span class="summary-sub">{{ savingsRate() }}% savings rate</span>
+            <span class="summary-sub">
+              {{ savingsRate() >= 0 ? savingsRate() + '% savings rate' : 'Spending deficit' }}
+            </span>
           </div>
         </div>
         <div class="summary-card txn-card">
@@ -365,22 +374,6 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     // Budget overruns (−8 per exceeded budget)
     score -= exceeded * 8;
 
-    return Math.max(0, Math.min(100, score));
-  });
-
-  // Financial health score 0-100
-  healthScore = computed(() => {
-    let score = 50;
-    const sr = this.savingsRate();
-    if (sr >= 20) score += 20;
-    else if (sr >= 10) score += 10;
-    else if (sr < 0) score -= 20;
-    const ec = this.expenseChange();
-    if (ec < 0) score += 15;
-    else if (ec > 20) score -= 15;
-    const alerts = this.budgetService.budgetAlerts();
-    const exceeded = alerts.filter(a => a.status === 'exceeded').length;
-    score -= exceeded * 10;
     return Math.max(0, Math.min(100, score));
   });
 

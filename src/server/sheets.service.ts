@@ -544,19 +544,31 @@ export class SheetsService {
   }
 
   private buildReport(transactions: Transaction[]) {
-    const income = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const income   = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const expenses = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const categoryBreakdown: Record<string, number> = {};
     transactions.forEach(t => {
       categoryBreakdown[t.category] = (categoryBreakdown[t.category] || 0) + t.amount;
     });
+
+    // Savings rate: capped at -100% when spending exceeds income
+    // Formula: (income - expenses) / income * 100
+    // Edge cases: no income → -100% if expenses exist, 0% if no activity
+    let savingsRate = 0;
+    if (income > 0) {
+      savingsRate = ((income - expenses) / income) * 100;
+      savingsRate = Math.max(savingsRate, -100); // floor at -100%
+    } else if (expenses > 0) {
+      savingsRate = -100; // spending with zero income
+    }
+
     return {
       totalIncome: income,
       totalExpenses: expenses,
       netBalance: income - expenses,
       transactionCount: transactions.length,
       categoryBreakdown,
-      savingsRate: income > 0 ? ((income - expenses) / income) * 100 : 0,
+      savingsRate: Math.round(savingsRate * 10) / 10, // 1 decimal place
     };
   }
 

@@ -89,9 +89,11 @@ Chart.register(...registerables);
             <span class="kpi-icon">💹</span>
             <div class="kpi-info">
               <span class="kpi-label">Savings Rate</span>
-              <span class="kpi-value" [class.text-income]="reportData().savingsRate >= 0"
-                    [class.text-expense]="reportData().savingsRate < 0">
-                {{ reportData().savingsRate | number:'1.1-1' }}%
+              <span class="kpi-value"
+                    [class.text-income]="reportData().savingsRate >= 20"
+                    [class.text-expense]="reportData().savingsRate < 0"
+                    [style.color]="reportData().savingsRate >= 0 && reportData().savingsRate < 20 ? 'var(--accent-yellow)' : ''">
+                {{ reportData().savingsRate | number:'1.0-0' }}%
               </span>
             </div>
           </div>
@@ -195,8 +197,10 @@ Chart.register(...registerables);
                         {{ m.net | currencyFormat }}
                       </td>
                       <td class="text-right">
-                        <span [class.text-income]="m.income > 0" [class.text-muted]="m.income === 0">
-                          {{ m.income > 0 ? ((m.net / m.income) * 100 | number:'1.1-1') + '%' : '—' }}
+                        <span [class.text-income]="m.income > 0 && monthlySavingsRate(m) >= 20"
+                              [class.text-expense]="m.income > 0 && monthlySavingsRate(m) < 0"
+                              [class.text-muted]="m.income === 0">
+                          {{ m.income > 0 ? (monthlySavingsRate(m) | number:'1.0-0') + '%' : '—' }}
                         </span>
                       </td>
                     </tr>
@@ -381,4 +385,11 @@ export class ReportsComponent implements OnInit, AfterViewInit {
   getCategoryIcon(id: string) { return this.categoryService.getCategoryIcon(id); }
   getCategoryColor(id: string) { return this.categoryService.getCategoryColor(id); }
   getCategoryName(id: string) { return this.categoryService.getCategoryById(id)?.name ?? id; }
+
+  /** Savings rate for a monthly row — capped at -100% to avoid wild numbers */
+  monthlySavingsRate(m: { income: number; net: number }): number {
+    if (m.income <= 0) return 0;
+    const rate = (m.net / m.income) * 100;
+    return Math.round(Math.max(rate, -100));
+  }
 }

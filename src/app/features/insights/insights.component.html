@@ -30,27 +30,35 @@
     <!-- ── KPI row ─────────────────────────────────────────────────────────── -->
     <div class="kpi-row">
 
+      <!-- Net Cashflow — label changes based on positive/negative -->
       <div class="kpi-card">
-        <span class="kpi-icon">💰</span>
+        <span class="kpi-icon">{{ totalSaved() >= 0 ? '💰' : '📉' }}</span>
         <div class="kpi-body">
-          <span class="kpi-label">Total Saved</span>
-          <span class="kpi-value text-income">{{ totalSaved() | currencyFormat }}</span>
-          <span class="kpi-sub">net over {{ period }} months</span>
+          <span class="kpi-label">{{ totalSaved() >= 0 ? 'Net Saved' : 'Net Deficit' }}</span>
+          <span class="kpi-value"
+                [class.text-income]="totalSaved() >= 0"
+                [class.text-expense]="totalSaved() < 0">
+            {{ totalSaved() | currencyFormat }}
+          </span>
+          <span class="kpi-sub">net cashflow over {{ period }} months</span>
         </div>
       </div>
 
+      <!-- Avg monthly — shows deficit clearly -->
       <div class="kpi-card">
         <span class="kpi-icon">📅</span>
         <div class="kpi-body">
-          <span class="kpi-label">Avg Monthly Savings</span>
-          <span class="kpi-value" [class.text-income]="avgMonthlySavings() >= 0"
+          <span class="kpi-label">{{ avgMonthlySavings() >= 0 ? 'Avg Monthly Savings' : 'Avg Monthly Deficit' }}</span>
+          <span class="kpi-value"
+                [class.text-income]="avgMonthlySavings() >= 0"
                 [class.text-expense]="avgMonthlySavings() < 0">
             {{ avgMonthlySavings() | currencyFormat }}
           </span>
-          <span class="kpi-sub">per month average</span>
+          <span class="kpi-sub">{{ avgMonthlySavings() >= 0 ? 'saved per month on avg' : 'over budget per month' }}</span>
         </div>
       </div>
 
+      <!-- Daily burn rate -->
       <div class="kpi-card">
         <span class="kpi-icon">🔥</span>
         <div class="kpi-body">
@@ -60,27 +68,38 @@
         </div>
       </div>
 
+      <!-- Runway — N/A when in deficit -->
       <div class="kpi-card">
         <span class="kpi-icon">🛡️</span>
         <div class="kpi-body">
           <span class="kpi-label">Expense Runway</span>
-          <span class="kpi-value" [class.text-income]="runway() >= 3"
-                [class.text-expense]="runway() < 3">
-            {{ runway() | number:'1.1-1' }} months
-          </span>
-          <span class="kpi-sub">savings can cover expenses</span>
+          @if (runway() > 0) {
+            <span class="kpi-value"
+                  [class.text-income]="runway() >= 3"
+                  [class.text-expense]="runway() < 1"
+                  [style.color]="runway() >= 1 && runway() < 3 ? 'var(--accent-yellow)' : ''">
+              {{ runway() | number:'1.1-1' }} months
+            </span>
+            <span class="kpi-sub">savings can cover expenses</span>
+          } @else {
+            <span class="kpi-value text-expense">In deficit</span>
+            <span class="kpi-sub">spending exceeds income</span>
+          }
         </div>
       </div>
 
+      <!-- Savings rate — capped at -100% -->
       <div class="kpi-card">
         <span class="kpi-icon">📈</span>
         <div class="kpi-body">
           <span class="kpi-label">Savings Rate</span>
-          <span class="kpi-value" [class.text-income]="avgSavingsRate() >= 20"
-                [class.text-expense]="avgSavingsRate() < 0">
-            {{ avgSavingsRate() | number:'1.1-1' }}%
+          <span class="kpi-value"
+                [class.text-income]="avgSavingsRate() >= 20"
+                [class.text-expense]="avgSavingsRate() < 0"
+                [style.color]="avgSavingsRate() >= 0 && avgSavingsRate() < 20 ? 'var(--accent-yellow)' : ''">
+            {{ avgSavingsRate() | number:'1.0-0' }}%
           </span>
-          <span class="kpi-sub">of income saved on avg</span>
+          <span class="kpi-sub">{{ avgSavingsRate() >= 0 ? 'of income saved on avg' : 'spending over income' }}</span>
         </div>
       </div>
 
@@ -97,29 +116,33 @@
       </div>
       <div class="projection-row">
         <div class="proj-item">
-          <span class="proj-label">In 3 months</span>
-          <span class="proj-value" [class.text-income]="projection3m() >= 0"
+          <span class="proj-label">{{ avgMonthlySavings() >= 0 ? 'Saved in 3 months' : 'Deficit in 3 months' }}</span>
+          <span class="proj-value"
+                [class.text-income]="projection3m() >= 0"
                 [class.text-expense]="projection3m() < 0">
             {{ projection3m() | currencyFormat }}
           </span>
         </div>
         <div class="proj-item">
-          <span class="proj-label">In 6 months</span>
-          <span class="proj-value" [class.text-income]="projection6m() >= 0"
+          <span class="proj-label">{{ avgMonthlySavings() >= 0 ? 'Saved in 6 months' : 'Deficit in 6 months' }}</span>
+          <span class="proj-value"
+                [class.text-income]="projection6m() >= 0"
                 [class.text-expense]="projection6m() < 0">
             {{ projection6m() | currencyFormat }}
           </span>
         </div>
         <div class="proj-item">
-          <span class="proj-label">In 12 months</span>
-          <span class="proj-value" [class.text-income]="projection12m() >= 0"
+          <span class="proj-label">{{ avgMonthlySavings() >= 0 ? 'Saved in 12 months' : 'Deficit in 12 months' }}</span>
+          <span class="proj-value"
+                [class.text-income]="projection12m() >= 0"
                 [class.text-expense]="projection12m() < 0">
             {{ projection12m() | currencyFormat }}
           </span>
         </div>
         <div class="proj-item">
-          <span class="proj-label">In 24 months</span>
-          <span class="proj-value" [class.text-income]="projection24m() >= 0"
+          <span class="proj-label">{{ avgMonthlySavings() >= 0 ? 'Saved in 24 months' : 'Deficit in 24 months' }}</span>
+          <span class="proj-value"
+                [class.text-income]="projection24m() >= 0"
                 [class.text-expense]="projection24m() < 0">
             {{ projection24m() | currencyFormat }}
           </span>
