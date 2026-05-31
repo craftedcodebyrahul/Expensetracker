@@ -1,11 +1,11 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
+  "buildCommand": "node node_modules/@angular/cli/bin/ng.js build",
   "installCommand": "npm install",
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/api/index"
+      "destination": "/api/index.mjs"
     }
   ]
 }
