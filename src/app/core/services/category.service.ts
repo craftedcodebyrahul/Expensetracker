@@ -34,11 +34,14 @@ export class CategoryService {
     this.loading.set(true);
     return this.api.getCategories().pipe(
       tap(res => {
-        if (res.success) this.categories.set(res.data);
+        if (res.success) {
+          // If the API returns empty (new user, seed not yet run), use defaults
+          this.categories.set(res.data?.length > 0 ? res.data : DEFAULT_CATEGORIES);
+        }
         this.loading.set(false);
       }),
       catchError(() => {
-        // Fall back to defaults if API fails
+        // API error (e.g. not authenticated yet) — fall back to defaults
         this.categories.set(DEFAULT_CATEGORIES);
         this.loading.set(false);
         return of(null);

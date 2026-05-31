@@ -97,42 +97,51 @@ interface NavItem {
       position: sticky;
       top: 0;
       flex-shrink: 0;
-      overflow: hidden;
+      overflow: visible;
     }
-    .sidebar.collapsed { width: 68px; }
+    .sidebar.collapsed { width: 64px; }
 
     /* Logo */
     .sidebar-logo {
       display: flex;
       align-items: center;
       gap: 0.75rem;
-      padding: 1.25rem 1rem;
+      padding: 1rem;
       border-bottom: 1px solid var(--border);
       position: relative;
       flex-shrink: 0;
+      min-height: 60px;
+      overflow: hidden;
     }
     .logo-img { width: 32px; height: 32px; flex-shrink: 0; }
     .logo-text { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
     .logo-title { font-size: 1.15rem; font-weight: 800; color: var(--text-primary); white-space: nowrap; letter-spacing: -0.02em; }
     .logo-accent { color: var(--accent-blue-light); }
+
+    /* Toggle button — always visible, floats outside when collapsed */
     .collapse-btn {
-      background: var(--bg-card);
+      background: var(--bg-secondary);
       border: 1px solid var(--border);
       color: var(--text-secondary);
-      width: 24px;
-      height: 24px;
+      width: 22px;
+      height: 22px;
       border-radius: 50%;
       cursor: pointer;
-      font-size: 1rem;
+      font-size: 0.875rem;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
       transition: var(--transition);
+      position: absolute;
+      right: -11px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 10;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
     }
-    .collapse-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
-    .collapsed .sidebar-logo { justify-content: center; }
-    .collapsed .collapse-btn { position: absolute; right: -12px; z-index: 1; }
+    .collapse-btn:hover { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
+    .collapsed .sidebar-logo { justify-content: center; padding: 1rem 0.5rem; }
 
     /* Sync status */
     .sync-status {
@@ -167,6 +176,7 @@ interface NavItem {
       flex-direction: column;
       gap: 0.25rem;
       overflow-y: auto;
+      overflow-x: hidden;
     }
     .nav-item {
       display: flex;
@@ -201,6 +211,7 @@ interface NavItem {
       flex-direction: column;
       gap: 0.25rem;
       flex-shrink: 0;
+      overflow: hidden;
     }
 
     /* User strip */
@@ -273,6 +284,7 @@ export class SidebarComponent {
     { path: '/',             label: 'Dashboard',    icon: '📊' },
     { path: '/quick-log',    label: 'Quick Log',    icon: '⚡' },
     { path: '/transactions', label: 'Transactions', icon: '💳' },
+    { path: '/insights',     label: 'Insights',     icon: '🔮' },
     { path: '/budgets',      label: 'Budgets',      icon: '🎯' },
     { path: '/categories',   label: 'Categories',   icon: '🏷️' },
     { path: '/reports',      label: 'Reports',      icon: '📈' },

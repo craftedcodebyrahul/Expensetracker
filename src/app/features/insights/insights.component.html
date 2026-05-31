@@ -1,0 +1,254 @@
+<app-header title="Insights" subtitle="Where you are — and where you're headed">
+  <div class="period-tabs">
+    <button class="ptab" [class.active]="period === 3" (click)="setPeriod(3)">3M</button>
+    <button class="ptab" [class.active]="period === 6" (click)="setPeriod(6)">6M</button>
+    <button class="ptab" [class.active]="period === 12" (click)="setPeriod(12)">1Y</button>
+  </div>
+</app-header>
+
+<div class="insights-page">
+
+  @if (loading()) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Crunching your numbers...</p>
+    </div>
+  } @else {
+
+    <!-- ── Auto-generated text insights ──────────────────────────────────── -->
+    @if (autoInsights().length > 0) {
+      <div class="insights-strip">
+        @for (insight of autoInsights(); track insight.text) {
+          <div class="insight-chip" [class]="'chip-' + insight.type">
+            <span class="chip-icon">{{ insight.icon }}</span>
+            <span class="chip-text">{{ insight.text }}</span>
+          </div>
+        }
+      </div>
+    }
+
+    <!-- ── KPI row ─────────────────────────────────────────────────────────── -->
+    <div class="kpi-row">
+
+      <div class="kpi-card">
+        <span class="kpi-icon">💰</span>
+        <div class="kpi-body">
+          <span class="kpi-label">Total Saved</span>
+          <span class="kpi-value text-income">{{ totalSaved() | currencyFormat }}</span>
+          <span class="kpi-sub">net over {{ period }} months</span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-icon">📅</span>
+        <div class="kpi-body">
+          <span class="kpi-label">Avg Monthly Savings</span>
+          <span class="kpi-value" [class.text-income]="avgMonthlySavings() >= 0"
+                [class.text-expense]="avgMonthlySavings() < 0">
+            {{ avgMonthlySavings() | currencyFormat }}
+          </span>
+          <span class="kpi-sub">per month average</span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-icon">🔥</span>
+        <div class="kpi-body">
+          <span class="kpi-label">Daily Burn Rate</span>
+          <span class="kpi-value text-expense">{{ dailyBurnRate() | currencyFormat }}</span>
+          <span class="kpi-sub">avg spend per day this month</span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-icon">🛡️</span>
+        <div class="kpi-body">
+          <span class="kpi-label">Expense Runway</span>
+          <span class="kpi-value" [class.text-income]="runway() >= 3"
+                [class.text-expense]="runway() < 3">
+            {{ runway() | number:'1.1-1' }} months
+          </span>
+          <span class="kpi-sub">savings can cover expenses</span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-icon">📈</span>
+        <div class="kpi-body">
+          <span class="kpi-label">Savings Rate</span>
+          <span class="kpi-value" [class.text-income]="avgSavingsRate() >= 20"
+                [class.text-expense]="avgSavingsRate() < 0">
+            {{ avgSavingsRate() | number:'1.1-1' }}%
+          </span>
+          <span class="kpi-sub">of income saved on avg</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── Savings trajectory ─────────────────────────────────────────────── -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">💹 Savings Trajectory</span>
+        <span class="card-hint">Actual vs projected at current rate</span>
+      </div>
+      <div class="chart-tall">
+        <canvas #trajectoryChart></canvas>
+      </div>
+      <div class="projection-row">
+        <div class="proj-item">
+          <span class="proj-label">In 3 months</span>
+          <span class="proj-value" [class.text-income]="projection3m() >= 0"
+                [class.text-expense]="projection3m() < 0">
+            {{ projection3m() | currencyFormat }}
+          </span>
+        </div>
+        <div class="proj-item">
+          <span class="proj-label">In 6 months</span>
+          <span class="proj-value" [class.text-income]="projection6m() >= 0"
+                [class.text-expense]="projection6m() < 0">
+            {{ projection6m() | currencyFormat }}
+          </span>
+        </div>
+        <div class="proj-item">
+          <span class="proj-label">In 12 months</span>
+          <span class="proj-value" [class.text-income]="projection12m() >= 0"
+                [class.text-expense]="projection12m() < 0">
+            {{ projection12m() | currencyFormat }}
+          </span>
+        </div>
+        <div class="proj-item">
+          <span class="proj-label">In 24 months</span>
+          <span class="proj-value" [class.text-income]="projection24m() >= 0"
+                [class.text-expense]="projection24m() < 0">
+            {{ projection24m() | currencyFormat }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Two charts side by side ───────────────────────────────────────── -->
+    <div class="charts-2col">
+
+      <!-- Income vs Expense trend -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📊 Income vs Expenses Trend</span>
+        </div>
+        <div class="chart-med">
+          <canvas #trendChart></canvas>
+        </div>
+      </div>
+
+      <!-- Savings rate per month -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">💚 Monthly Savings Rate</span>
+        </div>
+        <div class="chart-med">
+          <canvas #savingsRateChart></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── Category trends ───────────────────────────────────────────────── -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🏷️ Category Trends</span>
+        <span class="card-hint">vs previous period</span>
+      </div>
+      <div class="category-trends">
+        @for (cat of categoryTrends(); track cat.id) {
+          <div class="cat-trend-item">
+            <div class="ct-left">
+              <span class="ct-icon">{{ cat.icon }}</span>
+              <div class="ct-info">
+                <span class="ct-name">{{ cat.name }}</span>
+                <span class="ct-amount">{{ cat.current | currencyFormat }}</span>
+              </div>
+            </div>
+            <div class="ct-right">
+              <div class="ct-bar-wrap">
+                <div class="ct-bar" [style.width.%]="cat.barPct" [style.background]="cat.color + 'aa'"></div>
+              </div>
+              <span class="ct-change" [class.up]="cat.change > 0" [class.down]="cat.change < 0" [class.flat]="cat.change === 0">
+                {{ cat.change > 0 ? '▲' : cat.change < 0 ? '▼' : '—' }}
+                {{ cat.change !== 0 ? (Math.abs(cat.change) | number:'1.0-0') + '%' : 'same' }}
+              </span>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- ── Spending heatmap by day of week ───────────────────────────────── -->
+    <div class="charts-2col">
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📅 Spending by Day of Week</span>
+        </div>
+        <div class="chart-med">
+          <canvas #dowChart></canvas>
+        </div>
+      </div>
+
+      <!-- Top spending categories donut -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🍩 Expense Breakdown</span>
+        </div>
+        <div class="chart-med">
+          <canvas #donutChart></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── Goal simulator ───────────────────────────────────────────────── -->
+    <div class="card goal-card">
+      <div class="card-header">
+        <span class="card-title">🎯 Savings Goal Simulator</span>
+        <span class="card-hint">How long to reach your goal?</span>
+      </div>
+      <div class="goal-body">
+        <div class="goal-inputs">
+          <div class="form-group">
+            <label class="form-label">Savings Goal ($)</label>
+            <input type="number" class="form-control" [(ngModel)]="goalAmount"
+                   (ngModelChange)="recalcGoal()" placeholder="e.g. 10000" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Monthly Contribution ($)</label>
+            <input type="number" class="form-control" [(ngModel)]="goalMonthly"
+                   (ngModelChange)="recalcGoal()" placeholder="e.g. 500" min="0">
+          </div>
+        </div>
+        @if (goalMonths() > 0) {
+          <div class="goal-result">
+            <div class="goal-stat">
+              <span class="gs-label">Time to reach goal</span>
+              <span class="gs-value text-income">{{ goalMonths() }} months</span>
+              <span class="gs-sub">({{ goalYears() }})</span>
+            </div>
+            <div class="goal-stat">
+              <span class="gs-label">Total contributed</span>
+              <span class="gs-value">{{ (goalMonthly * goalMonths()) | currencyFormat }}</span>
+            </div>
+            <div class="goal-stat">
+              <span class="gs-label">At current avg rate</span>
+              <span class="gs-value" [class.text-income]="avgMonthlySavings() > 0">
+                {{ goalMonthsAtCurrentRate() > 0 ? goalMonthsAtCurrentRate() + ' months' : 'Not on track' }}
+              </span>
+            </div>
+          </div>
+          <div class="chart-med" style="margin-top: 1rem;">
+            <canvas #goalChart></canvas>
+          </div>
+        }
+      </div>
+    </div>
+
+  }
+</div>

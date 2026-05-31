@@ -123,6 +123,9 @@ export class SheetsService {
     await this.ensureHeaders(SHEETS.CATEGORIES, CATEGORY_HEADERS);
     await this.ensureHeaders(SHEETS.BUDGETS, BUDGET_HEADERS);
     await this.ensureHeaders(SHEETS.SETTINGS, SETTINGS_HEADERS);
+
+    // Seed default categories if the sheet is empty (new user)
+    await this.seedDefaultCategories();
   }
 
   private async ensureHeaders(sheet: string, headers: string[]): Promise<void> {
@@ -139,6 +142,60 @@ export class SheetsService {
         requestBody: { values: [headers] },
       });
     }
+  }
+
+  private async seedDefaultCategories(): Promise<void> {
+    // Only seed if the Categories sheet has no data rows yet
+    const res = await this.sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${SHEETS.CATEGORIES}!A:G`,
+    });
+    const rows = res.data.values ?? [];
+    if (rows.length > 1) return; // already has data
+
+    const now = new Date().toISOString();
+    const defaults: Array<[string, string, string, string, string, string, string]> = [
+      // ── Expense categories ──────────────────────────────────────────────────
+      ['food',          'Food & Dining',       'expense', '🍽️', '#FF6384', '', now],
+      ['transport',     'Transportation',      'expense', '🚗', '#36A2EB', '', now],
+      ['housing',       'Housing & Rent',      'expense', '🏠', '#FFCE56', '', now],
+      ['utilities',     'Utilities',           'expense', '💡', '#4BC0C0', '', now],
+      ['healthcare',    'Healthcare',          'expense', '🏥', '#9966FF', '', now],
+      ['entertainment', 'Entertainment',       'expense', '🎬', '#FF9F40', '', now],
+      ['shopping',      'Shopping',            'expense', '🛍️', '#FF6384', '', now],
+      ['education',     'Education',           'expense', '📚', '#36A2EB', '', now],
+      ['travel',        'Travel',              'expense', '✈️', '#4BC0C0', '', now],
+      ['subscriptions', 'Subscriptions',       'expense', '📱', '#9966FF', '', now],
+      ['insurance',     'Insurance',           'expense', '🛡️', '#FFCE56', '', now],
+      ['groceries',     'Groceries',           'expense', '🛒', '#8BC34A', '', now],
+      ['dining_out',    'Dining Out',          'expense', '🍕', '#FF5722', '', now],
+      ['fitness',       'Fitness & Sports',    'expense', '🏋️', '#00BCD4', '', now],
+      ['personal_care', 'Personal Care',       'expense', '💅', '#E91E63', '', now],
+      ['pets',          'Pets',                'expense', '🐾', '#795548', '', now],
+      ['gifts_given',   'Gifts Given',         'expense', '🎁', '#9C27B0', '', now],
+      ['taxes',         'Taxes & Fees',        'expense', '🧾', '#607D8B', '', now],
+      ['other_expense', 'Other Expenses',      'expense', '💸', '#C9CBCF', '', now],
+      // ── Income categories ───────────────────────────────────────────────────
+      ['salary',        'Salary',              'income',  '💼', '#4CAF50', '', now],
+      ['freelance',     'Freelance',           'income',  '💻', '#8BC34A', '', now],
+      ['investment',    'Investment Returns',  'income',  '📈', '#00BCD4', '', now],
+      ['rental',        'Rental Income',       'income',  '🏘️', '#FF9800', '', now],
+      ['business',      'Business Income',     'income',  '🏢', '#9C27B0', '', now],
+      ['bonus',         'Bonus',               'income',  '🎯', '#F44336', '', now],
+      ['gift_received', 'Gifts Received',      'income',  '🎁', '#E91E63', '', now],
+      ['refund',        'Refunds',             'income',  '↩️', '#00BCD4', '', now],
+      ['side_hustle',   'Side Hustle',         'income',  '⚡', '#FF9800', '', now],
+      ['other_income',  'Other Income',        'income',  '💰', '#607D8B', '', now],
+    ];
+
+    await this.sheets.spreadsheets.values.append({
+      spreadsheetId: this.spreadsheetId,
+      range: `${SHEETS.CATEGORIES}!A:G`,
+      valueInputOption: 'RAW',
+      requestBody: { values: defaults },
+    });
+
+    console.log(`✅ Seeded ${defaults.length} default categories`);
   }
 
   // ── Transactions ────────────────────────────────────────────────────────────
@@ -317,22 +374,33 @@ export class SheetsService {
       .map(r => this.rowToBudget(r))
       .filter(Boolean)
       .filter((b): b is Budget => {
+        // Year must match
         if (year && b!.year !== year) return false;
-        if (month && b!.month !== month) return false;
+        // Monthly budget: only show for its specific month
+        if (b!.month !== undefined && month && b!.month !== month) return false;
+        // Yearly budget (no month set): show for every month of that year
+        // i.e. don't filter it out when a specific month is requested
         return true;
       })
       .map(b => {
-        // Compute spent from transactions
+        // For yearly budgets shown in a specific month view, compute spent
+        // only for that month so the progress bar is meaningful
+        const filterYear  = year  ?? b!.year;
+        const filterMonth = b!.month ?? month; // use budget's own month, or the requested month
+
         const spent = transactions
           .filter(t => {
             if (t.type !== 'expense' || t.category !== b!.categoryId) return false;
             const d = new Date(t.date);
-            if (year && d.getFullYear() !== year) return false;
-            if (month && d.getMonth() + 1 !== month) return false;
+            if (d.getFullYear() !== filterYear) return false;
+            // For yearly budgets viewed in a monthly context, show full-year spend
+            // For monthly budgets, filter to that month
+            if (b!.month !== undefined && d.getMonth() + 1 !== b!.month) return false;
             return true;
           })
           .reduce((s, t) => s + t.amount, 0);
-        const remaining = b!.amount - spent;
+
+        const remaining  = b!.amount - spent;
         const percentage = b!.amount > 0 ? Math.round((spent / b!.amount) * 100) : 0;
         return { ...b!, spent, remaining, percentage };
       });

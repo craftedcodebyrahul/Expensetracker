@@ -36,17 +36,21 @@ export class TransactionService {
 
   readonly summary = computed<TransactionSummary>(() => {
     const txns = this.filteredTransactions();
-    const income = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const income   = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const expenses = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const categoryCount: Record<string, number> = {};
     txns.forEach(t => { categoryCount[t.category] = (categoryCount[t.category] || 0) + t.amount; });
     const topCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+
+    // avgTransaction = average of individual transaction amounts (not combined)
+    const avgTransaction = txns.length ? txns.reduce((s, t) => s + t.amount, 0) / txns.length : 0;
+
     return {
       totalIncome: income,
       totalExpenses: expenses,
       netBalance: income - expenses,
       transactionCount: txns.length,
-      avgTransaction: txns.length ? (income + expenses) / txns.length : 0,
+      avgTransaction,
       topCategory
     };
   });

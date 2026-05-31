@@ -66,7 +66,12 @@ import { Budget } from '../../core/models';
               <div class="bc-header">
                 <div class="bc-category">
                   <span class="bc-icon">{{ getCategoryIcon(budget.categoryId) }}</span>
-                  <span class="bc-name">{{ budget.categoryName }}</span>
+                  <div class="bc-title">
+                    <span class="bc-name">{{ budget.categoryName }}</span>
+                    @if (!budget.month) {
+                      <span class="bc-period-badge">📅 Full Year</span>
+                    }
+                  </div>
                 </div>
                 <div class="bc-actions">
                   <button class="btn btn-ghost btn-icon btn-sm" (click)="editBudget(budget)" aria-label="Edit budget">✏️</button>
@@ -216,7 +221,9 @@ import { Budget } from '../../core/models';
     .bc-header { display: flex; align-items: center; justify-content: space-between; }
     .bc-category { display: flex; align-items: center; gap: 0.5rem; }
     .bc-icon { font-size: 1.25rem; }
+    .bc-title { display: flex; flex-direction: column; gap: 0.125rem; }
     .bc-name { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+    .bc-period-badge { font-size: 0.65rem; font-weight: 600; color: var(--accent-blue-light); background: rgba(92,107,192,0.12); padding: 0.1rem 0.375rem; border-radius: 100px; }
     .bc-actions { display: flex; gap: 0.25rem; }
 
     .bc-amounts { display: flex; align-items: baseline; gap: 0.375rem; }

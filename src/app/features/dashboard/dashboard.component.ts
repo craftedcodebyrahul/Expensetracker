@@ -329,8 +329,43 @@ export class DashboardComponent implements OnInit, AfterViewInit {
 
   savingsRate = computed(() => {
     const s = this.txnService.summary();
-    if (s.totalIncome === 0) return 0;
-    return Math.round(((s.totalIncome - s.totalExpenses) / s.totalIncome) * 100);
+    if (s.totalIncome === 0 && s.totalExpenses === 0) return 0;
+    // When income is 0 but there are expenses, rate is -100% (spending with no income)
+    if (s.totalIncome === 0) return -100;
+    // Standard formula — can be negative when spending > income
+    // Clamp display to -100% minimum (beyond that it's just "in deficit")
+    const rate = ((s.totalIncome - s.totalExpenses) / s.totalIncome) * 100;
+    return Math.round(Math.max(rate, -100));
+  });
+
+  // Financial health score 0–100
+  healthScore = computed(() => {
+    const sr = this.savingsRate();
+    const ec = this.expenseChange();
+    const alerts = this.budgetService.budgetAlerts();
+    const exceeded = alerts.filter(a => a.status === 'exceeded').length;
+
+    let score = 50;
+
+    // Savings rate contribution (±30 points)
+    if (sr >= 30)      score += 30;
+    else if (sr >= 20) score += 20;
+    else if (sr >= 10) score += 10;
+    else if (sr >= 0)  score += 0;
+    else if (sr >= -20) score -= 15;
+    else if (sr >= -50) score -= 25;
+    else               score -= 35; // deeply in deficit
+
+    // Expense trend contribution (±15 points)
+    if (ec < -10)      score += 15;  // expenses dropping — great
+    else if (ec < 0)   score += 8;
+    else if (ec > 30)  score -= 15;  // expenses spiking — bad
+    else if (ec > 10)  score -= 8;
+
+    // Budget overruns (−8 per exceeded budget)
+    score -= exceeded * 8;
+
+    return Math.max(0, Math.min(100, score));
   });
 
   // Financial health score 0-100
