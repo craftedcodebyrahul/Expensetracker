@@ -169,7 +169,7 @@ import { HeaderComponent } from '../../layout/header.component';
 
       <!-- About -->
       <div class="card settings-section">
-        <h3 class="section-title">ℹ️ About FinTrack Pro</h3>
+        <h3 class="section-title">ℹ️ About TCFlow</h3>
         <div class="about-grid">
           <div class="about-item"><span class="about-label">Version</span><span>1.0.0</span></div>
           <div class="about-item"><span class="about-label">Framework</span><span>Angular 21 + Express</span></div>

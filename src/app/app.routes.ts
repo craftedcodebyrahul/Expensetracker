@@ -7,7 +7,17 @@ export const routes: Routes = [
     path: 'login',
     loadComponent: () => import('./features/auth/login.component').then(m => m.LoginComponent),
     canActivate: [guestGuard],
-    title: 'Sign In — FinTrack Pro'
+    title: 'Sign In — TCFlow'
+  },
+  {
+    path: 'privacy',
+    loadComponent: () => import('./features/legal/privacy.component').then(m => m.PrivacyComponent),
+    title: 'Privacy Policy — TCFlow'
+  },
+  {
+    path: 'terms',
+    loadComponent: () => import('./features/legal/terms.component').then(m => m.TermsComponent),
+    title: 'Terms of Service — TCFlow'
   },
 
   // ── Protected (require Google login) ────────────────────────────────────────
@@ -15,49 +25,49 @@ export const routes: Routes = [
     path: '',
     loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent),
     canActivate: [authGuard],
-    title: 'Dashboard — FinTrack Pro'
+    title: 'Dashboard — TCFlow'
   },
   {
     path: 'quick-log',
     loadComponent: () => import('./features/transactions/quick-log.component').then(m => m.QuickLogComponent),
     canActivate: [authGuard],
-    title: 'Quick Log — FinTrack Pro'
+    title: 'Quick Log — TCFlow'
   },
   {
     path: 'transactions/new',
     loadComponent: () => import('./features/transactions/quick-log.component').then(m => m.QuickLogComponent),
     canActivate: [authGuard],
-    title: 'Quick Log — FinTrack Pro'
+    title: 'Quick Log — TCFlow'
   },
   {
     path: 'transactions',
     loadComponent: () => import('./features/transactions/transactions.component').then(m => m.TransactionsComponent),
     canActivate: [authGuard],
-    title: 'Transactions — FinTrack Pro'
+    title: 'Transactions — TCFlow'
   },
   {
     path: 'budgets',
     loadComponent: () => import('./features/budgets/budgets.component').then(m => m.BudgetsComponent),
     canActivate: [authGuard],
-    title: 'Budgets — FinTrack Pro'
+    title: 'Budgets — TCFlow'
   },
   {
     path: 'categories',
     loadComponent: () => import('./features/categories/categories.component').then(m => m.CategoriesComponent),
     canActivate: [authGuard],
-    title: 'Categories — FinTrack Pro'
+    title: 'Categories — TCFlow'
   },
   {
     path: 'reports',
     loadComponent: () => import('./features/reports/reports.component').then(m => m.ReportsComponent),
     canActivate: [authGuard],
-    title: 'Reports — FinTrack Pro'
+    title: 'Reports — TCFlow'
   },
   {
     path: 'settings',
     loadComponent: () => import('./features/settings/settings.component').then(m => m.SettingsComponent),
     canActivate: [authGuard],
-    title: 'Settings — FinTrack Pro'
+    title: 'Settings — TCFlow'
   },
 
   { path: '**', redirectTo: '' }

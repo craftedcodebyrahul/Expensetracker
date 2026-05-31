@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1d27"/>
+      <stop offset="100%" stop-color="#0f1117"/>
+    </linearGradient>
+    <linearGradient id="arc1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5c6bc0"/>
+      <stop offset="100%" stop-color="#7986cb"/>
+    </linearGradient>
+    <linearGradient id="arc2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4caf50"/>
+      <stop offset="100%" stop-color="#66bb6a"/>
+    </linearGradient>
+    <linearGradient id="arc3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ef5350"/>
+      <stop offset="100%" stop-color="#ef9a9a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="100" fill="url(#bg)"/>
+
+  <!-- Outer ring - blue (total flow) -->
+  <circle cx="100" cy="100" r="78" stroke="url(#arc1)" stroke-width="10"
+    stroke-dasharray="340 150" stroke-dashoffset="-20"
+    stroke-linecap="round" fill="none"/>
+
+  <!-- Middle ring - green (income) -->
+  <circle cx="100" cy="100" r="60" stroke="url(#arc2)" stroke-width="9"
+    stroke-dasharray="220 157" stroke-dashoffset="60"
+    stroke-linecap="round" fill="none"/>
+
+  <!-- Inner ring - red (expense) -->
+  <circle cx="100" cy="100" r="43" stroke="url(#arc3)" stroke-width="8"
+    stroke-dasharray="140 130" stroke-dashoffset="130"
+    stroke-linecap="round" fill="none"/>
+
+  <!-- Center: upward arrow (cashflow symbol) -->
+  <path d="M100 118 L100 82" stroke="#e8eaf6" stroke-width="5.5" stroke-linecap="round"/>
+  <path d="M88 94 L100 82 L112 94" stroke="#e8eaf6" stroke-width="5.5"
+    stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Small dot at bottom of arrow -->
+  <circle cx="100" cy="122" r="3.5" fill="#5c6bc0"/>
+</svg>

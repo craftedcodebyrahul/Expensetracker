@@ -1,26 +1,26 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
+import { RouterLink, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterLink],
   template: `
     <div class="login-page">
-      <!-- Background decoration -->
       <div class="bg-orb bg-orb-1"></div>
       <div class="bg-orb bg-orb-2"></div>
       <div class="bg-orb bg-orb-3"></div>
 
       <div class="login-card">
+
         <!-- Logo -->
         <div class="login-logo">
-          <div class="logo-icon-lg">💰</div>
+          <img src="logo.svg" alt="TCFlow" class="login-logo-img">
           <div>
-            <h1 class="logo-name">FinTrack <span class="logo-pro">Pro</span></h1>
-            <p class="logo-tagline">Your personal finance command center</p>
+            <h1 class="logo-name">TC<span class="logo-accent">Flow</span></h1>
+            <p class="logo-tagline">Your total cashflow, under control</p>
           </div>
         </div>
 
@@ -32,7 +32,7 @@ import { AuthService } from '../../core/services/auth.service';
           </div>
         }
 
-        <!-- Features list -->
+        <!-- Feature grid -->
         <div class="features-list">
           @for (f of features; track f.icon) {
             <div class="feature-item">
@@ -42,7 +42,7 @@ import { AuthService } from '../../core/services/auth.service';
           }
         </div>
 
-        <!-- Sign in button -->
+        <!-- Sign in -->
         <button class="google-btn" (click)="signIn()" [disabled]="signingIn()">
           @if (signingIn()) {
             <div class="btn-spinner"></div>
@@ -60,16 +60,13 @@ import { AuthService } from '../../core/services/auth.service';
 
         <!-- Privacy note -->
         <p class="privacy-note">
-          By signing in, you authorize FinTrack Pro to create and manage a Google Spreadsheet
-          in your Drive to store your financial data. Your data stays in your own Google account.
+          By signing in you authorize TCFlow to create a Google Spreadsheet in your Drive
+          to store your financial data. Your data stays in your own Google account.
+          See our <a routerLink="/privacy">Privacy Policy</a> and <a routerLink="/terms">Terms of Service</a>.
         </p>
 
-        <!-- Divider -->
-        <div class="login-divider">
-          <span>What happens when you sign in</span>
-        </div>
-
         <!-- Steps -->
+        <div class="login-divider"><span>How it works</span></div>
         <div class="steps-list">
           @for (step of steps; track step.num) {
             <div class="step-item">
@@ -95,22 +92,11 @@ import { AuthService } from '../../core/services/auth.service';
       position: relative;
       overflow: hidden;
     }
-
-    /* Animated background orbs */
-    .bg-orb {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(80px);
-      opacity: 0.15;
-      animation: float 8s ease-in-out infinite;
-    }
-    .bg-orb-1 { width: 400px; height: 400px; background: var(--accent-blue); top: -100px; left: -100px; animation-delay: 0s; }
+    .bg-orb { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.15; animation: float 8s ease-in-out infinite; }
+    .bg-orb-1 { width: 400px; height: 400px; background: var(--accent-blue); top: -100px; left: -100px; }
     .bg-orb-2 { width: 300px; height: 300px; background: var(--accent-green); bottom: -50px; right: -50px; animation-delay: 3s; }
     .bg-orb-3 { width: 250px; height: 250px; background: var(--accent-purple); top: 50%; left: 60%; animation-delay: 6s; }
-    @keyframes float {
-      0%, 100% { transform: translateY(0) scale(1); }
-      50% { transform: translateY(-20px) scale(1.05); }
-    }
+    @keyframes float { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-20px) scale(1.05); } }
 
     .login-card {
       background: var(--bg-card);
@@ -121,133 +107,55 @@ import { AuthService } from '../../core/services/auth.service';
       max-width: 480px;
       position: relative;
       z-index: 1;
-      box-shadow: var(--shadow-lg), 0 0 60px rgba(92, 107, 192, 0.1);
+      box-shadow: var(--shadow-lg), 0 0 60px rgba(92,107,192,0.1);
     }
-
-    .login-logo {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      margin-bottom: 2rem;
-    }
-    .logo-icon-lg { font-size: 3rem; }
-    .logo-name { font-size: 1.75rem; font-weight: 800; color: var(--text-primary); line-height: 1; }
-    .logo-pro { color: var(--accent-blue-light); }
+    .login-logo { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; }
+    .login-logo-img { width: 52px; height: 52px; flex-shrink: 0; }
+    .logo-name { font-size: 1.875rem; font-weight: 800; color: var(--text-primary); line-height: 1; letter-spacing: -0.03em; }
+    .logo-accent { color: var(--accent-blue-light); }
     .logo-tagline { font-size: 0.875rem; color: var(--text-muted); margin-top: 0.25rem; }
 
     .error-banner {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      background: rgba(239, 83, 80, 0.1);
-      border: 1px solid rgba(239, 83, 80, 0.3);
-      border-radius: var(--radius-md);
-      padding: 0.875rem 1rem;
-      margin-bottom: 1.5rem;
-      font-size: 0.875rem;
-      color: var(--accent-red-light);
+      display: flex; align-items: center; gap: 0.75rem;
+      background: rgba(239,83,80,0.1); border: 1px solid rgba(239,83,80,0.3);
+      border-radius: var(--radius-md); padding: 0.875rem 1rem;
+      margin-bottom: 1.5rem; font-size: 0.875rem; color: var(--accent-red-light);
     }
-
-    .features-list {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.625rem;
-      margin-bottom: 2rem;
-    }
+    .features-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.625rem; margin-bottom: 2rem; }
     .feature-item {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.625rem 0.75rem;
-      background: var(--bg-input);
-      border-radius: var(--radius-sm);
-      font-size: 0.8125rem;
-      color: var(--text-secondary);
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.625rem 0.75rem; background: var(--bg-input);
+      border-radius: var(--radius-sm); font-size: 0.8125rem; color: var(--text-secondary);
     }
     .feature-icon { font-size: 1rem; flex-shrink: 0; }
 
     .google-btn {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.875rem;
-      padding: 0.875rem 1.5rem;
-      background: #fff;
-      color: #3c4043;
-      border: none;
-      border-radius: var(--radius-md);
-      font-size: 1rem;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      transition: var(--transition);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      margin-bottom: 1rem;
+      width: 100%; display: flex; align-items: center; justify-content: center;
+      gap: 0.875rem; padding: 0.875rem 1.5rem; background: #fff; color: #3c4043;
+      border: none; border-radius: var(--radius-md); font-size: 1rem; font-weight: 600;
+      font-family: inherit; cursor: pointer; transition: var(--transition);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3); margin-bottom: 1rem;
     }
-    .google-btn:hover:not(:disabled) {
-      background: #f8f9fa;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-      transform: translateY(-1px);
-    }
+    .google-btn:hover:not(:disabled) { background: #f8f9fa; box-shadow: 0 4px 16px rgba(0,0,0,0.4); transform: translateY(-1px); }
     .google-btn:disabled { opacity: 0.7; cursor: not-allowed; }
     .google-icon { width: 20px; height: 20px; flex-shrink: 0; }
-    .btn-spinner {
-      width: 18px;
-      height: 18px;
-      border: 2px solid rgba(60,64,67,0.3);
-      border-top-color: #3c4043;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      flex-shrink: 0;
-    }
+    .btn-spinner { width: 18px; height: 18px; border: 2px solid rgba(60,64,67,0.3); border-top-color: #3c4043; border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
 
-    .privacy-note {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      text-align: center;
-      line-height: 1.5;
-      margin-bottom: 1.5rem;
-    }
+    .privacy-note { font-size: 0.75rem; color: var(--text-muted); text-align: center; line-height: 1.6; margin-bottom: 1.5rem; }
+    .privacy-note a { color: var(--accent-blue-light); }
 
-    .login-divider {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      margin-bottom: 1.25rem;
-    }
-    .login-divider::before, .login-divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: var(--border);
-    }
+    .login-divider { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; }
+    .login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
     .login-divider span { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
 
     .steps-list { display: flex; flex-direction: column; gap: 0.75rem; }
     .step-item { display: flex; align-items: flex-start; gap: 0.875rem; }
-    .step-num {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      background: rgba(92, 107, 192, 0.2);
-      color: var(--accent-blue-light);
-      font-size: 0.75rem;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      margin-top: 1px;
-    }
+    .step-num { width: 24px; height: 24px; border-radius: 50%; background: rgba(92,107,192,0.2); color: var(--accent-blue-light); font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
     .step-info { display: flex; flex-direction: column; gap: 0.125rem; }
     .step-title { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
     .step-desc { font-size: 0.75rem; color: var(--text-muted); }
 
-    @media (max-width: 480px) {
-      .login-card { padding: 1.75rem 1.25rem; }
-      .features-list { grid-template-columns: 1fr; }
-    }
+    @media (max-width: 480px) { .login-card { padding: 1.75rem 1.25rem; } .features-list { grid-template-columns: 1fr; } }
   `]
 })
 export class LoginComponent implements OnInit {
@@ -268,15 +176,13 @@ export class LoginComponent implements OnInit {
 
   steps = [
     { num: '1', title: 'Sign in with Google', desc: 'Securely authenticate with your Google account' },
-    { num: '2', title: 'Spreadsheet created', desc: 'A "FinTrack Pro" spreadsheet is created in your Drive' },
-    { num: '3', title: 'Start tracking', desc: 'Add transactions — everything syncs to your spreadsheet' },
+    { num: '2', title: 'Spreadsheet created', desc: 'A "TCFlow — My Finances" spreadsheet is created in your Drive' },
+    { num: '3', title: 'Start tracking', desc: 'Add transactions — everything syncs to your spreadsheet instantly' },
   ];
 
   ngOnInit() {
     this.route.queryParams.subscribe(params => {
-      if (params['auth_error']) {
-        this.authError.set(params['auth_error']);
-      }
+      if (params['auth_error']) this.authError.set(params['auth_error']);
     });
   }
 

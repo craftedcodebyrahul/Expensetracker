@@ -121,7 +121,7 @@ async function findOrCreateSpreadsheet(
 ): Promise<string> {
   const drive = google.drive({ version: 'v3', auth });
   const sheets = google.sheets({ version: 'v4', auth });
-  const SPREADSHEET_NAME = 'FinTrack Pro — My Finances';
+  const SPREADSHEET_NAME = 'TCFlow — My Finances';
 
   const searchRes = await drive.files.list({
     q: `name='${SPREADSHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`,

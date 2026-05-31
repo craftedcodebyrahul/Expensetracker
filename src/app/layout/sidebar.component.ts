@@ -19,11 +19,10 @@ interface NavItem {
 
       <!-- Logo -->
       <div class="sidebar-logo">
-        <div class="logo-icon">💰</div>
+        <img src="logo.svg" alt="TCFlow logo" class="logo-img">
         @if (!collapsed()) {
           <div class="logo-text">
-            <span class="logo-title">FinTrack</span>
-            <span class="logo-sub">Pro</span>
+            <span class="logo-title">TC<span class="logo-accent">Flow</span></span>
           </div>
         }
         <button class="collapse-btn" (click)="toggleCollapse()"
@@ -112,10 +111,10 @@ interface NavItem {
       position: relative;
       flex-shrink: 0;
     }
-    .logo-icon { font-size: 1.75rem; flex-shrink: 0; }
+    .logo-img { width: 32px; height: 32px; flex-shrink: 0; }
     .logo-text { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
-    .logo-title { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
-    .logo-sub { font-size: 0.7rem; color: var(--accent-blue-light); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+    .logo-title { font-size: 1.15rem; font-weight: 800; color: var(--text-primary); white-space: nowrap; letter-spacing: -0.02em; }
+    .logo-accent { color: var(--accent-blue-light); }
     .collapse-btn {
       background: var(--bg-card);
       border: 1px solid var(--border);
