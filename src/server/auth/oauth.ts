@@ -11,10 +11,7 @@ export function createOAuthClient() {
   );
 }
 
-// ── Scopes needed ─────────────────────────────────────────────────────────────
-// - userinfo.email / profile  → identify the user
-// - spreadsheets              → read/write their Google Sheets
-// - drive.file                → create a new spreadsheet on their Drive
+// ── Scopes ────────────────────────────────────────────────────────────────────
 
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
@@ -23,7 +20,7 @@ export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
 ];
 
-// ── Session user type ─────────────────────────────────────────────────────────
+// ── Session user shape ────────────────────────────────────────────────────────
 
 export interface SessionUser {
   googleId: string;
@@ -32,52 +29,68 @@ export interface SessionUser {
   picture: string;
   accessToken: string;
   refreshToken: string;
-  spreadsheetId: string; // each user's own spreadsheet
-  tokenExpiry: number;   // unix ms
+  spreadsheetId: string;
+  tokenExpiry: number;
 }
 
-// ── Extend express-session ────────────────────────────────────────────────────
+// ── Typed session helpers ─────────────────────────────────────────────────────
+// cookie-session stores data as plain properties on req.session (index-typed).
+// We cast through `any` to avoid TypeScript's index-signature access rules
+// and Express type overload conflicts.
 
-declare module 'express-session' {
-  interface SessionData {
-    user?: SessionUser;
-    oauthState?: string;
-  }
+export function getSession(req: Request): { user?: SessionUser; oauthState?: string } {
+  return (req as any).session ?? {};
 }
 
-// ── Token refresh helper ──────────────────────────────────────────────────────
+export function setSession(
+  req: Request,
+  data: Partial<{ user: SessionUser | undefined; oauthState: string | undefined }>
+): void {
+  const s = (req as any).session;
+  if (!s) return;
+  Object.assign(s, data);
+}
+
+export function clearSession(req: Request): void {
+  const s = (req as any).session;
+  if (!s) return;
+  s['user'] = undefined;
+  s['oauthState'] = undefined;
+}
+
+// ── Token refresh ─────────────────────────────────────────────────────────────
 
 export async function ensureFreshToken(user: SessionUser): Promise<SessionUser> {
-  // Refresh if token expires within 5 minutes
   if (Date.now() < user.tokenExpiry - 5 * 60 * 1000) return user;
 
-  const oauth2Client = createOAuthClient();
-  oauth2Client.setCredentials({ refresh_token: user.refreshToken });
-  const { credentials } = await oauth2Client.refreshAccessToken();
+  const client = createOAuthClient();
+  client.setCredentials({ refresh_token: user.refreshToken });
+  const { credentials } = await client.refreshAccessToken();
 
   return {
     ...user,
     accessToken: credentials.access_token ?? user.accessToken,
-    tokenExpiry: credentials.expiry_date ?? (Date.now() + 3600 * 1000),
+    tokenExpiry: credentials.expiry_date ?? Date.now() + 3600 * 1000,
   };
 }
 
 // ── Build an authenticated Sheets client for a user ───────────────────────────
 
 export function getSheetsClientForUser(user: SessionUser) {
-  const oauth2Client = createOAuthClient();
-  oauth2Client.setCredentials({
+  const client = createOAuthClient();
+  client.setCredentials({
     access_token: user.accessToken,
     refresh_token: user.refreshToken,
     expiry_date: user.tokenExpiry,
   });
-  return oauth2Client;
+  return client;
 }
 
 // ── Auth middleware ───────────────────────────────────────────────────────────
 
 export function requireAuth(req: Request, res: Response, next: () => void): void {
-  if (req.session?.user) {
+  const session = getSession(req);
+  if (session['user']) {
     next();
   } else {
     res.status(401).json({ success: false, data: null, error: 'Not authenticated' });
