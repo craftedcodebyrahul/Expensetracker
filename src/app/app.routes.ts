@@ -2,7 +2,12 @@ import { Routes } from '@angular/router';
 import { authGuard, guestGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
-  // ── Public ──────────────────────────────────────────────────────────────────
+  // ── Public (no auth required) ────────────────────────────────────────────
+  {
+    path: '',
+    loadComponent: () => import('./features/home/home.component').then(m => m.HomeComponent),
+    title: 'TCFlow — Personal Finance Tracker'
+  },
   {
     path: 'login',
     loadComponent: () => import('./features/auth/login.component').then(m => m.LoginComponent),
@@ -20,9 +25,9 @@ export const routes: Routes = [
     title: 'Terms of Service — TCFlow'
   },
 
-  // ── Protected (require Google login) ────────────────────────────────────────
+  // ── Protected (require Google login) ────────────────────────────────────
   {
-    path: '',
+    path: 'dashboard',
     loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent),
     canActivate: [authGuard],
     title: 'Dashboard — TCFlow'

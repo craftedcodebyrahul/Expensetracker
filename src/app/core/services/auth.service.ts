@@ -47,12 +47,12 @@ export class AuthService {
     }
   }
 
-  /** POST logout, clear state, go to /login */
+  /** POST logout, clear state, go to home */
   logout() {
     this.http.post('/auth/logout', {}).subscribe(() => {
       this.user.set(null);
       this.initialized.set(true);
-      this.router.navigate(['/login']);
+      this.router.navigate(['/']);
     });
   }
 

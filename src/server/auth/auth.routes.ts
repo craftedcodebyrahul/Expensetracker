@@ -81,7 +81,8 @@ export function createAuthRouter(): Router {
       const sheetsService = new SheetsService(getSheetsClientForUser(user), spreadsheetId);
       await sheetsService.initialize();
 
-      res.redirect('/');
+      // Redirect to dashboard after successful login
+      res.redirect('/dashboard');
     } catch (err: any) {
       console.error('OAuth callback error:', err.message);
       res.redirect(`/login?auth_error=${encodeURIComponent(err.message ?? 'unknown_error')}`);

@@ -281,7 +281,7 @@ export class SidebarComponent {
   syncConnected = signal(false);
 
   navItems: NavItem[] = [
-    { path: '/',             label: 'Dashboard',    icon: '📊' },
+    { path: '/dashboard',    label: 'Dashboard',    icon: '📊' },
     { path: '/quick-log',    label: 'Quick Log',    icon: '⚡' },
     { path: '/transactions', label: 'Transactions', icon: '💳' },
     { path: '/insights',     label: 'Insights',     icon: '🔮' },
