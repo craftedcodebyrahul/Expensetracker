@@ -16,6 +16,33 @@
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from './db.js';
 
+// ── Prisma row types (avoids implicit 'any' when @prisma/client is external) ──
+interface PrismaRecurringScheduleRow {
+  id: string; userId: string; type: string; amount: number;
+  category: string | null; description: string; frequency: string;
+  startDate: string; nextDueDate: string; accountId: string;
+  toAccountId: string | null; isActive: number; createdAt: string;
+}
+interface PrismaCategoryRow {
+  id: string; userId: string; name: string; type: string;
+  icon: string; color: string; budget: number | null; createdAt: string;
+}
+interface PrismaAccountRow {
+  id: string; userId: string; name: string; type: string;
+  initialBalance: number; createdAt: string;
+}
+interface PrismaBudgetRow {
+  id: string; userId: string; categoryId: string; categoryName: string;
+  amount: number; period: string; month: number | null; year: number; createdAt: string;
+}
+interface PrismaBankImportRow {
+  id: string; userId: string; fileName: string; bankName: string | null;
+  fileType: string; status: string; totalRows: number; importedCount: number;
+  skippedCount: number; failedCount: number; dateFrom: string | null;
+  dateTo: string | null; errorMessage: string | null;
+  createdAt: string; completedAt: string | null;
+}
+
 // ── Types (mirrors sheets.service.ts exports) ─────────────────────────────────
 
 export interface Transaction {
@@ -494,7 +521,7 @@ export class DbService {
       where: { userId, isActive: 1 },
       orderBy: { createdAt: 'desc' },
     });
-    return rows.map(r => ({
+    return rows.map((r: PrismaRecurringScheduleRow) => ({
       id: r.id,
       type: r.type as RecurringSchedule['type'],
       amount: r.amount,
@@ -580,7 +607,7 @@ export class DbService {
       where: { userId },
       orderBy: { name: 'asc' },
     });
-    return rows.map(r => ({
+    return rows.map((r: PrismaCategoryRow) => ({
       id: r.id,
       name: r.name,
       type: r.type as Category['type'],
@@ -636,7 +663,7 @@ export class DbService {
       where: { userId },
       orderBy: { createdAt: 'asc' },
     });
-    return rows.map(r => ({
+    return rows.map((r: PrismaAccountRow) => ({
       id: r.id,
       name: r.name,
       type: r.type as Account['type'],
@@ -705,7 +732,7 @@ export class DbService {
     });
 
     // Compute spent for each budget
-    return Promise.all(rawBudgets.map(async b => {
+    return Promise.all(rawBudgets.map(async (b: PrismaBudgetRow) => {
       const targetMonth = b.month ?? filterMonth;
       const monthStr = String(targetMonth).padStart(2, '0');
       const yearStart = `${filterYear}-${monthStr}-01`;
@@ -1109,7 +1136,7 @@ Return JSON: { "summary": "2-3 sentence comparison of the two periods", "advice"
       where: { userId },
       orderBy: { createdAt: 'desc' },
     });
-    return rows.map(r => ({
+    return rows.map((r: PrismaBankImportRow) => ({
       id: r.id,
       userId: r.userId,
       fileName: r.fileName,

@@ -40,9 +40,6 @@
               "express-session",
               "passport",
               "passport-google-oauth20",
-              "@prisma/client",
-              ".prisma/client",
-              ".prisma/client/default",
               "@prisma/adapter-libsql",
               "@libsql/client",
               "libsql"
@@ -53,7 +50,10 @@
               "agent-base",
               "https-proxy-agent",
               "node-domexception",
-              "web-streams-polyfill"
+              "web-streams-polyfill",
+              "@prisma/client",
+              ".prisma/client",
+              ".prisma/client/default"
             ]
           },
           "configurations": {
