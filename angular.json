@@ -39,7 +39,13 @@
               "dotenv",
               "express-session",
               "passport",
-              "passport-google-oauth20"
+              "passport-google-oauth20",
+              "@prisma/client",
+              ".prisma/client",
+              ".prisma/client/default",
+              "@prisma/adapter-libsql",
+              "@libsql/client",
+              "libsql"
             ],
             "allowedCommonJsDependencies": [
               "googleapis",
