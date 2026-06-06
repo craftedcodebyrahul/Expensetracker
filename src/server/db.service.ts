@@ -420,10 +420,10 @@ export class DbService {
     // Get existing transaction dates per recurringId to avoid duplicates
     const existingKeys = new Set<string>();
     const existingTxns = await prisma.transaction.findMany({
-      where: { userId, recurringId: { in: dueSchedules.map(s => s.id) } },
+      where: { userId, recurringId: { in: dueSchedules.map((s: { id: string }) => s.id) } },
       select: { recurringId: true, date: true },
     });
-    existingTxns.forEach(t => existingKeys.add(`${t.recurringId}__${t.date}`));
+    existingTxns.forEach((t: { recurringId: string | null; date: string }) => existingKeys.add(`${t.recurringId}__${t.date}`));
 
     const newTransactions: any[] = [];
     const scheduleUpdates: Array<{ id: string; nextDueDate: string }> = [];
