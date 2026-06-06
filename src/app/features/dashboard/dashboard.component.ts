@@ -3,7 +3,9 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
+import { parseLocalDate } from '../../shared/utils/date.utils';
 import { BudgetService } from '../../core/services/budget.service';
+import { AccountService } from '../../core/services/account.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { Chart, registerables } from 'chart.js';
@@ -27,12 +29,14 @@ Chart.register(...registerables);
           <span class="ms-label">This Month</span>
           <span class="ms-value text-income">+{{ thisMonthIncome() | currencyFormat }}</span>
           <span class="ms-value text-expense">-{{ thisMonthExpenses() | currencyFormat }}</span>
+          <a routerLink="/insights" [queryParams]="{ mode: 'this-month' }" class="ms-link">View Insights →</a>
         </div>
         <div class="month-divider"></div>
         <div class="month-stat">
           <span class="ms-label">Last Month</span>
           <span class="ms-value text-income">+{{ lastMonthIncome() | currencyFormat }}</span>
           <span class="ms-value text-expense">-{{ lastMonthExpenses() | currencyFormat }}</span>
+          <a routerLink="/insights" [queryParams]="{ mode: 'last-month' }" class="ms-link">View Insights →</a>
         </div>
         <div class="month-divider"></div>
         <div class="month-stat">
@@ -64,7 +68,7 @@ Chart.register(...registerables);
           <div class="summary-icon">📈</div>
           <div class="summary-info">
             <span class="summary-label">Total Income</span>
-            <span class="summary-value text-income">{{ txnService.summary().totalIncome | currencyFormat }}</span>
+            <span class="summary-value text-income">{{ currentMonthSummary().totalIncome | currencyFormat }}</span>
             <span class="summary-sub">{{ currentPeriod }}</span>
           </div>
         </div>
@@ -72,16 +76,16 @@ Chart.register(...registerables);
           <div class="summary-icon">📉</div>
           <div class="summary-info">
             <span class="summary-label">Total Expenses</span>
-            <span class="summary-value text-expense">{{ txnService.summary().totalExpenses | currencyFormat }}</span>
+            <span class="summary-value text-expense">{{ currentMonthSummary().totalExpenses | currencyFormat }}</span>
             <span class="summary-sub">{{ currentPeriod }}</span>
           </div>
         </div>
-        <div class="summary-card balance-card" [class.positive]="txnService.summary().netBalance >= 0" [class.negative]="txnService.summary().netBalance < 0">
-          <div class="summary-icon">{{ txnService.summary().netBalance >= 0 ? '💚' : '🔴' }}</div>
+        <div class="summary-card balance-card" [class.positive]="currentMonthSummary().netBalance >= 0" [class.negative]="currentMonthSummary().netBalance < 0">
+          <div class="summary-icon">{{ currentMonthSummary().netBalance >= 0 ? '💚' : '🔴' }}</div>
           <div class="summary-info">
             <span class="summary-label">Net Balance</span>
-            <span class="summary-value" [class.text-income]="txnService.summary().netBalance >= 0" [class.text-expense]="txnService.summary().netBalance < 0">
-              {{ txnService.summary().netBalance | currencyFormat }}
+            <span class="summary-value" [class.text-income]="currentMonthSummary().netBalance >= 0" [class.text-expense]="currentMonthSummary().netBalance < 0">
+              {{ currentMonthSummary().netBalance | currencyFormat }}
             </span>
             <span class="summary-sub">
               {{ savingsRate() >= 0 ? savingsRate() + '% savings rate' : 'Spending deficit' }}
@@ -92,8 +96,8 @@ Chart.register(...registerables);
           <div class="summary-icon">🔢</div>
           <div class="summary-info">
             <span class="summary-label">Transactions</span>
-            <span class="summary-value">{{ txnService.summary().transactionCount }}</span>
-            <span class="summary-sub">Avg: {{ txnService.summary().avgTransaction | currencyFormat }}</span>
+            <span class="summary-value">{{ currentMonthSummary().transactionCount }}</span>
+            <span class="summary-sub">Avg: {{ currentMonthSummary().avgTransaction | currencyFormat }}</span>
           </div>
         </div>
       </div>
@@ -122,31 +126,72 @@ Chart.register(...registerables);
             @for (i of [1,2,3,4,5]; track i) {
               <div class="skeleton" style="height:52px;margin-bottom:8px;border-radius:8px;"></div>
             }
-          } @else if (txnService.recentTransactions().length === 0) {
+          } @else if (recentTransactions().length === 0) {
             <div class="empty-state">
               <span class="empty-icon">💳</span>
-              <p>No transactions yet</p>
+              <p>No transactions this month</p>
               <a routerLink="/quick-log" class="btn btn-primary btn-sm">⚡ Quick Log</a>
             </div>
           } @else {
             <div class="txn-list">
-              @for (txn of txnService.recentTransactions(); track txn.id) {
+              @for (txn of recentTransactions(); track txn.id) {
                 <div class="txn-item">
-                  <div class="txn-icon">{{ getCategoryIcon(txn.category) }}</div>
+                  <div class="txn-icon">{{ txn.type === 'transfer' ? '🔄' : getCategoryIcon(txn.category) }}</div>
                   <div class="txn-details">
                     <span class="txn-desc">{{ txn.description }}</span>
                     <span class="txn-meta">
-                      {{ getCategoryName(txn.category) }} · {{ formatDate(txn.date) }}
+                      @if (txn.type === 'transfer') {
+                        <span class="text-accent" style="font-weight: 500;">
+                          Transfer: {{ getAccountName(txn.accountId) }} ➔ {{ getAccountName(txn.toAccountId || '') }}
+                        </span>
+                      } @else {
+                        {{ getCategoryName(txn.category) }}
+                      }
+                      · {{ formatDate(txn.date) }}
                       @if (txn.isRecurring) { <span class="recurring-badge">🔄</span> }
                     </span>
                   </div>
-                  <span class="txn-amount" [class.text-income]="txn.type === 'income'" [class.text-expense]="txn.type === 'expense'">
-                    {{ txn.type === 'income' ? '+' : '-' }}{{ txn.amount | currencyFormat }}
+                  <span class="txn-amount" 
+                        [class.text-income]="txn.type === 'income'" 
+                        [class.text-expense]="txn.type === 'expense'"
+                        [class.text-accent]="txn.type === 'transfer'">
+                    {{ txn.type === 'income' ? '+' : txn.type === 'expense' ? '-' : '' }}{{ txn.amount | currencyFormat }}
                   </span>
                 </div>
               }
             </div>
           }
+        </div>
+
+        <!-- Accounts & Balances -->
+        <div class="card accounts-card">
+          <div class="card-header">
+            <span class="card-title">Accounts & Balances</span>
+            <a routerLink="/accounts" class="btn btn-ghost btn-sm">Manage</a>
+          </div>
+          <div class="net-worth-section">
+            <span class="nw-label">Net Worth</span>
+            <span class="nw-value" [class.negative]="accountService.netWorth() < 0">
+              {{ accountService.netWorth() < 0 ? '-' : '' }}{{ accountService.netWorth() | currencyFormat }}
+            </span>
+          </div>
+          <div class="account-list-mini">
+            @for (acc of accountService.accounts(); track acc.id) {
+              @let balance = accountService.accountBalances()[acc.id] || 0;
+              <div class="mini-account-item">
+                <span class="mini-acc-icon">{{ acc.type === 'asset' ? '🏦' : '💳' }}</span>
+                <div class="mini-acc-details">
+                  <span class="mini-acc-name">{{ acc.name }}</span>
+                  <span class="mini-acc-type">{{ acc.type === 'asset' ? 'Asset' : 'Liability' }}</span>
+                </div>
+                <span class="mini-acc-balance"
+                      [class.text-income]="acc.type === 'asset' && balance >= 0"
+                      [class.text-expense]="acc.type === 'liability' || balance < 0">
+                  {{ acc.type === 'asset' && balance < 0 ? '-' : '' }}{{ balance | currencyFormat }}
+                </span>
+              </div>
+            }
+          </div>
         </div>
 
         <!-- Budget Alerts -->
@@ -209,6 +254,8 @@ Chart.register(...registerables);
     .month-stat { display: flex; flex-direction: column; gap: 0.25rem; }
     .ms-label { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
     .ms-value { font-size: 0.9375rem; font-weight: 700; }
+    .ms-link { font-size: 0.7rem; color: var(--accent-blue-light); text-decoration: none; margin-top: 0.125rem; font-weight: 500; transition: var(--transition); }
+    .ms-link:hover { color: var(--text-primary); text-decoration: underline; }
     .month-divider { width: 1px; height: 40px; background: var(--border); flex-shrink: 0; }
     .health-score { display: flex; align-items: baseline; gap: 0.125rem; }
     .hs-num { font-size: 1.25rem; font-weight: 800; }
@@ -239,8 +286,42 @@ Chart.register(...registerables);
     .chart-container-sm { height: 200px; position: relative; }
 
     /* Bottom Row */
-    .bottom-row { display: grid; grid-template-columns: 1fr 320px 280px; gap: 1rem; }
-    .recent-card, .budget-card, .category-card { display: flex; flex-direction: column; }
+    .bottom-row { display: grid; grid-template-columns: 1.2fr 300px 300px 280px; gap: 1rem; }
+    .recent-card, .accounts-card, .budget-card, .category-card { display: flex; flex-direction: column; }
+
+    /* Accounts Widget */
+    .accounts-card { display: flex; flex-direction: column; gap: 0.875rem; }
+    .net-worth-section {
+      background: linear-gradient(135deg, rgba(92, 107, 192, 0.12) 0%, rgba(33, 150, 243, 0.04) 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.125rem;
+    }
+    .nw-label { font-size: 0.65rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .nw-value { font-size: 1.5rem; font-weight: 800; color: var(--accent-green); }
+    .nw-value.negative { color: var(--accent-red); }
+
+    .account-list-mini { display: flex; flex-direction: column; gap: 0.5rem; max-height: 250px; overflow-y: auto; }
+    .mini-account-item {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      padding: 0.5rem 0.625rem;
+      border-radius: var(--radius-sm);
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      transition: var(--transition);
+    }
+    .mini-account-item:hover { border-color: var(--border-light); background: var(--bg-card-hover); }
+    .mini-acc-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .mini-acc-details { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .mini-acc-name { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mini-acc-type { font-size: 0.65rem; color: var(--text-muted); text-transform: capitalize; }
+    .mini-acc-balance { font-size: 0.875rem; font-weight: 750; flex-shrink: 0; }
 
     /* Transaction List */
     .txn-list { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -266,6 +347,9 @@ Chart.register(...registerables);
     .empty-icon { font-size: 2.5rem; }
     .empty-state p { color: var(--text-muted); font-size: 0.875rem; }
 
+    @media (max-width: 1400px) {
+      .bottom-row { grid-template-columns: 1fr 1fr; }
+    }
     @media (max-width: 1200px) {
       .summary-grid { grid-template-columns: repeat(2, 1fr); }
       .charts-row { grid-template-columns: 1fr; }
@@ -283,6 +367,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   txnService = inject(TransactionService);
   categoryService = inject(CategoryService);
   budgetService = inject(BudgetService);
+  accountService = inject(AccountService);
 
   @ViewChild('doughnutChart') doughnutRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('barChart') barRef!: ElementRef<HTMLCanvasElement>;
@@ -296,36 +381,66 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   private barChart?: Chart;
   private pieChart?: Chart;
 
-  // ── Month-over-month computed signals ──────────────────────────────────────
+  // ── Current month summary — always current month regardless of any filter ──
+
+  currentMonthSummary = computed(() => {
+    const txns = this.txnService.postedTransactions();
+    const y = new Date().getFullYear();
+    const m = new Date().getMonth();
+    const monthTxns = txns.filter(t => {
+      const d = parseLocalDate(t.date);
+      return d.getFullYear() === y && d.getMonth() === m;
+    });
+    const income   = monthTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expenses = monthTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    // avgTransaction excludes transfers — only income and expense transactions are meaningful for averages
+    const incomeExpenseTxns = monthTxns.filter(t => t.type !== 'transfer');
+    const avgTransaction = incomeExpenseTxns.length ? incomeExpenseTxns.reduce((s, t) => s + t.amount, 0) / incomeExpenseTxns.length : 0;
+    return { totalIncome: income, totalExpenses: expenses, netBalance: income - expenses, transactionCount: monthTxns.length, avgTransaction };
+  });
+
+  recentTransactions = computed(() => {
+    const txns = this.txnService.postedTransactions();
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    return [...txns]
+      .filter(t => {
+        const d = parseLocalDate(t.date);
+        return d.getFullYear() === y && d.getMonth() === m;
+      })
+      .sort((a, b) => new Date(b.date + 'T00:00:00').getTime() - new Date(a.date + 'T00:00:00').getTime())
+      .slice(0, 10);
+  });
 
   private get thisMonth() { return new Date().getMonth(); }
   private get thisYear() { return new Date().getFullYear(); }
 
   thisMonthIncome = computed(() =>
-    this.txnService.transactions()
-      .filter(t => { const d = new Date(t.date); return t.type === 'income' && d.getMonth() === this.thisMonth && d.getFullYear() === this.thisYear; })
+    this.txnService.postedTransactions()
+      .filter(t => { const d = parseLocalDate(t.date); return t.type === 'income' && d.getMonth() === this.thisMonth && d.getFullYear() === this.thisYear; })
       .reduce((s, t) => s + t.amount, 0)
   );
 
   thisMonthExpenses = computed(() =>
-    this.txnService.transactions()
-      .filter(t => { const d = new Date(t.date); return t.type === 'expense' && d.getMonth() === this.thisMonth && d.getFullYear() === this.thisYear; })
+    this.txnService.postedTransactions()
+      .filter(t => { const d = parseLocalDate(t.date); return t.type === 'expense' && d.getMonth() === this.thisMonth && d.getFullYear() === this.thisYear; })
       .reduce((s, t) => s + t.amount, 0)
   );
 
   lastMonthIncome = computed(() => {
     const lm = this.thisMonth === 0 ? 11 : this.thisMonth - 1;
     const ly = this.thisMonth === 0 ? this.thisYear - 1 : this.thisYear;
-    return this.txnService.transactions()
-      .filter(t => { const d = new Date(t.date); return t.type === 'income' && d.getMonth() === lm && d.getFullYear() === ly; })
+    return this.txnService.postedTransactions()
+      .filter(t => { const d = parseLocalDate(t.date); return t.type === 'income' && d.getMonth() === lm && d.getFullYear() === ly; })
       .reduce((s, t) => s + t.amount, 0);
   });
 
   lastMonthExpenses = computed(() => {
     const lm = this.thisMonth === 0 ? 11 : this.thisMonth - 1;
     const ly = this.thisMonth === 0 ? this.thisYear - 1 : this.thisYear;
-    return this.txnService.transactions()
-      .filter(t => { const d = new Date(t.date); return t.type === 'expense' && d.getMonth() === lm && d.getFullYear() === ly; })
+    return this.txnService.postedTransactions()
+      .filter(t => { const d = parseLocalDate(t.date); return t.type === 'expense' && d.getMonth() === lm && d.getFullYear() === ly; })
       .reduce((s, t) => s + t.amount, 0);
   });
 
@@ -337,12 +452,9 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   });
 
   savingsRate = computed(() => {
-    const s = this.txnService.summary();
+    const s = this.currentMonthSummary();
     if (s.totalIncome === 0 && s.totalExpenses === 0) return 0;
-    // When income is 0 but there are expenses, rate is -100% (spending with no income)
     if (s.totalIncome === 0) return -100;
-    // Standard formula — can be negative when spending > income
-    // Clamp display to -100% minimum (beyond that it's just "in deficit")
     const rate = ((s.totalIncome - s.totalExpenses) / s.totalIncome) * 100;
     return Math.round(Math.max(rate, -100));
   });
@@ -379,24 +491,34 @@ export class DashboardComponent implements OnInit, AfterViewInit {
 
   ngOnInit() {
     const now = new Date();
-    this.txnService.loadTransactions({ dateFrom: `${now.getFullYear()}-01-01`, dateTo: `${now.getFullYear()}-12-31` })
-      .subscribe(() => this.updateCharts());
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    // Load full year so monthly bar chart works, but summary cards show current month only
+    this.txnService.loadTransactions({
+      dateFrom: `${y}-01-01`,
+      dateTo: `${y}-12-31`
+    }).subscribe(() => this.updateCharts());
     this.categoryService.loadCategories().subscribe();
-    this.budgetService.loadBudgets(now.getFullYear(), now.getMonth() + 1).subscribe();
+    this.budgetService.loadBudgets(y, m + 1).subscribe();
+    this.accountService.loadAccounts().subscribe();
   }
 
   ngAfterViewInit() { this.initCharts(); }
 
   getCategoryIcon(id: string) { return this.categoryService.getCategoryIcon(id); }
   getCategoryName(id: string) { return this.categoryService.getCategoryById(id)?.name ?? id; }
-  formatDate(date: string) { return new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+  getAccountName(id: string) {
+    const acc = this.accountService.accounts().find(a => a.id === id);
+    return acc ? acc.name : id;
+  }
+  formatDate(date: string) { return parseLocalDate(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
 
   private initCharts() { this.initDoughnutChart(); this.initBarChart(); this.initPieChart(); }
   private updateCharts() { this.updateDoughnutChart(); this.updateBarChart(); this.updatePieChart(); }
 
   private initDoughnutChart() {
     if (!this.doughnutRef) return;
-    const s = this.txnService.summary();
+    const s = this.currentMonthSummary();
     this.doughnutChart = new Chart(this.doughnutRef.nativeElement, {
       type: 'doughnut',
       data: { labels: ['Income', 'Expenses'], datasets: [{ data: [s.totalIncome, s.totalExpenses], backgroundColor: ['rgba(76,175,80,0.8)', 'rgba(239,83,80,0.8)'], borderColor: ['#4caf50', '#ef5350'], borderWidth: 2 }] },
@@ -406,7 +528,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
 
   private updateDoughnutChart() {
     if (!this.doughnutChart) { this.initDoughnutChart(); return; }
-    const s = this.txnService.summary();
+    const s = this.currentMonthSummary();
     this.doughnutChart.data.datasets[0].data = [s.totalIncome, s.totalExpenses];
     this.doughnutChart.update();
   }
@@ -436,10 +558,14 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   private getMonthlyData() {
     const incomeData = Array(12).fill(0);
     const expenseData = Array(12).fill(0);
-    this.txnService.transactions().forEach(t => {
-      const m = new Date(t.date).getMonth();
-      if (t.type === 'income') incomeData[m] += t.amount;
-      else expenseData[m] += t.amount;
+    // Use postedTransactions to exclude future-dated recurring entries from the bar chart
+    this.txnService.postedTransactions().forEach(t => {
+      const m = parseLocalDate(t.date).getMonth();
+      if (t.type === 'income') {
+        incomeData[m] += t.amount;
+      } else if (t.type === 'expense') {
+        expenseData[m] += t.amount;
+      }
     });
     return { incomeData, expenseData };
   }
@@ -465,7 +591,16 @@ export class DashboardComponent implements OnInit, AfterViewInit {
 
   private getCategoryData() {
     const byCategory: Record<string, number> = {};
-    this.txnService.transactions().filter(t => t.type === 'expense').forEach(t => { byCategory[t.category] = (byCategory[t.category] || 0) + t.amount; });
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    // Use postedTransactions so future-dated recurring expenses don't appear in the current month pie chart
+    this.txnService.postedTransactions()
+      .filter(t => {
+        const d = parseLocalDate(t.date);
+        return t.type === 'expense' && d.getFullYear() === y && d.getMonth() === m;
+      })
+      .forEach(t => { byCategory[t.category] = (byCategory[t.category] || 0) + t.amount; });
     const sorted = Object.entries(byCategory).sort((a, b) => b[1] - a[1]).slice(0, 6);
     return {
       labels: sorted.map(([cat]) => this.categoryService.getCategoryById(cat)?.name ?? cat),

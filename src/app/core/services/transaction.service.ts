@@ -13,9 +13,13 @@ export class TransactionService {
   readonly error = signal<string | null>(null);
   readonly filter = signal<TransactionFilter>({ type: 'all' });
 
-  // Computed
+  readonly postedTransactions = computed(() => {
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    return this.transactions().filter(t => t.date <= todayStr);
+  });
+
   readonly filteredTransactions = computed(() => {
-    const txns = this.transactions();
+    const txns = this.postedTransactions();
     const f = this.filter();
     return txns.filter(t => {
       if (f.type && f.type !== 'all' && t.type !== f.type) return false;
@@ -38,12 +42,13 @@ export class TransactionService {
     const txns = this.filteredTransactions();
     const income   = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const expenses = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    // topCategory: only count expense transactions for a meaningful spending breakdown
     const categoryCount: Record<string, number> = {};
-    txns.forEach(t => { categoryCount[t.category] = (categoryCount[t.category] || 0) + t.amount; });
+    txns.filter(t => t.type === 'expense').forEach(t => { categoryCount[t.category] = (categoryCount[t.category] || 0) + t.amount; });
     const topCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
-
-    // avgTransaction = average of individual transaction amounts (not combined)
-    const avgTransaction = txns.length ? txns.reduce((s, t) => s + t.amount, 0) / txns.length : 0;
+    // avgTransaction: exclude transfers since they are not real income/expense events
+    const incomeExpenseTxns = txns.filter(t => t.type !== 'transfer');
+    const avgTransaction = incomeExpenseTxns.length ? incomeExpenseTxns.reduce((s, t) => s + t.amount, 0) / incomeExpenseTxns.length : 0;
 
     return {
       totalIncome: income,
@@ -56,8 +61,8 @@ export class TransactionService {
   });
 
   readonly recentTransactions = computed(() =>
-    [...this.transactions()]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    [...this.postedTransactions()]
+      .sort((a, b) => new Date(b.date + 'T00:00:00').getTime() - new Date(a.date + 'T00:00:00').getTime())
       .slice(0, 10)
   );
 
@@ -124,6 +129,42 @@ export class TransactionService {
     );
   }
 
+  stopRecurringSeries(recurringId: string) {
+    this.loading.set(true);
+    return this.api.stopRecurringSeries(recurringId).pipe(
+      tap(res => {
+        if (res.success) {
+          this.transactions.update(txns =>
+            txns.map(t => t.recurringId === recurringId ? { ...t, isRecurring: false } : t)
+          );
+        }
+        this.loading.set(false);
+      }),
+      catchError(err => {
+        this.error.set(err.message || 'Failed to stop recurring series');
+        this.loading.set(false);
+        return of(null);
+      })
+    );
+  }
+
+  deleteRecurringSeries(recurringId: string) {
+    this.loading.set(true);
+    return this.api.deleteRecurringSeries(recurringId).pipe(
+      tap(res => {
+        if (res.success) {
+          this.transactions.update(txns => txns.filter(t => t.recurringId !== recurringId));
+        }
+        this.loading.set(false);
+      }),
+      catchError(err => {
+        this.error.set(err.message || 'Failed to delete recurring series');
+        this.loading.set(false);
+        return of(null);
+      })
+    );
+  }
+
   setFilter(filter: TransactionFilter) {
     this.filter.set(filter);
   }
@@ -134,11 +175,12 @@ export class TransactionService {
 
   exportToCsv(): void {
     const txns = this.filteredTransactions();
-    const headers = ['Date', 'Type', 'Category', 'Description', 'Amount', 'Payment Method', 'Tags', 'Notes'];
+    const headers = ['Date', 'Type', 'Category', 'Description', 'Amount', 'Account', 'Transfer To', 'Tags', 'Notes', 'Recurring', 'Frequency'];
     const rows = txns.map(t => [
       t.date, t.type, t.category, t.description,
-      t.amount.toString(), t.paymentMethod || '',
-      t.tags.join(';'), t.notes || ''
+      t.amount.toString(), t.accountId, t.toAccountId || '',
+      t.tags.join(';'), t.notes || '',
+      t.isRecurring ? 'Yes' : 'No', t.recurringFrequency || ''
     ]);
     const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });

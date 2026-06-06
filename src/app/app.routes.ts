@@ -63,6 +63,12 @@ export const routes: Routes = [
     title: 'Categories — TCFlow'
   },
   {
+    path: 'accounts',
+    loadComponent: () => import('./features/accounts/accounts.component').then(m => m.AccountsComponent),
+    canActivate: [authGuard],
+    title: 'Accounts — TCFlow'
+  },
+  {
     path: 'insights',
     loadComponent: () => import('./features/insights/insights.component').then(m => m.InsightsComponent),
     canActivate: [authGuard],

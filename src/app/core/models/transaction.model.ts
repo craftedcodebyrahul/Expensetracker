@@ -1,4 +1,4 @@
-export type TransactionType = 'income' | 'expense';
+export type TransactionType = 'income' | 'expense' | 'transfer';
 
 export interface Transaction {
   id: string;
@@ -10,10 +10,14 @@ export interface Transaction {
   tags: string[];
   isRecurring: boolean;
   recurringFrequency?: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  recurringId?: string;  // Groups all occurrences of the same recurring series
   paymentMethod?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  accountId: string;
+  toAccountId?: string;
+  status?: 'posted' | 'scheduled';
 }
 
 export interface TransactionFilter {

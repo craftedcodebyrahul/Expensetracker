@@ -68,9 +68,7 @@ import { Budget } from '../../core/models';
                   <span class="bc-icon">{{ getCategoryIcon(budget.categoryId) }}</span>
                   <div class="bc-title">
                     <span class="bc-name">{{ budget.categoryName }}</span>
-                    @if (!budget.month) {
-                      <span class="bc-period-badge">📅 Full Year</span>
-                    }
+
                   </div>
                 </div>
                 <div class="bc-actions">
@@ -148,9 +146,8 @@ import { Budget } from '../../core/models';
               <input type="number" class="form-control" [(ngModel)]="form.year" [min]="2020" [max]="2030">
             </div>
             <div class="form-group">
-              <label class="form-label">Month (leave empty for full year)</label>
-              <select class="form-control" [(ngModel)]="form.month">
-                <option [value]="null">All Year</option>
+              <label class="form-label">Month *</label>
+              <select class="form-control" [(ngModel)]="form.month" required>
                 @for (m of months; track m.value) {
                   <option [value]="m.value">{{ m.label }}</option>
                 }
@@ -159,7 +156,7 @@ import { Budget } from '../../core/models';
           </div>
           <div class="modal-footer">
             <button class="btn btn-ghost" (click)="closeForm()">Cancel</button>
-            <button class="btn btn-primary" (click)="saveBudget()" [disabled]="submitting() || !form.categoryId || !form.amount">
+            <button class="btn btn-primary" (click)="saveBudget()" [disabled]="submitting() || !form.categoryId || !form.amount || !form.month">
               {{ submitting() ? 'Saving...' : (editingBudget() ? 'Update' : 'Set') + ' Budget' }}
             </button>
           </div>
@@ -279,7 +276,7 @@ export class BudgetsComponent implements OnInit {
     { value: 10, label: 'October' }, { value: 11, label: 'November' }, { value: 12, label: 'December' },
   ];
 
-  form = { categoryId: '', categoryName: '', amount: null as number | null, year: new Date().getFullYear(), month: new Date().getMonth() + 1 as number | null };
+  form = { categoryId: '', categoryName: '', amount: null as number | null, year: new Date().getFullYear(), month: new Date().getMonth() + 1 as number };
 
   get monthName() { return this.months.find(m => m.value === this.selectedMonth)?.label ?? ''; }
 
@@ -311,7 +308,7 @@ export class BudgetsComponent implements OnInit {
   }
 
   editBudget(budget: Budget) {
-    this.form = { categoryId: budget.categoryId, categoryName: budget.categoryName, amount: budget.amount, year: budget.year, month: budget.month ?? null };
+    this.form = { categoryId: budget.categoryId, categoryName: budget.categoryName, amount: budget.amount, year: budget.year, month: budget.month ?? this.selectedMonth };
     this.editingBudget.set(budget);
     this.showForm.set(true);
   }
@@ -324,14 +321,14 @@ export class BudgetsComponent implements OnInit {
   }
 
   saveBudget() {
-    if (!this.form.categoryId || !this.form.amount) return;
+    if (!this.form.categoryId || !this.form.amount || !this.form.month) return;
     this.submitting.set(true);
     const data = {
       categoryId: this.form.categoryId,
       categoryName: this.form.categoryName,
       amount: Number(this.form.amount),
       period: 'monthly' as const,
-      month: this.form.month ?? undefined,
+      month: Number(this.form.month),
       year: this.form.year,
     };
     const obs = this.editingBudget()

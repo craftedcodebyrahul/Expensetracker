@@ -1,24 +1,89 @@
-<app-header title="Insights" subtitle="Where you are — and where you're headed">
-  <div class="period-tabs">
-    <button class="ptab" [class.active]="period === 3" (click)="setPeriod(3)">3M</button>
-    <button class="ptab" [class.active]="period === 6" (click)="setPeriod(6)">6M</button>
-    <button class="ptab" [class.active]="period === 12" (click)="setPeriod(12)">1Y</button>
-  </div>
-</app-header>
+<app-header title="Insights" subtitle="Advanced Cashflow Analytics & Smart AI Advisor"></app-header>
 
 <div class="insights-page">
+
+  <!-- Controls Bar -->
+  <div class="card controls-card">
+    <div class="controls-row">
+      <!-- Period Segmented Control -->
+      <div class="segmented-control">
+        <button class="segment-btn" [class.active]="periodType() === 'monthly'" (click)="periodType.set('monthly')">Monthly</button>
+        <button class="segment-btn" [class.active]="periodType() === 'quarterly'" (click)="periodType.set('quarterly')">Quarterly</button>
+        <button class="segment-btn" [class.active]="periodType() === 'semi-annually'" (click)="periodType.set('semi-annually')">Semi-Annually</button>
+        <button class="segment-btn" [class.active]="periodType() === 'yearly'" (click)="periodType.set('yearly')">Yearly</button>
+      </div>
+
+      <!-- Year Selector -->
+      <div class="selector-wrap">
+        <select class="selector-control" [ngModel]="selectedYear()" (ngModelChange)="selectedYear.set($event)">
+          @for (y of availableYears(); track y) {
+            <option [value]="y">{{ y }}</option>
+          }
+        </select>
+      </div>
+
+      <!-- Month Value Selector -->
+      @if (periodType() === 'monthly') {
+        <div class="selector-wrap">
+          <select class="selector-control" [ngModel]="selectedMonth()" (ngModelChange)="selectedMonth.set($event)">
+            <option [value]="0">January</option>
+            <option [value]="1">February</option>
+            <option [value]="2">March</option>
+            <option [value]="3">April</option>
+            <option [value]="4">May</option>
+            <option [value]="5">June</option>
+            <option [value]="6">July</option>
+            <option [value]="7">August</option>
+            <option [value]="8">September</option>
+            <option [value]="9">October</option>
+            <option [value]="10">November</option>
+            <option [value]="11">December</option>
+          </select>
+        </div>
+      }
+
+      <!-- Quarter Value Selector -->
+      @if (periodType() === 'quarterly') {
+        <div class="selector-wrap">
+          <select class="selector-control" [ngModel]="selectedQuarter()" (ngModelChange)="selectedQuarter.set($event)">
+            <option [value]="1">Q1 (Jan - Mar)</option>
+            <option [value]="2">Q2 (Apr - Jun)</option>
+            <option [value]="3">Q3 (Jul - Sep)</option>
+            <option [value]="4">Q4 (Oct - Dec)</option>
+          </select>
+        </div>
+      }
+
+      <!-- Half Value Selector -->
+      @if (periodType() === 'semi-annually') {
+        <div class="selector-wrap">
+          <select class="selector-control" [ngModel]="selectedHalf()" (ngModelChange)="selectedHalf.set($event)">
+            <option [value]="1">1st Half (H1)</option>
+            <option [value]="2">2nd Half (H2)</option>
+          </select>
+        </div>
+      }
+
+      <div class="flex-spacer"></div>
+
+      <!-- Consult AI Advisor Button -->
+      <button class="btn btn-ai" (click)="askAiAdvisor()">
+        🤖 Consult AI Advisor
+      </button>
+    </div>
+  </div>
 
   @if (loading()) {
     <div class="loading-state">
       <div class="spinner"></div>
-      <p>Crunching your numbers...</p>
+      <p>Analyzing transactions...</p>
     </div>
   } @else {
 
-    <!-- ── Auto-generated text insights ──────────────────────────────────── -->
-    @if (autoInsights().length > 0) {
+    <!-- Standard Advice Indicators Strip -->
+    @if (heuristicInsights().length > 0) {
       <div class="insights-strip">
-        @for (insight of autoInsights(); track insight.text) {
+        @for (insight of heuristicInsights(); track insight.text) {
           <div class="insight-chip" [class]="'chip-' + insight.type">
             <span class="chip-icon">{{ insight.icon }}</span>
             <span class="chip-text">{{ insight.text }}</span>
@@ -27,251 +92,301 @@
       </div>
     }
 
-    <!-- ── KPI row ─────────────────────────────────────────────────────────── -->
+    <!-- Current Period Label Banner -->
+    <div class="period-banner">
+      <span class="banner-title">Viewing Analytics for <strong>{{ periodBoundaries().label }}</strong></span>
+      <span class="banner-compare text-muted">Comparison basis: {{ periodBoundaries().prevLabel }}</span>
+    </div>
+
+    <!-- Savings Optimization Opportunities -->
+    <div class="card opportunities-card">
+      <div class="opp-header">
+        <span class="opp-sparkle">💡</span>
+        <h3 class="opp-main-title">Savings Opportunities & Action Audit</h3>
+      </div>
+      <div class="opportunities-grid">
+        @for (opp of savingsOpportunities(); track opp.title) {
+          <div class="opp-card">
+            <span class="opp-icon">{{ opp.icon }}</span>
+            <div class="opp-card-content">
+              <span class="opp-title">{{ opp.title }}</span>
+              <p class="opp-text">{{ opp.text }}</p>
+              <div class="opp-action-block">
+                <span class="opp-action-label">Recommendation:</span>
+                <span class="opp-action-text">{{ opp.action }}</span>
+              </div>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- KPIs Row -->
     <div class="kpi-row">
-
-      <!-- Net Cashflow — label changes based on positive/negative -->
       <div class="kpi-card">
-        <span class="kpi-icon">{{ totalSaved() >= 0 ? '💰' : '📉' }}</span>
+        <span class="kpi-icon">📈</span>
         <div class="kpi-body">
-          <span class="kpi-label">{{ totalSaved() >= 0 ? 'Net Saved' : 'Net Deficit' }}</span>
-          <span class="kpi-value"
-                [class.text-income]="totalSaved() >= 0"
-                [class.text-expense]="totalSaved() < 0">
-            {{ totalSaved() | currencyFormat }}
-          </span>
-          <span class="kpi-sub">net cashflow over {{ period }} months</span>
+          <span class="kpi-label">Income</span>
+          <span class="kpi-value text-income">{{ currentPeriodSummary().income | currencyFormat }}</span>
+          <span class="kpi-sub">total earned</span>
         </div>
       </div>
-
-      <!-- Avg monthly — shows deficit clearly -->
       <div class="kpi-card">
-        <span class="kpi-icon">📅</span>
+        <span class="kpi-icon">📉</span>
         <div class="kpi-body">
-          <span class="kpi-label">{{ avgMonthlySavings() >= 0 ? 'Avg Monthly Savings' : 'Avg Monthly Deficit' }}</span>
-          <span class="kpi-value"
-                [class.text-income]="avgMonthlySavings() >= 0"
-                [class.text-expense]="avgMonthlySavings() < 0">
-            {{ avgMonthlySavings() | currencyFormat }}
-          </span>
-          <span class="kpi-sub">{{ avgMonthlySavings() >= 0 ? 'saved per month on avg' : 'over budget per month' }}</span>
+          <span class="kpi-label">Expenses</span>
+          <span class="kpi-value text-expense">{{ currentPeriodSummary().expenses | currencyFormat }}</span>
+          <span class="kpi-sub">total spent</span>
         </div>
       </div>
-
-      <!-- Daily burn rate -->
+      <div class="kpi-card">
+        <span class="kpi-icon">{{ currentPeriodSummary().net >= 0 ? '💰' : '📉' }}</span>
+        <div class="kpi-body">
+          <span class="kpi-label">{{ currentPeriodSummary().net >= 0 ? 'Net Saved' : 'Net Deficit' }}</span>
+          <span class="kpi-value" [class.text-income]="currentPeriodSummary().net >= 0" [class.text-expense]="currentPeriodSummary().net < 0">
+            {{ currentPeriodSummary().net | currencyFormat }}
+          </span>
+          <span class="kpi-sub">net cashflow</span>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-icon">📊</span>
+        <div class="kpi-body">
+          <span class="kpi-label">Savings Rate</span>
+          <span class="kpi-value"
+                [class.text-income]="currentPeriodSummary().savingsRate >= 20"
+                [class.text-expense]="currentPeriodSummary().savingsRate < 0"
+                [style.color]="currentPeriodSummary().savingsRate >= 0 && currentPeriodSummary().savingsRate < 20 ? 'var(--accent-yellow)' : ''">
+            {{ currentPeriodSummary().savingsRate | number:'1.0-0' }}%
+          </span>
+          <span class="kpi-sub">{{ currentPeriodSummary().savingsRate >= 0 ? 'saved' : 'deficit' }}</span>
+        </div>
+      </div>
       <div class="kpi-card">
         <span class="kpi-icon">🔥</span>
         <div class="kpi-body">
-          <span class="kpi-label">Daily Burn Rate</span>
-          <span class="kpi-value text-expense">{{ dailyBurnRate() | currencyFormat }}</span>
-          <span class="kpi-sub">avg spend per day this month</span>
+          <span class="kpi-label">Daily Spend</span>
+          <span class="kpi-value text-expense">{{ currentPeriodSummary().dailySpend | currencyFormat }}</span>
+          <span class="kpi-sub">avg per day</span>
         </div>
       </div>
+    </div>
 
-      <!-- Runway — N/A when in deficit -->
-      <div class="kpi-card">
-        <span class="kpi-icon">🛡️</span>
-        <div class="kpi-body">
-          <span class="kpi-label">Expense Runway</span>
-          @if (runway() > 0) {
-            <span class="kpi-value"
-                  [class.text-income]="runway() >= 3"
-                  [class.text-expense]="runway() < 1"
-                  [style.color]="runway() >= 1 && runway() < 3 ? 'var(--accent-yellow)' : ''">
-              {{ runway() | number:'1.1-1' }} months
-            </span>
-            <span class="kpi-sub">savings can cover expenses</span>
-          } @else {
-            <span class="kpi-value text-expense">In deficit</span>
-            <span class="kpi-sub">spending exceeds income</span>
+    <!-- Period-over-Period Comparison Card -->
+    <div class="card comparison-card-pop">
+      <div class="card-header">
+        <span class="card-title">📊 vs Previous Period ({{ periodBoundaries().prevLabel }})</span>
+      </div>
+      <div class="comparison-grid">
+        <div class="cmp-item">
+          <span class="cmp-label">Income Shift</span>
+          <span class="cmp-value"
+                [class.text-income]="popComparison().incomeChange >= 0"
+                [class.text-expense]="popComparison().incomeChange < 0">
+            {{ popComparison().incomeChange >= 0 ? '▲' : '▼' }}
+            {{ Math.abs(popComparison().incomeChange) | number:'1.0-0' }}%
+          </span>
+        </div>
+        <div class="cmp-item">
+          <span class="cmp-label">Expense Shift</span>
+          <span class="cmp-value"
+                [class.text-income]="popComparison().expenseChange <= 0"
+                [class.text-expense]="popComparison().expenseChange > 0">
+            {{ popComparison().expenseChange > 0 ? '▲' : '▼' }}
+            {{ Math.abs(popComparison().expenseChange) | number:'1.0-0' }}%
+          </span>
+        </div>
+        <div class="cmp-item">
+          <span class="cmp-label">Cashflow Net Shift</span>
+          <span class="cmp-value"
+                [class.text-income]="popComparison().netChange >= 0"
+                [class.text-expense]="popComparison().netChange < 0">
+            {{ popComparison().netChange >= 0 ? '▲' : '▼' }}
+            {{ popComparison().netDiff | currencyFormat }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Charts Section -->
+    <div class="charts-2col">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">💹 Savings Trajectory</span>
+          <span class="card-hint">Actual cumulative savings vs 6-period projection</span>
+        </div>
+        <div class="chart-tall"><canvas #trajectoryChart></canvas></div>
+      </div>
+      
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📊 Cashflow Breakdown</span>
+          <span class="card-hint">Income vs Expenses over sub-periods</span>
+        </div>
+        <div class="chart-tall"><canvas #trendChart></canvas></div>
+      </div>
+    </div>
+
+    <!-- Secondary Charts Section -->
+    <div class="charts-3col">
+      <div class="card">
+        <div class="card-header"><span class="card-title">💚 Sub-period Savings Rate</span></div>
+        <div class="chart-med"><canvas #savingsRateChart></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">📅 Spending by Day of Week</span></div>
+        <div class="chart-med"><canvas #dowChart></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">🍩 Category Allocation</span></div>
+        <div class="chart-med"><canvas #donutChart></canvas></div>
+      </div>
+    </div>
+
+    <!-- Bottom Row: Category Trends & Simulator -->
+    <div class="charts-2col">
+      <!-- Category Trends -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🏷️ Category Spending & Hikes</span>
+          <span class="card-hint">Current vs Previous Period delta percentage</span>
+        </div>
+        <div class="category-trends">
+          @for (cat of categoryTrends(); track cat.id) {
+            <div class="cat-trend-item">
+              <div class="ct-left">
+                <span class="ct-icon">{{ cat.icon }}</span>
+                <div class="ct-info">
+                  <span class="ct-name">{{ cat.name }}</span>
+                  <span class="ct-amount">{{ cat.current | currencyFormat }}</span>
+                </div>
+              </div>
+              <div class="ct-right">
+                <div class="ct-bar-wrap">
+                  <div class="ct-bar" [style.width.%]="cat.barPct" [style.background]="cat.color + 'aa'"></div>
+                </div>
+                <span class="ct-change" [class.up]="cat.change > 0" [class.down]="cat.change < 0" [class.flat]="cat.change === 0">
+                  {{ cat.change > 0 ? '▲' : cat.change < 0 ? '▼' : '—' }}
+                  {{ cat.change !== 0 ? (Math.abs(cat.change) | number:'1.0-0') + '%' : 'same' }}
+                </span>
+              </div>
+            </div>
+          }
+          @if (categoryTrends().length === 0) {
+            <p class="empty-text">No expenses logged for this period.</p>
           }
         </div>
       </div>
 
-      <!-- Savings rate — capped at -100% -->
-      <div class="kpi-card">
-        <span class="kpi-icon">📈</span>
-        <div class="kpi-body">
-          <span class="kpi-label">Savings Rate</span>
-          <span class="kpi-value"
-                [class.text-income]="avgSavingsRate() >= 20"
-                [class.text-expense]="avgSavingsRate() < 0"
-                [style.color]="avgSavingsRate() >= 0 && avgSavingsRate() < 20 ? 'var(--accent-yellow)' : ''">
-            {{ avgSavingsRate() | number:'1.0-0' }}%
-          </span>
-          <span class="kpi-sub">{{ avgSavingsRate() >= 0 ? 'of income saved on avg' : 'spending over income' }}</span>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- ── Savings trajectory ─────────────────────────────────────────────── -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">💹 Savings Trajectory</span>
-        <span class="card-hint">Actual vs projected at current rate</span>
-      </div>
-      <div class="chart-tall">
-        <canvas #trajectoryChart></canvas>
-      </div>
-      <div class="projection-row">
-        <div class="proj-item">
-          <span class="proj-label">{{ avgMonthlySavings() >= 0 ? 'Saved in 3 months' : 'Deficit in 3 months' }}</span>
-          <span class="proj-value"
-                [class.text-income]="projection3m() >= 0"
-                [class.text-expense]="projection3m() < 0">
-            {{ projection3m() | currencyFormat }}
-          </span>
-        </div>
-        <div class="proj-item">
-          <span class="proj-label">{{ avgMonthlySavings() >= 0 ? 'Saved in 6 months' : 'Deficit in 6 months' }}</span>
-          <span class="proj-value"
-                [class.text-income]="projection6m() >= 0"
-                [class.text-expense]="projection6m() < 0">
-            {{ projection6m() | currencyFormat }}
-          </span>
-        </div>
-        <div class="proj-item">
-          <span class="proj-label">{{ avgMonthlySavings() >= 0 ? 'Saved in 12 months' : 'Deficit in 12 months' }}</span>
-          <span class="proj-value"
-                [class.text-income]="projection12m() >= 0"
-                [class.text-expense]="projection12m() < 0">
-            {{ projection12m() | currencyFormat }}
-          </span>
-        </div>
-        <div class="proj-item">
-          <span class="proj-label">{{ avgMonthlySavings() >= 0 ? 'Saved in 24 months' : 'Deficit in 24 months' }}</span>
-          <span class="proj-value"
-                [class.text-income]="projection24m() >= 0"
-                [class.text-expense]="projection24m() < 0">
-            {{ projection24m() | currencyFormat }}
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Two charts side by side ───────────────────────────────────────── -->
-    <div class="charts-2col">
-
-      <!-- Income vs Expense trend -->
-      <div class="card">
+      <!-- Goal Simulator -->
+      <div class="card goal-card">
         <div class="card-header">
-          <span class="card-title">📊 Income vs Expenses Trend</span>
+          <span class="card-title">🎯 Savings Goal Simulator</span>
+          <span class="card-hint">Simulate target progression timeline</span>
         </div>
-        <div class="chart-med">
-          <canvas #trendChart></canvas>
-        </div>
-      </div>
-
-      <!-- Savings rate per month -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">💚 Monthly Savings Rate</span>
-        </div>
-        <div class="chart-med">
-          <canvas #savingsRateChart></canvas>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- ── Category trends ───────────────────────────────────────────────── -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">🏷️ Category Trends</span>
-        <span class="card-hint">vs previous period</span>
-      </div>
-      <div class="category-trends">
-        @for (cat of categoryTrends(); track cat.id) {
-          <div class="cat-trend-item">
-            <div class="ct-left">
-              <span class="ct-icon">{{ cat.icon }}</span>
-              <div class="ct-info">
-                <span class="ct-name">{{ cat.name }}</span>
-                <span class="ct-amount">{{ cat.current | currencyFormat }}</span>
+        <div class="goal-body">
+          <div class="goal-inputs">
+            <div class="form-group">
+              <label class="form-label">Goal Amount ($)</label>
+              <input type="number" class="form-control" [(ngModel)]="goalAmount" (ngModelChange)="recalcGoal()" placeholder="e.g. 10000" min="0">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Monthly Savings ($)</label>
+              <input type="number" class="form-control" [(ngModel)]="goalMonthly" (ngModelChange)="recalcGoal()" placeholder="e.g. 500" min="0">
+            </div>
+          </div>
+          @if (goalMonths() > 0) {
+            <div class="goal-result">
+              <div class="goal-stat">
+                <span class="gs-label">Estimated Timeline</span>
+                <span class="gs-value text-income">{{ goalMonths() }} months</span>
+                <span class="gs-sub">({{ goalYears() }})</span>
+              </div>
+              <div class="goal-stat">
+                <span class="gs-label">Total Outlay</span>
+                <span class="gs-value">{{ (goalMonthly * goalMonths()) | currencyFormat }}</span>
+              </div>
+              <div class="goal-stat">
+                <span class="gs-label">At selected period rate</span>
+                <span class="gs-value" [class.text-income]="goalMonthsAtCurrentRate() > 0">
+                  {{ goalMonthsAtCurrentRate() > 0 ? goalMonthsAtCurrentRate() + ' months' : 'Not on track' }}
+                </span>
               </div>
             </div>
-            <div class="ct-right">
-              <div class="ct-bar-wrap">
-                <div class="ct-bar" [style.width.%]="cat.barPct" [style.background]="cat.color + 'aa'"></div>
-              </div>
-              <span class="ct-change" [class.up]="cat.change > 0" [class.down]="cat.change < 0" [class.flat]="cat.change === 0">
-                {{ cat.change > 0 ? '▲' : cat.change < 0 ? '▼' : '—' }}
-                {{ cat.change !== 0 ? (Math.abs(cat.change) | number:'1.0-0') + '%' : 'same' }}
-              </span>
-            </div>
-          </div>
-        }
+            <div class="chart-med" style="margin-top:1rem;"><canvas #goalChart></canvas></div>
+          }
+        </div>
       </div>
     </div>
-
-    <!-- ── Spending heatmap by day of week ───────────────────────────────── -->
-    <div class="charts-2col">
-
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">📅 Spending by Day of Week</span>
-        </div>
-        <div class="chart-med">
-          <canvas #dowChart></canvas>
-        </div>
-      </div>
-
-      <!-- Top spending categories donut -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">🍩 Expense Breakdown</span>
-        </div>
-        <div class="chart-med">
-          <canvas #donutChart></canvas>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- ── Goal simulator ───────────────────────────────────────────────── -->
-    <div class="card goal-card">
-      <div class="card-header">
-        <span class="card-title">🎯 Savings Goal Simulator</span>
-        <span class="card-hint">How long to reach your goal?</span>
-      </div>
-      <div class="goal-body">
-        <div class="goal-inputs">
-          <div class="form-group">
-            <label class="form-label">Savings Goal ($)</label>
-            <input type="number" class="form-control" [(ngModel)]="goalAmount"
-                   (ngModelChange)="recalcGoal()" placeholder="e.g. 10000" min="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Monthly Contribution ($)</label>
-            <input type="number" class="form-control" [(ngModel)]="goalMonthly"
-                   (ngModelChange)="recalcGoal()" placeholder="e.g. 500" min="0">
-          </div>
-        </div>
-        @if (goalMonths() > 0) {
-          <div class="goal-result">
-            <div class="goal-stat">
-              <span class="gs-label">Time to reach goal</span>
-              <span class="gs-value text-income">{{ goalMonths() }} months</span>
-              <span class="gs-sub">({{ goalYears() }})</span>
-            </div>
-            <div class="goal-stat">
-              <span class="gs-label">Total contributed</span>
-              <span class="gs-value">{{ (goalMonthly * goalMonths()) | currencyFormat }}</span>
-            </div>
-            <div class="goal-stat">
-              <span class="gs-label">At current avg rate</span>
-              <span class="gs-value" [class.text-income]="avgMonthlySavings() > 0">
-                {{ goalMonthsAtCurrentRate() > 0 ? goalMonthsAtCurrentRate() + ' months' : 'Not on track' }}
-              </span>
-            </div>
-          </div>
-          <div class="chart-med" style="margin-top: 1rem;">
-            <canvas #goalChart></canvas>
-          </div>
-        }
-      </div>
-    </div>
-
   }
 </div>
+
+<!-- AI Financial Advisor Dialog Modal -->
+@if (showAiAdviceDialog()) {
+  <div class="modal-overlay" (click)="closeAiAdvice()">
+    <div class="modal ai-modal" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="header-ai-title">
+          <span class="ai-sparkle">🤖</span>
+          <h3>AI Financial Advisor</h3>
+        </div>
+        <button class="btn btn-ghost btn-icon" (click)="closeAiAdvice()">✕</button>
+      </div>
+
+      <div class="modal-body ai-body-container">
+        @if (aiLoading()) {
+          <div class="ai-loading">
+            <div class="pulse-bars">
+              <span class="pulse-bar"></span>
+              <span class="pulse-bar"></span>
+              <span class="pulse-bar"></span>
+            </div>
+            <p class="loading-heading">Consulting AI Advisor...</p>
+            <p class="loading-subtext text-muted">Analyzing your spending behavior, comparing periods, and drafting personalized cashflow tips...</p>
+          </div>
+        } @else if (aiError()) {
+          <div class="ai-error-container">
+            <span class="error-icon">⚠️</span>
+            <h4>Advice Unavailable</h4>
+            <p class="error-msg">{{ aiError() }}</p>
+            
+            <div class="api-key-alert">
+              <h5>How to enable AI Advice:</h5>
+              <p>To enable smart AI recommendations, please add your Google Gemini API key to the environment file in the project root:</p>
+              <pre>GEMINI_API_KEY=your_gemini_api_key_here</pre>
+              <p class="text-sm text-muted mt-1">Once added, restart your TCFlow server process to apply the environment configuration.</p>
+            </div>
+          </div>
+        } @else {
+          <!-- AI Response Summary -->
+          @if (aiSummary()) {
+            <div class="ai-summary-card">
+              <span class="quote-mark">“</span>
+              <p class="summary-text">{{ aiSummary() }}</p>
+            </div>
+          }
+
+          <!-- AI Specific Advice Chips -->
+          <div class="ai-advice-list">
+            <h4>💡 Personalized Financial Advice</h4>
+            @for (adv of aiAdvice(); track adv.text) {
+              <div class="ai-advice-card" [class]="'ai-card-' + adv.type">
+                <div class="ai-card-icon-wrap">
+                  <span class="ai-card-icon">{{ adv.icon }}</span>
+                </div>
+                <div class="ai-card-content">
+                  <span class="ai-card-title">{{ adv.title }}</span>
+                  <p class="ai-card-text">{{ adv.text }}</p>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-primary" (click)="closeAiAdvice()">Dismiss Advisor</button>
+      </div>
+    </div>
+  </div>
+}

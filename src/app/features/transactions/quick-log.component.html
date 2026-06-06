@@ -5,7 +5,7 @@
       <div>
         <p class="eyebrow">Quick Log</p>
         <h1>Fast entry</h1>
-        <p class="subtitle">Capture spending or income instantly — no navigation needed.</p>
+        <p class="subtitle">Capture spending, income, or transfers instantly — no navigation needed.</p>
       </div>
       <a routerLink="/transactions" class="btn btn-ghost btn-sm">View all →</a>
     </div>
@@ -27,6 +27,8 @@
               (click)="setType('income')">📈 Income</button>
       <button type="button" class="type-btn" [class.active-expense]="form.type === 'expense'"
               (click)="setType('expense')">📉 Expense</button>
+      <button type="button" class="type-btn" [class.active-transfer]="form.type === 'transfer'"
+              (click)="setType('transfer')">🔄 Transfer</button>
     </div>
 
     <form class="quick-form" (ngSubmit)="submit()">
@@ -48,36 +50,60 @@
                name="description" placeholder="What was this for?" required>
       </div>
 
-      <!-- Category -->
-      <div class="form-group">
-        <label for="category">Category *</label>
-        <select id="category" class="form-control" [(ngModel)]="form.category" name="category" required>
-          <option value="">Choose a category</option>
-          @for (cat of (form.type === 'income' ? categoryService.incomeCategories() : categoryService.expenseCategories()); track cat.id) {
-            <option [value]="cat.id">{{ cat.icon }} {{ cat.name }}</option>
-          }
-        </select>
-      </div>
-
-      <!-- Date + Payment -->
-      <div class="form-row">
+      <!-- Account Selection (Non-Transfer) -->
+      @if (form.type !== 'transfer') {
         <div class="form-group">
-          <label for="date">Date *</label>
-          <input id="date" type="date" class="form-control" [(ngModel)]="form.date" name="date" required>
-        </div>
-        <div class="form-group">
-          <label for="paymentMethod">Payment</label>
-          <select id="paymentMethod" class="form-control" [(ngModel)]="form.paymentMethod" name="paymentMethod">
-            <option value="">Auto / other</option>
-            <option value="Cash">Cash</option>
-            <option value="Credit Card">Credit Card</option>
-            <option value="Debit Card">Debit Card</option>
-            <option value="Bank Transfer">Bank Transfer</option>
-            <option value="PayPal">PayPal</option>
-            <option value="Venmo">Venmo</option>
-            <option value="Crypto">Crypto</option>
+          <label for="accountId">{{ form.type === 'income' ? 'Deposit To *' : 'Pay From *' }}</label>
+          <select id="accountId" class="form-control" [(ngModel)]="form.accountId" name="accountId" required>
+            <option value="">Select account...</option>
+            @for (acc of accountService.accounts(); track acc.id) {
+              <option [value]="acc.id">{{ acc.name }} ({{ acc.type | titlecase }})</option>
+            }
           </select>
         </div>
+      }
+
+      <!-- Transfer Account Selection -->
+      @if (form.type === 'transfer') {
+        <div class="form-row">
+          <div class="form-group">
+            <label for="accountId">From Account *</label>
+            <select id="accountId" class="form-control" [(ngModel)]="form.accountId" name="accountId" required>
+              <option value="">Select source...</option>
+              @for (acc of accountService.accounts(); track acc.id) {
+                <option [value]="acc.id">{{ acc.name }} ({{ acc.type | titlecase }})</option>
+              }
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="toAccountId">To Account *</label>
+            <select id="toAccountId" class="form-control" [(ngModel)]="form.toAccountId" name="toAccountId" required>
+              <option value="">Select destination...</option>
+              @for (acc of accountService.accounts(); track acc.id) {
+                <option [value]="acc.id" [disabled]="acc.id === form.accountId">{{ acc.name }} ({{ acc.type | titlecase }})</option>
+              }
+            </select>
+          </div>
+        </div>
+      }
+
+      <!-- Category (Only for non-transfers) -->
+      @if (form.type !== 'transfer') {
+        <div class="form-group">
+          <label for="category">Category *</label>
+          <select id="category" class="form-control" [(ngModel)]="form.category" name="category" required>
+            <option value="">Choose a category</option>
+            @for (cat of (form.type === 'income' ? categoryService.incomeCategories() : categoryService.expenseCategories()); track cat.id) {
+              <option [value]="cat.id">{{ cat.icon }} {{ cat.name }}</option>
+            }
+          </select>
+        </div>
+      }
+
+      <!-- Date -->
+      <div class="form-group">
+        <label for="date">Date *</label>
+        <input id="date" type="date" class="form-control" [(ngModel)]="form.date" name="date" required>
       </div>
 
       <!-- Notes -->
@@ -92,12 +118,12 @@
               [disabled]="submitting() || !isValid()"
               [class.btn-success]="form.type === 'income'"
               [class.btn-danger]="form.type === 'expense'"
-              [class.btn-primary]="form.type !== 'income' && form.type !== 'expense'">
+              [class.btn-primary]="form.type === 'transfer'">
         @if (submitting()) {
           <span class="btn-spinner-sm"></span>
           <span>Saving...</span>
         } @else {
-          <span>{{ form.type === 'income' ? '📈 Log Income' : '📉 Log Expense' }}</span>
+          <span>{{ form.type === 'income' ? '📈 Log Income' : form.type === 'expense' ? '📉 Log Expense' : '🔄 Log Transfer' }}</span>
         }
       </button>
 
@@ -110,15 +136,16 @@
         <div class="recent-list">
           @for (txn of recentLogs().slice(0, 5); track txn.id) {
             <div class="recent-item">
-              <span class="recent-icon">{{ getCategoryIcon(txn.category) }}</span>
+              <span class="recent-icon">{{ txn.type === 'transfer' ? '🔄' : getCategoryIcon(txn.category) }}</span>
               <div class="recent-info">
                 <span class="recent-desc">{{ txn.description }}</span>
-                <span class="recent-cat">{{ getCategoryName(txn.category) }}</span>
+                <span class="recent-cat">{{ txn.type === 'transfer' ? 'Transfer' : getCategoryName(txn.category) }}</span>
               </div>
               <span class="recent-amount"
                     [class.text-income]="txn.type === 'income'"
-                    [class.text-expense]="txn.type === 'expense'">
-                {{ txn.type === 'income' ? '+' : '-' }}{{ txn.amount | currencyFormat }}
+                    [class.text-expense]="txn.type === 'expense'"
+                    [class.text-accent]="txn.type === 'transfer'">
+                {{ txn.type === 'income' ? '+' : txn.type === 'expense' ? '-' : '' }}{{ txn.amount | currencyFormat }}
               </span>
             </div>
           }

@@ -1,13 +1,15 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
+import { AccountService } from '../../core/services/account.service';
 import { ToastService } from '../../core/services/toast.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { TransactionFormComponent } from './transaction-form.component';
 import { Transaction } from '../../core/models';
+import { advanceDateByFrequency } from '../../shared/utils/date.utils';
 
 @Component({
   selector: 'app-transactions',
@@ -21,168 +23,301 @@ import { Transaction } from '../../core/models';
 
     <div class="txn-page">
 
-      <!-- Summary Bar -->
-      <div class="summary-bar">
-        <div class="summary-item">
-          <span class="si-label">Income</span>
-          <span class="si-value text-income">{{ txnService.summary().totalIncome | currencyFormat }}</span>
-        </div>
-        <div class="summary-divider"></div>
-        <div class="summary-item">
-          <span class="si-label">Expenses</span>
-          <span class="si-value text-expense">{{ txnService.summary().totalExpenses | currencyFormat }}</span>
-        </div>
-        <div class="summary-divider"></div>
-        <div class="summary-item">
-          <span class="si-label">Net Balance</span>
-          <span class="si-value" [class.text-income]="txnService.summary().netBalance >= 0"
-                [class.text-expense]="txnService.summary().netBalance < 0">
-            {{ txnService.summary().netBalance | currencyFormat }}
-          </span>
-        </div>
-        <div class="summary-divider"></div>
-        <div class="summary-item">
-          <span class="si-label">Count</span>
-          <span class="si-value">{{ txnService.summary().transactionCount }}</span>
-        </div>
+      <!-- Tabs Selector -->
+      <div class="type-tabs">
+        <button class="tab-btn" [class.active]="activeTab() === 'all'" (click)="activeTab.set('all')">
+          💳 All Transactions
+        </button>
+        <button class="tab-btn" [class.active]="activeTab() === 'recurring'" (click)="activeTab.set('recurring')">
+          🔄 Recurring Schedules
+        </button>
       </div>
 
-      <!-- Filters -->
-      <div class="card filters-card">
-        <div class="filters-row">
-          <!-- Search -->
-          <div class="search-box">
-            <span class="search-icon">🔍</span>
-            <input type="text" class="form-control" placeholder="Search transactions..."
-                   [ngModel]="txnService.filter().search"
-                   (ngModelChange)="txnService.updateFilter({ search: $event })">
+      @if (activeTab() === 'all') {
+        <!-- Summary Bar -->
+        <div class="summary-bar">
+          <div class="summary-item">
+            <span class="si-label">Income</span>
+            <span class="si-value text-income">{{ txnService.summary().totalIncome | currencyFormat }}</span>
           </div>
-
-          <!-- Type filter -->
-          <select class="form-control filter-select"
-                  [ngModel]="txnService.filter().type"
-                  (ngModelChange)="txnService.updateFilter({ type: $event })">
-            <option value="all">All Types</option>
-            <option value="income">Income</option>
-            <option value="expense">Expense</option>
-          </select>
-
-          <!-- Category filter -->
-          <select class="form-control filter-select"
-                  [ngModel]="txnService.filter().category"
-                  (ngModelChange)="txnService.updateFilter({ category: $event || undefined })">
-            <option value="">All Categories</option>
-            @for (cat of categoryService.categories(); track cat.id) {
-              <option [value]="cat.id">{{ cat.icon }} {{ cat.name }}</option>
-            }
-          </select>
-
-          <!-- Date From -->
-          <input type="date" class="form-control filter-select"
-                 [ngModel]="txnService.filter().dateFrom"
-                 (ngModelChange)="txnService.updateFilter({ dateFrom: $event || undefined })"
-                 placeholder="From date">
-
-          <!-- Date To -->
-          <input type="date" class="form-control filter-select"
-                 [ngModel]="txnService.filter().dateTo"
-                 (ngModelChange)="txnService.updateFilter({ dateTo: $event || undefined })"
-                 placeholder="To date">
-
-          <button class="btn btn-ghost btn-sm" (click)="clearFilters()">Clear</button>
+          <div class="summary-divider"></div>
+          <div class="summary-item">
+            <span class="si-label">Expenses</span>
+            <span class="si-value text-expense">{{ txnService.summary().totalExpenses | currencyFormat }}</span>
+          </div>
+          <div class="summary-divider"></div>
+          <div class="summary-item">
+            <span class="si-label">Net Balance</span>
+            <span class="si-value" [class.text-income]="txnService.summary().netBalance >= 0"
+                  [class.text-expense]="txnService.summary().netBalance < 0">
+              {{ txnService.summary().netBalance | currencyFormat }}
+            </span>
+          </div>
+          <div class="summary-divider"></div>
+          <div class="summary-item">
+            <span class="si-label">Count</span>
+            <span class="si-value">{{ txnService.summary().transactionCount }}</span>
+          </div>
         </div>
-      </div>
 
-      <!-- Transactions Table -->
-      <div class="card">
-        @if (txnService.loading()) {
-          <div class="loading-state">
-            <div class="spinner"></div>
-            <p>Loading transactions...</p>
+        <!-- Filters -->
+        <div class="card filters-card">
+          <div class="filters-row">
+            <!-- Search -->
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input type="text" class="form-control" placeholder="Search transactions..."
+                     [ngModel]="txnService.filter().search"
+                     (ngModelChange)="txnService.updateFilter({ search: $event })">
+            </div>
+
+            <!-- Type filter -->
+            <select class="form-control filter-select"
+                    [ngModel]="txnService.filter().type"
+                    (ngModelChange)="txnService.updateFilter({ type: $event })">
+              <option value="all">All Types</option>
+              <option value="income">Income</option>
+              <option value="expense">Expense</option>
+              <option value="transfer">Transfer</option>
+            </select>
+
+            <!-- Category filter -->
+            <select class="form-control filter-select"
+                    [ngModel]="txnService.filter().category"
+                    (ngModelChange)="txnService.updateFilter({ category: $event || undefined })">
+              <option value="">All Categories</option>
+              @for (cat of categoryService.categories(); track cat.id) {
+                <option [value]="cat.id">{{ cat.icon }} {{ cat.name }}</option>
+              }
+            </select>
+
+            <!-- Recurring filter -->
+            <select class="form-control filter-select"
+                    [ngModel]="recurringFilter()"
+                    (ngModelChange)="recurringFilter.set($event)">
+              <option value="all">All</option>
+              <option value="recurring">🔄 Recurring only</option>
+              <option value="one-time">One-time only</option>
+            </select>
+
+            <!-- Date From -->
+            <input type="date" class="form-control filter-select"
+                   [ngModel]="txnService.filter().dateFrom"
+                   (ngModelChange)="txnService.updateFilter({ dateFrom: $event || undefined })"
+                   placeholder="From date">
+
+            <!-- Date To -->
+            <input type="date" class="form-control filter-select"
+                   [ngModel]="txnService.filter().dateTo"
+                   (ngModelChange)="txnService.updateFilter({ dateTo: $event || undefined })"
+                   placeholder="To date">
+
+            <button class="btn btn-ghost btn-sm" (click)="clearFilters()">Clear</button>
           </div>
-        } @else if (txnService.filteredTransactions().length === 0) {
-          <div class="empty-state">
-            <span class="empty-icon">💳</span>
-            <h3>No transactions found</h3>
-            <p>{{ txnService.transactions().length === 0 ? 'Start by adding your first transaction.' : 'Try adjusting your filters.' }}</p>
-            <button class="btn btn-primary" (click)="openForm()">+ Add Transaction</button>
-          </div>
-        } @else {
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th>Category</th>
-                  <th>Payment</th>
-                  <th>Tags</th>
-                  <th class="text-right">Amount</th>
-                  <th class="text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (txn of txnService.filteredTransactions(); track txn.id) {
+        </div>
+
+        <!-- Transactions Table -->
+        <div class="card">
+          @if (txnService.loading()) {
+            <div class="loading-state">
+              <div class="spinner"></div>
+              <p>Loading transactions...</p>
+            </div>
+          } @else if (displayedTransactions().length === 0) {
+            <div class="empty-state">
+              <span class="empty-icon">💳</span>
+              <h3>No transactions found</h3>
+              <p>{{ txnService.transactions().length === 0 ? 'Start by adding your first transaction.' : 'Try adjusting your filters.' }}</p>
+              <button class="btn btn-primary" (click)="openForm()">+ Add Transaction</button>
+            </div>
+          } @else {
+            <div class="table-wrapper">
+              <table>
+                <thead>
                   <tr>
-                    <td>
-                      <div class="date-cell">
-                        <span class="date-main">{{ formatDate(txn.date) }}</span>
-                        @if (txn.isRecurring) {
-                          <span class="badge badge-neutral" style="font-size: 0.65rem;">🔄 {{ txn.recurringFrequency }}</span>
-                        }
-                      </div>
-                    </td>
-                    <td>
-                      <div class="desc-cell">
-                        <span class="cat-icon">{{ getCategoryIcon(txn.category) }}</span>
-                        <div>
-                          <span class="desc-text">{{ txn.description }}</span>
-                          @if (txn.notes) {
-                            <span class="desc-note">{{ txn.notes }}</span>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th>Account</th>
+                    <th>Tags</th>
+                    <th class="text-right">Amount</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (txn of displayedTransactions(); track txn.id) {
+                    <tr [class.recurring-row]="txn.isRecurring">
+                      <td>
+                        <div class="date-cell">
+                          <span class="date-main">{{ formatDate(txn.date) }}</span>
+                          @if (txn.isRecurring) {
+                            <span class="badge badge-recurring">🔄 {{ txn.recurringFrequency }}</span>
                           }
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span class="category-badge" [style.background]="getCategoryColor(txn.category) + '22'"
-                            [style.color]="getCategoryColor(txn.category)">
-                        {{ getCategoryName(txn.category) }}
-                      </span>
-                    </td>
-                    <td>
-                      <span class="text-muted text-sm">{{ txn.paymentMethod || '—' }}</span>
-                    </td>
-                    <td>
-                      <div class="tags-cell">
-                        @for (tag of txn.tags.slice(0, 2); track tag) {
-                          <span class="tag-chip">{{ tag }}</span>
+                      </td>
+                      <td>
+                        <div class="desc-cell">
+                          <span class="cat-icon">{{ getCategoryIcon(txn.category) }}</span>
+                          <div>
+                            <span class="desc-text">{{ txn.description }}</span>
+                            @if (txn.notes) {
+                              <span class="desc-note">{{ txn.notes }}</span>
+                            }
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        @if (txn.type === 'transfer') {
+                          <span class="category-badge" style="background: rgba(92, 107, 192, 0.15); color: var(--accent-blue-light);">
+                            🔄 Transfer
+                          </span>
+                        } @else {
+                          <span class="category-badge" [style.background]="getCategoryColor(txn.category) + '22'"
+                                [style.color]="getCategoryColor(txn.category)">
+                            {{ getCategoryName(txn.category) }}
+                          </span>
                         }
-                        @if (txn.tags.length > 2) {
-                          <span class="tag-chip">+{{ txn.tags.length - 2 }}</span>
+                      </td>
+                      <td>
+                        @if (txn.type === 'transfer') {
+                          <span class="text-sm font-semibold text-accent-blue-light" style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                            {{ getAccountName(txn.accountId) }} ➔ {{ getAccountName(txn.toAccountId || '') }}
+                          </span>
+                        } @else {
+                          <span class="text-muted text-sm">{{ getAccountName(txn.accountId) }}</span>
                         }
-                      </div>
-                    </td>
-                    <td class="text-right">
-                      <span class="amount-cell" [class.text-income]="txn.type === 'income'"
-                            [class.text-expense]="txn.type === 'expense'">
-                        {{ txn.type === 'income' ? '+' : '-' }}{{ txn.amount | currencyFormat }}
-                      </span>
-                    </td>
-                    <td class="text-right">
-                      <div class="action-btns">
-                        <button class="btn btn-ghost btn-icon btn-sm" (click)="editTransaction(txn)"
-                                title="Edit" aria-label="Edit transaction">✏️</button>
-                        <button class="btn btn-ghost btn-icon btn-sm" (click)="confirmDelete(txn)"
-                                title="Delete" aria-label="Delete transaction">🗑️</button>
-                      </div>
-                    </td>
+                      </td>
+                      <td>
+                        <div class="tags-cell">
+                          @for (tag of txn.tags.slice(0, 2); track tag) {
+                            <span class="tag-chip">{{ tag }}</span>
+                          }
+                          @if (txn.tags.length > 2) {
+                            <span class="tag-chip">+{{ txn.tags.length - 2 }}</span>
+                          }
+                        </div>
+                      </td>
+                      <td class="text-right">
+                        <span class="amount-cell" [class.text-income]="txn.type === 'income'"
+                              [class.text-expense]="txn.type === 'expense'"
+                              [class.text-accent-blue]="txn.type === 'transfer'">
+                          {{ txn.type === 'income' ? '+' : txn.type === 'expense' ? '-' : '' }}{{ txn.amount | currencyFormat }}
+                        </span>
+                      </td>
+                      <td class="text-right">
+                        <div class="action-btns">
+                          <button class="btn btn-ghost btn-icon btn-sm" (click)="editTransaction(txn)"
+                                  title="Edit" aria-label="Edit transaction">✏️</button>
+                          <button class="btn btn-ghost btn-icon btn-sm" (click)="confirmDelete(txn)"
+                                  title="Delete" aria-label="Delete transaction">🗑️</button>
+                        </div>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      } @else {
+        <!-- Recurring Schedules Tab Content -->
+        <div class="card">
+          @if (txnService.loading()) {
+            <div class="loading-state">
+              <div class="spinner"></div>
+              <p>Loading schedules...</p>
+            </div>
+          } @else if (recurringSchedules().length === 0) {
+            <div class="empty-state">
+              <span class="empty-icon">🔄</span>
+              <h3>No recurring schedules found</h3>
+              <p>Add a recurring transaction to see it listed here.</p>
+              <button class="btn btn-primary" (click)="openForm()">+ Add Transaction</button>
+            </div>
+          } @else {
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th>Account</th>
+                    <th>Frequency</th>
+                    <th>Start Date</th>
+                    <th>Next Due Date</th>
+                    <th class="text-right">Amount</th>
+                    <th class="text-right">Actions</th>
                   </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
-      </div>
+                </thead>
+                <tbody>
+                  @for (sched of recurringSchedules(); track sched.recurringId) {
+                    <tr>
+                      <td>
+                        <div class="desc-cell">
+                          <span class="cat-icon">{{ getCategoryIcon(sched.category) }}</span>
+                          <div>
+                            <span class="desc-text">{{ sched.description }}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        @if (sched.type === 'transfer') {
+                          <span class="category-badge" style="background: rgba(92, 107, 192, 0.15); color: var(--accent-blue-light);">
+                            🔄 Transfer
+                          </span>
+                        } @else {
+                          <span class="category-badge" [style.background]="getCategoryColor(sched.category) + '22'"
+                                [style.color]="getCategoryColor(sched.category)">
+                            {{ getCategoryName(sched.category) }}
+                          </span>
+                        }
+                      </td>
+                      <td>
+                        @if (sched.type === 'transfer') {
+                          <span class="text-sm font-semibold text-accent-blue-light" style="display: inline-flex; align-items: center; gap: 0.25rem;">
+                            {{ getAccountName(sched.accountId) }} ➔ {{ getAccountName(sched.toAccountId || '') }}
+                          </span>
+                        } @else {
+                          <span class="text-muted text-sm">{{ getAccountName(sched.accountId) }}</span>
+                        }
+                      </td>
+                      <td>
+                        <span class="badge badge-recurring" style="text-transform: capitalize;">
+                          🔄 {{ sched.frequency }}
+                        </span>
+                      </td>
+                      <td>
+                        <span class="text-muted text-sm">{{ formatDate(sched.startDate) }}</span>
+                      </td>
+                      <td>
+                        <span class="text-sm font-semibold" style="color: var(--accent-blue-light);">
+                          {{ formatDate(sched.nextDueDate) }}
+                        </span>
+                      </td>
+                      <td class="text-right">
+                        <span class="amount-cell" [class.text-income]="sched.type === 'income'"
+                              [class.text-expense]="sched.type === 'expense'"
+                              [class.text-accent-blue]="sched.type === 'transfer'">
+                          {{ sched.type === 'income' ? '+' : sched.type === 'expense' ? '-' : '' }}{{ sched.amount | currencyFormat }}
+                        </span>
+                      </td>
+                      <td class="text-right">
+                        <div class="action-btns">
+                          <button class="btn btn-ghost btn-icon btn-sm" (click)="confirmStopSeries(sched.recurringId, sched.description)"
+                                  title="Stop Recurrence" aria-label="Stop recurrence">🛑</button>
+                          <button class="btn btn-ghost btn-icon btn-sm" (click)="confirmDeleteSeries(sched.recurringId, sched.description)"
+                                  title="Delete Series" aria-label="Delete series">🗑️</button>
+                        </div>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      }
+
     </div>
 
     <!-- Transaction Form Modal -->
@@ -203,6 +338,11 @@ import { Transaction } from '../../core/models';
           </div>
           <div class="modal-body">
             <p>Are you sure you want to delete <strong>{{ deletingTransaction()!.description }}</strong>?</p>
+            @if (deletingTransaction()!.isRecurring) {
+              <p class="text-muted text-sm mt-2" style="color: var(--accent-blue-light);">
+                ℹ️ This is a recurring transaction. Deleting this entry only removes this specific occurrence — future auto-generated entries are unaffected.
+              </p>
+            }
             <p class="text-muted text-sm mt-2">This action cannot be undone.</p>
           </div>
           <div class="modal-footer">
@@ -214,9 +354,69 @@ import { Transaction } from '../../core/models';
         </div>
       </div>
     }
+
+    <!-- Stop Series Confirm Modal -->
+    @if (stoppingSeriesId()) {
+      <div class="modal-overlay" (click)="cancelStopSeries()">
+        <div class="modal" style="max-width: 400px;" role="alertdialog" aria-modal="true">
+          <div class="modal-header">
+            <h3>Stop Recurring Series</h3>
+          </div>
+          <div class="modal-body">
+            <p>Are you sure you want to stop the recurring series for <strong>{{ stoppingSeriesName() }}</strong>?</p>
+            <p class="text-muted text-sm mt-2">
+              This will keep all existing transaction history but will stop generating future transactions for this schedule.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" (click)="cancelStopSeries()">Cancel</button>
+            <button class="btn btn-warning" (click)="stopSeries()">Stop Recurrence</button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Delete Series Confirm Modal -->
+    @if (deletingSeriesId()) {
+      <div class="modal-overlay" (click)="cancelDeleteSeries()">
+        <div class="modal" style="max-width: 400px;" role="alertdialog" aria-modal="true">
+          <div class="modal-header">
+            <h3>Delete Recurring Series</h3>
+          </div>
+          <div class="modal-body">
+            <p>Are you sure you want to delete the recurring series for <strong>{{ deletingSeriesName() }}</strong>?</p>
+            <p class="text-danger text-sm mt-2" style="font-weight: 600;">
+              ⚠️ WARNING: This will permanently delete ALL transactions (past and future) associated with this recurring series from your database.
+            </p>
+            <p class="text-muted text-sm mt-2">This action cannot be undone.</p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" (click)="cancelDeleteSeries()">Cancel</button>
+            <button class="btn btn-danger" (click)="deleteSeries()">Delete All</button>
+          </div>
+        </div>
+      </div>
+    }
   `,
   styles: [`
     .txn-page { padding: 1.5rem 2rem; display: flex; flex-direction: column; gap: 1rem; }
+
+    /* Tabs */
+    .type-tabs { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .tab-btn {
+      padding: 0.5rem 1.25rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: inherit;
+    }
+    .tab-btn:hover { background: var(--bg-card); color: var(--text-primary); }
+    .tab-btn.active { background: rgba(92, 107, 192, 0.15); color: var(--accent-blue-light); border-color: var(--accent-blue); }
 
     .summary-bar {
       display: flex;
@@ -245,6 +445,20 @@ import { Transaction } from '../../core/models';
     .empty-icon { font-size: 3rem; }
     .empty-state h3 { color: var(--text-primary); }
     .empty-state p { color: var(--text-muted); }
+
+    .recurring-row { background: rgba(92, 107, 192, 0.03); }
+    .badge-recurring {
+      display: inline-block;
+      background: rgba(92, 107, 192, 0.15);
+      color: var(--accent-blue-light);
+      border: 1px solid rgba(92, 107, 192, 0.3);
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      margin-top: 0.2rem;
+      text-transform: capitalize;
+    }
 
     .date-cell { display: flex; flex-direction: column; gap: 0.25rem; }
     .date-main { font-size: 0.875rem; color: var(--text-primary); }
@@ -285,16 +499,74 @@ import { Transaction } from '../../core/models';
 export class TransactionsComponent implements OnInit {
   txnService = inject(TransactionService);
   categoryService = inject(CategoryService);
+  accountService = inject(AccountService);
   private toast = inject(ToastService);
 
+  activeTab = signal<'all' | 'recurring'>('all');
   showForm = signal(false);
   editingTransaction = signal<Transaction | undefined>(undefined);
   deletingTransaction = signal<Transaction | undefined>(undefined);
   deleting = signal(false);
+  recurringFilter = signal<'all' | 'recurring' | 'one-time'>('all');
+
+  stoppingSeriesId = signal<string | null>(null);
+  stoppingSeriesName = signal<string>('');
+  deletingSeriesId = signal<string | null>(null);
+  deletingSeriesName = signal<string>('');
+
+  recurringSchedules = computed(() => {
+    const txns = this.txnService.transactions();
+    const recurring = txns.filter(t => t.isRecurring && t.recurringId);
+
+    const groups = new Map<string, { earliest: Transaction; latest: Transaction; count: number }>();
+    recurring.forEach(t => {
+      const existing = groups.get(t.recurringId!);
+      if (!existing) {
+        groups.set(t.recurringId!, { earliest: t, latest: t, count: 1 });
+      } else {
+        if (t.date < existing.earliest.date) existing.earliest = t;
+        if (t.date > existing.latest.date) existing.latest = t;
+        existing.count++;
+      }
+    });
+
+    const todayStr = new Date().toLocaleDateString('en-CA');
+
+    return Array.from(groups.values()).map(({ earliest, latest, count }) => {
+      const startDate = earliest.createdAt ? earliest.createdAt.split('T')[0] : earliest.date;
+      let nextDueDate = latest.date;
+      if (latest.date <= todayStr) {
+        nextDueDate = advanceDateByFrequency(latest.date, (latest.recurringFrequency ?? 'monthly') as any);
+      }
+
+      return {
+        recurringId: latest.recurringId!,
+        type: latest.type,
+        amount: latest.amount,
+        category: latest.category,
+        description: latest.description,
+        frequency: latest.recurringFrequency ?? 'monthly',
+        startDate,
+        nextDueDate,
+        accountId: latest.accountId,
+        toAccountId: latest.toAccountId,
+        count
+      };
+    });
+  });
+
+  displayedTransactions() {
+    const txns = this.txnService.filteredTransactions();
+    const rf = this.recurringFilter();
+    if (rf === 'recurring') return txns.filter(t => t.isRecurring);
+    if (rf === 'one-time') return txns.filter(t => !t.isRecurring);
+    return txns;
+  }
 
   ngOnInit() {
     this.txnService.loadTransactions().subscribe();
     this.categoryService.loadCategories().subscribe();
+    this.accountService.loadAccounts().subscribe();
   }
 
   openForm() {
@@ -335,13 +607,66 @@ export class TransactionsComponent implements OnInit {
     });
   }
 
+  confirmStopSeries(id: string, name: string) {
+    this.stoppingSeriesId.set(id);
+    this.stoppingSeriesName.set(name);
+  }
+
+  cancelStopSeries() {
+    this.stoppingSeriesId.set(null);
+    this.stoppingSeriesName.set('');
+  }
+
+  stopSeries() {
+    const id = this.stoppingSeriesId();
+    if (!id) return;
+    this.txnService.stopRecurringSeries(id).subscribe({
+      next: () => {
+        this.toast.success('Recurring series stopped');
+        this.cancelStopSeries();
+      },
+      error: () => {
+        this.toast.error('Failed to stop recurring series');
+      }
+    });
+  }
+
+  confirmDeleteSeries(id: string, name: string) {
+    this.deletingSeriesId.set(id);
+    this.deletingSeriesName.set(name);
+  }
+
+  cancelDeleteSeries() {
+    this.deletingSeriesId.set(null);
+    this.deletingSeriesName.set('');
+  }
+
+  deleteSeries() {
+    const id = this.deletingSeriesId();
+    if (!id) return;
+    this.txnService.deleteRecurringSeries(id).subscribe({
+      next: () => {
+        this.toast.success('Recurring series deleted');
+        this.cancelDeleteSeries();
+      },
+      error: () => {
+        this.toast.error('Failed to delete recurring series');
+      }
+    });
+  }
+
   clearFilters() {
     this.txnService.setFilter({ type: 'all' });
+    this.recurringFilter.set('all');
   }
 
   getCategoryIcon(id: string) { return this.categoryService.getCategoryIcon(id); }
   getCategoryColor(id: string) { return this.categoryService.getCategoryColor(id); }
   getCategoryName(id: string) { return this.categoryService.getCategoryById(id)?.name ?? id; }
+  getAccountName(id: string) {
+    const acc = this.accountService.accounts().find(a => a.id === id);
+    return acc ? acc.name : id;
+  }
 
   formatDate(date: string): string {
     return new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });

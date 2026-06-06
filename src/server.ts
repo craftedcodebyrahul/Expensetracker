@@ -62,11 +62,31 @@ const { createApiRouter } = await import('./server/api.routes.js');
 app.use('/api', createApiRouter());
 
 // ── Static files ──────────────────────────────────────────────────────────────
+// Hashed chunk files (chunk-XXXXXX.js) get 1-year cache — safe because
+// the hash changes every build. index.html must NEVER be cached so the
+// browser always gets the latest chunk references after a deploy.
+
+// Serve index.html with no-cache so chunk references are always fresh
+app.get('/index.html', (_req: express.Request, res: express.Response) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.sendFile('index.html', { root: browserDistFolder });
+});
+
+// All other static assets (hashed JS/CSS) — long-term cache is safe
 app.use(
   express.static(browserDistFolder, {
     maxAge: '1y',
+    immutable: true,   // tells CDNs the file will never change at this URL
     index: false,
     redirect: false,
+    setHeaders: (res, path) => {
+      // Never cache HTML files — they reference chunk filenames
+      if (path.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    }
   }),
 );
 

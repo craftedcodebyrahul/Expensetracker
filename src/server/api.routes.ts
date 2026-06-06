@@ -1,22 +1,14 @@
 import { Router, Request, Response } from 'express';
-import { SheetsService } from './sheets.service.js';
-import {
-  requireAuth,
-  ensureFreshToken,
-  getSheetsClientForUser,
-  getSession,
-  setSession,
-  SessionUser,
-} from './auth/oauth.js';
+import { dbService } from './db.service.js';
+import { requireAuth, getSession, SessionUser } from './auth/oauth.js';
 
-// Build a per-request SheetsService using the session user's OAuth token.
-async function sheetsForRequest(req: Request): Promise<SheetsService> {
+// ── Extract userId from session ───────────────────────────────────────────────
+// Replaces the old async sheetsForRequest(req) which created a new SheetsService
+// on every request with token refresh overhead. Now just a synchronous read.
+
+function getUserId(req: Request): string {
   const session = getSession(req);
-  const freshUser = await ensureFreshToken(session['user'] as SessionUser);
-  if (freshUser !== session['user']) {
-    setSession(req, { user: freshUser });
-  }
-  return new SheetsService(getSheetsClientForUser(freshUser), freshUser.spreadsheetId);
+  return (session['user'] as SessionUser).userId;
 }
 
 export function createApiRouter(): Router {
@@ -24,28 +16,28 @@ export function createApiRouter(): Router {
 
   router.use(requireAuth);
 
-  const ok = (res: Response, data: any, message?: string): void => {
+  const ok   = (res: Response, data: any, message?: string): void => {
     res.json({ success: true, data, message });
   };
-
   const fail = (res: Response, error: any, status = 500): void => {
     res.status(status).json({ success: false, data: null, error: String(error?.message ?? error) });
   };
-
-  const pid = (req: Request): string => String(req.params['id']);
+  const pid  = (req: Request): string => String(req.params['id']);
 
   // ── Transactions ────────────────────────────────────────────────────────────
 
   router.get('/transactions', async (req: Request, res: Response): Promise<void> => {
     try {
-      const sheets = await sheetsForRequest(req);
-      let transactions = await sheets.getTransactions();
-      const { type, category, dateFrom, dateTo, search, minAmount, maxAmount } = req.query as Record<string, string>;
+      const userId = getUserId(req);
+      const { type, category, dateFrom, dateTo, search, minAmount, maxAmount, clientDate } =
+        req.query as Record<string, string>;
 
-      if (type && type !== 'all') transactions = transactions.filter(t => t.type === type);
-      if (category) transactions = transactions.filter(t => t.category === category);
-      if (dateFrom) transactions = transactions.filter(t => t.date >= dateFrom);
-      if (dateTo) transactions = transactions.filter(t => t.date <= dateTo);
+      let transactions = await dbService.getTransactions(userId, clientDate);
+
+      if (type && type !== 'all')   transactions = transactions.filter(t => t.type === type);
+      if (category)                 transactions = transactions.filter(t => t.category === category);
+      if (dateFrom)                 transactions = transactions.filter(t => t.date >= dateFrom);
+      if (dateTo)                   transactions = transactions.filter(t => t.date <= dateTo);
       if (search) {
         const q = search.toLowerCase();
         transactions = transactions.filter(t =>
@@ -56,15 +48,18 @@ export function createApiRouter(): Router {
       }
       if (minAmount) transactions = transactions.filter(t => t.amount >= parseFloat(minAmount));
       if (maxAmount) transactions = transactions.filter(t => t.amount <= parseFloat(maxAmount));
-      transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Already sorted desc by date from DB — but re-sort after filters
+      transactions.sort((a, b) => b.date.localeCompare(a.date));
+
       ok(res, transactions);
     } catch (e) { fail(res, e); }
   });
 
   router.get('/transactions/:id', async (req: Request, res: Response): Promise<void> => {
     try {
-      const sheets = await sheetsForRequest(req);
-      const t = await sheets.getTransactionById(pid(req));
+      const userId = getUserId(req);
+      const t = await dbService.getTransactionById(userId, pid(req));
       if (!t) { fail(res, 'Transaction not found', 404); return; }
       ok(res, t);
     } catch (e) { fail(res, e); }
@@ -72,16 +67,21 @@ export function createApiRouter(): Router {
 
   router.post('/transactions', async (req: Request, res: Response): Promise<void> => {
     try {
+      const userId = getUserId(req);
       const { type, amount, category, description, date, tags, isRecurring,
-              recurringFrequency, paymentMethod, notes } = req.body;
-      if (!type || !amount || !category || !description || !date) {
-        fail(res, 'Missing required fields: type, amount, category, description, date', 400); return;
+              recurringFrequency, paymentMethod, notes, accountId, toAccountId } = req.body;
+
+      if (!type || !amount || !description || !date || !accountId ||
+          (type !== 'transfer' && !category) || (type === 'transfer' && !toAccountId)) {
+        fail(res, 'Missing required fields', 400); return;
       }
-      const sheets = await sheetsForRequest(req);
-      const t = await sheets.createTransaction({
-        type, amount: parseFloat(amount), category, description, date,
-        tags: tags ?? [], isRecurring: isRecurring ?? false,
-        recurringFrequency, paymentMethod, notes,
+
+      const t = await dbService.createTransaction(userId, {
+        type, amount: parseFloat(amount), category: category ?? '',
+        description, date, tags: tags ?? [],
+        isRecurring: isRecurring ?? false,
+        recurringFrequency, paymentMethod, notes, accountId, toAccountId,
+        source: 'manual',
       });
       ok(res, t, 'Transaction created');
     } catch (e) { fail(res, e); }
@@ -89,8 +89,8 @@ export function createApiRouter(): Router {
 
   router.put('/transactions/:id', async (req: Request, res: Response): Promise<void> => {
     try {
-      const sheets = await sheetsForRequest(req);
-      const t = await sheets.updateTransaction(pid(req), req.body);
+      const userId = getUserId(req);
+      const t = await dbService.updateTransaction(userId, pid(req), req.body);
       if (!t) { fail(res, 'Transaction not found', 404); return; }
       ok(res, t, 'Transaction updated');
     } catch (e) { fail(res, e); }
@@ -98,10 +98,28 @@ export function createApiRouter(): Router {
 
   router.delete('/transactions/:id', async (req: Request, res: Response): Promise<void> => {
     try {
-      const sheets = await sheetsForRequest(req);
-      const deleted = await sheets.deleteTransaction(pid(req));
+      const userId = getUserId(req);
+      const deleted = await dbService.deleteTransaction(userId, pid(req));
       if (!deleted) { fail(res, 'Transaction not found', 404); return; }
       ok(res, null, 'Transaction deleted');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/transactions/recurring/:recurringId/stop', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+      const stopped = await dbService.stopRecurringSeries(userId, String(req.params['recurringId']));
+      if (!stopped) { fail(res, 'Recurring series not found', 404); return; }
+      ok(res, null, 'Recurring series stopped');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.delete('/transactions/recurring/:recurringId', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+      const deleted = await dbService.deleteRecurringSeries(userId, String(req.params['recurringId']));
+      if (!deleted) { fail(res, 'Recurring series not found', 404); return; }
+      ok(res, null, 'Recurring series deleted');
     } catch (e) { fail(res, e); }
   });
 
@@ -109,7 +127,7 @@ export function createApiRouter(): Router {
 
   router.get('/categories', async (req: Request, res: Response): Promise<void> => {
     try {
-      ok(res, await (await sheetsForRequest(req)).getCategories());
+      ok(res, await dbService.getCategories(getUserId(req)));
     } catch (e) { fail(res, e); }
   });
 
@@ -117,15 +135,15 @@ export function createApiRouter(): Router {
     try {
       const { name, type, icon, color, budget } = req.body;
       if (!name || !type) { fail(res, 'Missing required fields: name, type', 400); return; }
-      const sheets = await sheetsForRequest(req);
-      ok(res, await sheets.createCategory({ name, type, icon: icon ?? '💰', color: color ?? '#607D8B', budget }), 'Category created');
+      ok(res, await dbService.createCategory(getUserId(req), {
+        name, type, icon: icon ?? '💰', color: color ?? '#607D8B', budget,
+      }), 'Category created');
     } catch (e) { fail(res, e); }
   });
 
   router.put('/categories/:id', async (req: Request, res: Response): Promise<void> => {
     try {
-      const sheets = await sheetsForRequest(req);
-      const cat = await sheets.updateCategory(pid(req), req.body);
+      const cat = await dbService.updateCategory(getUserId(req), pid(req), req.body);
       if (!cat) { fail(res, 'Category not found', 404); return; }
       ok(res, cat, 'Category updated');
     } catch (e) { fail(res, e); }
@@ -133,8 +151,9 @@ export function createApiRouter(): Router {
 
   router.delete('/categories/:id', async (req: Request, res: Response): Promise<void> => {
     try {
-      const sheets = await sheetsForRequest(req);
-      if (!await sheets.deleteCategory(pid(req))) { fail(res, 'Category not found', 404); return; }
+      if (!await dbService.deleteCategory(getUserId(req), pid(req))) {
+        fail(res, 'Category not found', 404); return;
+      }
       ok(res, null, 'Category deleted');
     } catch (e) { fail(res, e); }
   });
@@ -144,8 +163,11 @@ export function createApiRouter(): Router {
   router.get('/budgets', async (req: Request, res: Response): Promise<void> => {
     try {
       const { year, month } = req.query as Record<string, string>;
-      const sheets = await sheetsForRequest(req);
-      ok(res, await sheets.getBudgets(year ? parseInt(year) : undefined, month ? parseInt(month) : undefined));
+      ok(res, await dbService.getBudgets(
+        getUserId(req),
+        year  ? parseInt(year)  : undefined,
+        month ? parseInt(month) : undefined,
+      ));
     } catch (e) { fail(res, e); }
   });
 
@@ -153,18 +175,18 @@ export function createApiRouter(): Router {
     try {
       const { categoryId, categoryName, amount, period, month, year } = req.body;
       if (!categoryId || !amount || !year) { fail(res, 'Missing required fields', 400); return; }
-      const sheets = await sheetsForRequest(req);
-      ok(res, await sheets.createBudget({
+      ok(res, await dbService.createBudget(getUserId(req), {
         categoryId, categoryName, amount: parseFloat(amount),
-        period: period ?? 'monthly', month: month ? parseInt(month) : undefined, year: parseInt(year),
+        period: period ?? 'monthly',
+        month: month ? parseInt(month) : undefined,
+        year: parseInt(year),
       }), 'Budget created');
     } catch (e) { fail(res, e); }
   });
 
   router.put('/budgets/:id', async (req: Request, res: Response): Promise<void> => {
     try {
-      const sheets = await sheetsForRequest(req);
-      const budget = await sheets.updateBudget(pid(req), req.body);
+      const budget = await dbService.updateBudget(getUserId(req), pid(req), req.body);
       if (!budget) { fail(res, 'Budget not found', 404); return; }
       ok(res, budget, 'Budget updated');
     } catch (e) { fail(res, e); }
@@ -172,8 +194,9 @@ export function createApiRouter(): Router {
 
   router.delete('/budgets/:id', async (req: Request, res: Response): Promise<void> => {
     try {
-      const sheets = await sheetsForRequest(req);
-      if (!await sheets.deleteBudget(pid(req))) { fail(res, 'Budget not found', 404); return; }
+      if (!await dbService.deleteBudget(getUserId(req), pid(req))) {
+        fail(res, 'Budget not found', 404); return;
+      }
       ok(res, null, 'Budget deleted');
     } catch (e) { fail(res, e); }
   });
@@ -182,17 +205,25 @@ export function createApiRouter(): Router {
 
   router.get('/reports/monthly', async (req: Request, res: Response): Promise<void> => {
     try {
-      const { year, month } = req.query as Record<string, string>;
+      const { year, month, accountId } = req.query as Record<string, string>;
       if (!year || !month) { fail(res, 'year and month are required', 400); return; }
-      ok(res, await (await sheetsForRequest(req)).getMonthlyReport(parseInt(year), parseInt(month)));
+      ok(res, await dbService.getMonthlyReport(getUserId(req), parseInt(year), parseInt(month), accountId));
     } catch (e) { fail(res, e); }
   });
 
   router.get('/reports/yearly', async (req: Request, res: Response): Promise<void> => {
     try {
-      const { year } = req.query as Record<string, string>;
+      const { year, accountId } = req.query as Record<string, string>;
       if (!year) { fail(res, 'year is required', 400); return; }
-      ok(res, await (await sheetsForRequest(req)).getYearlyReport(parseInt(year)));
+      ok(res, await dbService.getYearlyReport(getUserId(req), parseInt(year), accountId));
+    } catch (e) { fail(res, e); }
+  });
+
+  router.get('/reports/executive', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { startDate, endDate, accountId } = req.query as Record<string, string>;
+      if (!startDate || !endDate) { fail(res, 'startDate and endDate are required', 400); return; }
+      ok(res, await dbService.getExecutiveReport(getUserId(req), startDate, endDate, accountId));
     } catch (e) { fail(res, e); }
   });
 
@@ -200,33 +231,124 @@ export function createApiRouter(): Router {
     try {
       const { dateFrom, dateTo } = req.query as Record<string, string>;
       if (!dateFrom || !dateTo) { fail(res, 'dateFrom and dateTo are required', 400); return; }
-      ok(res, await (await sheetsForRequest(req)).getCategoryBreakdown(dateFrom, dateTo));
+      ok(res, await dbService.getCategoryBreakdown(getUserId(req), dateFrom, dateTo));
     } catch (e) { fail(res, e); }
   });
 
-  // ── Settings ────────────────────────────────────────────────────────────────
+  router.get('/reports/ai-advice', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { startDate, endDate, prevStartDate, prevEndDate } = req.query as Record<string, string>;
+      if (!startDate || !endDate || !prevStartDate || !prevEndDate) {
+        fail(res, 'Missing parameters', 400); return;
+      }
+      ok(res, await dbService.getAiAdviceForPeriod(getUserId(req), startDate, endDate, prevStartDate, prevEndDate));
+    } catch (e) { fail(res, e); }
+  });
+
+  // ── Accounts ────────────────────────────────────────────────────────────────
+
+  router.get('/accounts', async (req: Request, res: Response): Promise<void> => {
+    try {
+      ok(res, await dbService.getAccounts(getUserId(req)));
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/accounts', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { name, type, initialBalance } = req.body;
+      if (!name || !type) { fail(res, 'Missing required fields: name, type', 400); return; }
+      ok(res, await dbService.createAccount(getUserId(req), {
+        name, type,
+        initialBalance: initialBalance != null ? parseFloat(initialBalance) : 0,
+      }), 'Account created');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.put('/accounts/:id', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const acc = await dbService.updateAccount(getUserId(req), pid(req), req.body);
+      if (!acc) { fail(res, 'Account not found', 404); return; }
+      ok(res, acc, 'Account updated');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.delete('/accounts/:id', async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!await dbService.deleteAccount(getUserId(req), pid(req))) {
+        fail(res, 'Account not found', 404); return;
+      }
+      ok(res, null, 'Account deleted');
+    } catch (e) { fail(res, e); }
+  });
+
+  // ── Recurring Schedules ───────────────────────────────────────────────────
+
+  router.get('/recurring', async (req: Request, res: Response): Promise<void> => {
+    try {
+      ok(res, await dbService.getRecurringSchedules(getUserId(req)));
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/recurring', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { type, amount, category, description, frequency, startDate, nextDueDate, accountId, toAccountId } = req.body;
+      if (!type || !amount || !frequency || !startDate || !nextDueDate || !accountId ||
+          (type !== 'transfer' && !category) || (type === 'transfer' && !toAccountId)) {
+        fail(res, 'Missing required fields', 400); return;
+      }
+      ok(res, await dbService.createRecurringSchedule(getUserId(req), {
+        type, amount: parseFloat(amount), category: category ?? '',
+        description, frequency, startDate, nextDueDate, accountId, toAccountId,
+      }), 'Recurring schedule created');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.put('/recurring/:id', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const updated = await dbService.updateRecurringSchedule(getUserId(req), pid(req), req.body);
+      if (!updated) { fail(res, 'Recurring schedule not found', 404); return; }
+      ok(res, updated, 'Recurring schedule updated');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.delete('/recurring/:id', async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!await dbService.deleteRecurringSchedule(getUserId(req), pid(req))) {
+        fail(res, 'Recurring schedule not found', 404); return;
+      }
+      ok(res, null, 'Recurring schedule deleted');
+    } catch (e) { fail(res, e); }
+  });
+
+  // ── Settings ─────────────────────────────────────────────────────────────
 
   router.get('/settings', async (req: Request, res: Response): Promise<void> => {
     try {
-      ok(res, await (await sheetsForRequest(req)).getSettings());
+      ok(res, await dbService.getSettings(getUserId(req)));
     } catch (e) { fail(res, e); }
   });
 
   router.put('/settings', async (req: Request, res: Response): Promise<void> => {
     try {
-      ok(res, await (await sheetsForRequest(req)).updateSettings(req.body), 'Settings updated');
+      ok(res, await dbService.updateSettings(getUserId(req), req.body), 'Settings updated');
     } catch (e) { fail(res, e); }
   });
 
-  // ── Sync status ──────────────────────────────────────────────────────────────
+  // ── Bank Imports (future feature) ─────────────────────────────────────────
+
+  router.get('/bank-imports', async (req: Request, res: Response): Promise<void> => {
+    try {
+      ok(res, await dbService.getBankImports(getUserId(req)));
+    } catch (e) { fail(res, e); }
+  });
+
+  // ── Sync status ──────────────────────────────────────────────────────────
 
   router.get('/sync/status', async (req: Request, res: Response): Promise<void> => {
     try {
-      const session = getSession(req);
-      const user = session['user'] as SessionUser | undefined;
       ok(res, {
         connected: true,
-        spreadsheetId: user?.spreadsheetId ?? '',
+        provider: 'turso',
         lastSync: new Date().toISOString(),
       });
     } catch (e) { fail(res, e); }

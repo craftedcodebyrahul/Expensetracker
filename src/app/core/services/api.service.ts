@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Transaction, TransactionFilter, Category, Budget } from '../models';
+import { Transaction, TransactionFilter, Category, Budget, Account } from '../models';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -28,6 +28,8 @@ export class ApiService {
       if (filter.minAmount != null) params = params.set('minAmount', filter.minAmount.toString());
       if (filter.maxAmount != null) params = params.set('maxAmount', filter.maxAmount.toString());
     }
+    const clientDate = new Date().toLocaleDateString('en-CA');
+    params = params.set('clientDate', clientDate);
     return this.http.get<ApiResponse<Transaction[]>>(`${this.baseUrl}/transactions`, { params });
   }
 
@@ -46,6 +48,15 @@ export class ApiService {
   deleteTransaction(id: string): Observable<ApiResponse<void>> {
     return this.http.delete<ApiResponse<void>>(`${this.baseUrl}/transactions/${id}`);
   }
+
+  stopRecurringSeries(recurringId: string): Observable<ApiResponse<void>> {
+    return this.http.post<ApiResponse<void>>(`${this.baseUrl}/transactions/recurring/${recurringId}/stop`, {});
+  }
+
+  deleteRecurringSeries(recurringId: string): Observable<ApiResponse<void>> {
+    return this.http.delete<ApiResponse<void>>(`${this.baseUrl}/transactions/recurring/${recurringId}`);
+  }
+
 
   // ── Categories ────────────────────────────────────────────────────────────
 
@@ -88,22 +99,55 @@ export class ApiService {
 
   // ── Reports ───────────────────────────────────────────────────────────────
 
-  getMonthlyReport(year: number, month: number): Observable<ApiResponse<any>> {
-    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/reports/monthly`, {
-      params: new HttpParams().set('year', year.toString()).set('month', month.toString())
-    });
+  getMonthlyReport(year: number, month: number, accountId?: string): Observable<ApiResponse<any>> {
+    let params = new HttpParams().set('year', year.toString()).set('month', month.toString());
+    if (accountId) params = params.set('accountId', accountId);
+    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/reports/monthly`, { params });
   }
 
-  getYearlyReport(year: number): Observable<ApiResponse<any>> {
-    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/reports/yearly`, {
-      params: new HttpParams().set('year', year.toString())
-    });
+  getYearlyReport(year: number, accountId?: string): Observable<ApiResponse<any>> {
+    let params = new HttpParams().set('year', year.toString());
+    if (accountId) params = params.set('accountId', accountId);
+    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/reports/yearly`, { params });
+  }
+
+  getExecutiveReport(startDate: string, endDate: string, accountId?: string): Observable<ApiResponse<any>> {
+    let params = new HttpParams().set('startDate', startDate).set('endDate', endDate);
+    if (accountId) params = params.set('accountId', accountId);
+    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/reports/executive`, { params });
   }
 
   getCategoryBreakdown(dateFrom: string, dateTo: string): Observable<ApiResponse<any>> {
     return this.http.get<ApiResponse<any>>(`${this.baseUrl}/reports/categories`, {
       params: new HttpParams().set('dateFrom', dateFrom).set('dateTo', dateTo)
     });
+  }
+
+  getAiAdvice(startDate: string, endDate: string, prevStartDate: string, prevEndDate: string): Observable<ApiResponse<{ summary: string; advice: any[] }>> {
+    const params = new HttpParams()
+      .set('startDate', startDate)
+      .set('endDate', endDate)
+      .set('prevStartDate', prevStartDate)
+      .set('prevEndDate', prevEndDate);
+    return this.http.get<ApiResponse<{ summary: string; advice: any[] }>>(`${this.baseUrl}/reports/ai-advice`, { params });
+  }
+
+  // ── Accounts ──────────────────────────────────────────────────────────────
+
+  getAccounts(): Observable<ApiResponse<Account[]>> {
+    return this.http.get<ApiResponse<Account[]>>(`${this.baseUrl}/accounts`);
+  }
+
+  createAccount(account: Omit<Account, 'id' | 'createdAt'>): Observable<ApiResponse<Account>> {
+    return this.http.post<ApiResponse<Account>>(`${this.baseUrl}/accounts`, account);
+  }
+
+  updateAccount(id: string, account: Partial<Account>): Observable<ApiResponse<Account>> {
+    return this.http.put<ApiResponse<Account>>(`${this.baseUrl}/accounts/${id}`, account);
+  }
+
+  deleteAccount(id: string): Observable<ApiResponse<void>> {
+    return this.http.delete<ApiResponse<void>>(`${this.baseUrl}/accounts/${id}`);
   }
 
   // ── Settings ──────────────────────────────────────────────────────────────

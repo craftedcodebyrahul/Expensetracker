@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
+import { AccountService } from '../../core/services/account.service';
 import { ToastService } from '../../core/services/toast.service';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 
@@ -23,11 +24,12 @@ import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
     .success-icon { font-size: 1.25rem; flex-shrink: 0; }
     .success-title { display: block; font-size: 0.875rem; font-weight: 600; color: var(--income-color); }
     .success-sub { display: block; font-size: 0.75rem; color: var(--text-muted); }
-    .type-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .type-toggle { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
     .type-btn { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 0.875rem; font-size: 0.9375rem; font-family: inherit; background: var(--bg-input); color: var(--text-secondary); cursor: pointer; transition: var(--transition); font-weight: 500; }
     .type-btn:hover { border-color: var(--border-light); color: var(--text-primary); }
     .type-btn.active-income { background: rgba(76,175,80,0.15); border-color: rgba(76,175,80,0.4); color: var(--income-color); font-weight: 600; }
     .type-btn.active-expense { background: rgba(239,83,80,0.15); border-color: rgba(239,83,80,0.4); color: var(--expense-color); font-weight: 600; }
+    .type-btn.active-transfer { background: rgba(92,107,192,0.15); border-color: rgba(92,107,192,0.4); color: var(--accent-blue-light); font-weight: 600; }
     .quick-form { display: grid; gap: 1rem; }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     .form-group { display: grid; gap: 0.375rem; }
@@ -52,6 +54,7 @@ import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 export class QuickLogComponent implements OnInit {
   txnService = inject(TransactionService);
   categoryService = inject(CategoryService);
+  accountService = inject(AccountService);
   private toast = inject(ToastService);
 
   submitting = signal(false);
@@ -60,13 +63,14 @@ export class QuickLogComponent implements OnInit {
   lastSavedAmount = signal('');
 
   form = {
-    type: 'expense' as 'income' | 'expense',
+    type: 'expense' as 'income' | 'expense' | 'transfer',
     amount: null as number | null,
     category: '',
     description: '',
     date: new Date().toISOString().split('T')[0],
-    paymentMethod: '',
-    notes: ''
+    notes: '',
+    accountId: '',
+    toAccountId: '',
   };
 
   recentLogs = this.txnService.recentTransactions;
@@ -74,18 +78,29 @@ export class QuickLogComponent implements OnInit {
   ngOnInit() {
     this.categoryService.loadCategories().subscribe();
     this.txnService.loadTransactions().subscribe();
+    this.accountService.loadAccounts().subscribe();
   }
 
-  setType(type: 'income' | 'expense') {
+  setType(type: 'income' | 'expense' | 'transfer') {
     this.form.type = type;
-    const inIncome = this.categoryService.incomeCategories().some(c => c.id === this.form.category);
-    const inExpense = this.categoryService.expenseCategories().some(c => c.id === this.form.category);
-    if (type === 'income' && !inIncome) this.form.category = '';
-    if (type === 'expense' && !inExpense) this.form.category = '';
+    if (type === 'transfer') {
+      this.form.category = '';
+    } else {
+      const inIncome = this.categoryService.incomeCategories().some(c => c.id === this.form.category);
+      const inExpense = this.categoryService.expenseCategories().some(c => c.id === this.form.category);
+      if (type === 'income' && !inIncome) this.form.category = '';
+      if (type === 'expense' && !inExpense) this.form.category = '';
+    }
   }
 
   isValid() {
-    return !!this.form.amount && this.form.amount > 0 && !!this.form.category && !!this.form.description.trim();
+    const hasAmount = !!this.form.amount && this.form.amount > 0;
+    const hasDesc = !!this.form.description.trim();
+    
+    if (this.form.type === 'transfer') {
+      return hasAmount && hasDesc && !!this.form.accountId && !!this.form.toAccountId && this.form.accountId !== this.form.toAccountId;
+    }
+    return hasAmount && hasDesc && !!this.form.accountId && !!this.form.category;
   }
 
   submit() {
@@ -97,13 +112,15 @@ export class QuickLogComponent implements OnInit {
     this.txnService.createTransaction({
       type: this.form.type,
       amount: Number(this.form.amount),
-      category: this.form.category,
+      category: this.form.type === 'transfer' ? '' : this.form.category,
       description: savedDesc,
       date: this.form.date,
       tags: [],
       isRecurring: false,
-      paymentMethod: this.form.paymentMethod || undefined,
+      paymentMethod: undefined,
       notes: this.form.notes || undefined,
+      accountId: this.form.accountId,
+      toAccountId: this.form.type === 'transfer' ? this.form.toAccountId : undefined,
     }).subscribe(res => {
       this.submitting.set(false);
       if (res?.success) {
@@ -128,8 +145,9 @@ export class QuickLogComponent implements OnInit {
       category: this.form.category,
       description: '',
       date: new Date().toISOString().split('T')[0],
-      paymentMethod: this.form.paymentMethod,
-      notes: ''
+      notes: '',
+      accountId: this.form.accountId,
+      toAccountId: '',
     };
   }
 }

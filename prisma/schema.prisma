@@ -1,0 +1,203 @@
+// TCFlow — Prisma Schema for Turso (libSQL / SQLite-compatible)
+// ─────────────────────────────────────────────────────────────
+// Provider: sqlite (used for local migration generation)
+// Runtime:  @prisma/adapter-libsql connects to Turso remotely
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+datasource db {
+  provider = "sqlite"
+}
+
+
+// ── USERS ──────────────────────────────────────────────────────────────────────
+// One row per Google account. id = Google's "sub" claim (e.g. "118312...").
+
+model User {
+  id        String  @id           // Google sub ID
+  email     String  @unique
+  name      String
+  picture   String?
+  createdAt String  @map("created_at")
+
+  accounts           Account[]
+  categories         Category[]
+  transactions       Transaction[]
+  recurringSchedules RecurringSchedule[]
+  budgets            Budget[]
+  bankImports        BankImport[]
+  settings           Settings?
+
+  @@map("users")
+}
+
+// ── ACCOUNTS ───────────────────────────────────────────────────────────────────
+
+model Account {
+  id             String  @id           // UUID generated in JS
+  userId         String  @map("user_id")
+  name           String
+  type           String                // 'asset' | 'liability'
+  initialBalance Float   @default(0) @map("initial_balance")
+  createdAt      String  @map("created_at")
+
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions       Transaction[]       @relation("AccountFrom")
+  toTransactions     Transaction[]       @relation("AccountTo")
+  schedules          RecurringSchedule[] @relation("ScheduleFrom")
+  toSchedules        RecurringSchedule[] @relation("ScheduleTo")
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+// ── CATEGORIES ─────────────────────────────────────────────────────────────────
+
+model Category {
+  id        String  @id
+  userId    String  @map("user_id")
+  name      String
+  type      String                // 'income' | 'expense' | 'both'
+  icon      String  @default("💰")
+  color     String  @default("#607D8B")
+  budget    Float?
+  createdAt String  @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("categories")
+}
+
+// ── TRANSACTIONS ────────────────────────────────────────────────────────────────
+// source: 'manual' = user typed it, 'import' = from bank statement, 'recurring' = auto-generated
+// bank_transaction_hash: SHA-256(userId+date+amount+rawDescription) — prevents duplicate imports
+
+model Transaction {
+  id                 String  @id
+  userId             String  @map("user_id")
+  type               String                      // 'income' | 'expense' | 'transfer'
+  amount             Float
+  category           String?                     // null for transfers
+  description        String
+  date               String                      // YYYY-MM-DD
+  tags               String  @default("[]")      // JSON array: '["food","bills"]'
+  isRecurring        Int     @default(0) @map("is_recurring")          // 0|1 (SQLite bool)
+  recurringFrequency String? @map("recurring_frequency")               // 'daily'|'weekly'|'monthly'|'yearly'
+  recurringId        String? @map("recurring_id")                      // links all occurrences of a series
+  paymentMethod      String? @map("payment_method")
+  notes              String?
+  accountId          String  @map("account_id")
+  toAccountId        String? @map("to_account_id")                     // for transfers only
+  // ── Bank import columns (null for manual & recurring entries) ──
+  source             String  @default("manual")                        // 'manual' | 'import' | 'recurring'
+  importId           String? @map("import_id")                         // FK to bank_imports
+  rawDescription     String? @map("raw_description")                   // original bank statement text
+  bankTransactionHash String? @map("bank_transaction_hash")            // duplicate detection hash
+  createdAt          String  @map("created_at")
+  updatedAt          String  @map("updated_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account   Account    @relation("AccountFrom", fields: [accountId], references: [id])
+  toAccount Account?   @relation("AccountTo", fields: [toAccountId], references: [id])
+  bankImport BankImport? @relation(fields: [importId], references: [id])
+
+  @@index([userId, date(sort: Desc)])
+  @@index([recurringId])
+  @@index([userId, bankTransactionHash])
+  @@map("transactions")
+}
+
+// ── RECURRING_SCHEDULES ─────────────────────────────────────────────────────────
+// is_active: 1 = running, 0 = stopped (replaces deleteRecurringSeries for "stop" action)
+
+model RecurringSchedule {
+  id          String @id
+  userId      String @map("user_id")
+  type        String                    // 'income' | 'expense' | 'transfer'
+  amount      Float
+  category    String?
+  description String
+  frequency   String                    // 'daily' | 'weekly' | 'monthly' | 'yearly'
+  startDate   String @map("start_date")
+  nextDueDate String @map("next_due_date")
+  accountId   String @map("account_id")
+  toAccountId String? @map("to_account_id")
+  isActive    Int    @default(1) @map("is_active")   // 1=active, 0=stopped
+  createdAt   String @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account   Account  @relation("ScheduleFrom", fields: [accountId], references: [id])
+  toAccount Account? @relation("ScheduleTo", fields: [toAccountId], references: [id])
+
+  @@index([userId, isActive, nextDueDate])
+  @@map("recurring_schedules")
+}
+
+// ── BUDGETS ─────────────────────────────────────────────────────────────────────
+// spent, remaining, percentage are NOT stored — computed on read from transactions
+
+model Budget {
+  id           String  @id
+  userId       String  @map("user_id")
+  categoryId   String  @map("category_id")
+  categoryName String  @map("category_name")
+  amount       Float
+  period       String                    // 'monthly' | 'yearly'
+  month        Int?                      // 1-12, null for yearly budgets
+  year         Int
+  createdAt    String  @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, year, month])
+  @@map("budgets")
+}
+
+// ── SETTINGS ────────────────────────────────────────────────────────────────────
+// One row per user (1-to-1). Created automatically on first login.
+
+model Settings {
+  userId         String @id @map("user_id")
+  currency       String @default("USD")
+  currencySymbol String @default("$") @map("currency_symbol")
+  dateFormat     String @default("MM/dd/yyyy") @map("date_format")
+  theme          String @default("dark")
+  updatedAt      String @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("settings")
+}
+
+// ── BANK_IMPORTS ─────────────────────────────────────────────────────────────────
+// Tracks each uploaded bank statement file.
+// status flow: pending → processing → completed | failed | partial
+
+model BankImport {
+  id            String  @id
+  userId        String  @map("user_id")
+  fileName      String  @map("file_name")         // original filename: "statement_jan2025.csv"
+  bankName      String? @map("bank_name")          // user-provided or auto-detected
+  fileType      String  @map("file_type")          // 'csv' | 'pdf' | 'ofx' | 'qfx' | 'xlsx'
+  status        String  @default("pending")        // 'pending'|'processing'|'completed'|'failed'|'partial'
+  totalRows     Int     @default(0) @map("total_rows")
+  importedCount Int     @default(0) @map("imported_count")
+  skippedCount  Int     @default(0) @map("skipped_count")  // duplicates
+  failedCount   Int     @default(0) @map("failed_count")   // parse errors
+  dateFrom      String? @map("date_from")          // earliest transaction date in file
+  dateTo        String? @map("date_to")            // latest transaction date in file
+  errorMessage  String? @map("error_message")      // populated if status = 'failed'
+  createdAt     String  @map("created_at")
+  completedAt   String? @map("completed_at")       // when processing finished
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("bank_imports")
+}
