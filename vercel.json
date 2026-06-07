@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "node node_modules/@angular/cli/bin/ng.js build",
+  "buildCommand": "npx prisma generate && node node_modules/@angular/cli/bin/ng.js build",
   "installCommand": "npm install",
   "rewrites": [
     {
