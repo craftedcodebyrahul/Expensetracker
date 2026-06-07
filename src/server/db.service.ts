@@ -254,7 +254,10 @@ export class DbService {
     if (catCount === 0) {
       await prisma.category.createMany({
         data: DEFAULT_CATEGORIES.map(c => ({
-          ...c, userId, createdAt: now,
+          ...c,
+          id: uuidv4(),
+          userId,
+          createdAt: now,
         })),
       });
       console.log(`✅ Seeded ${DEFAULT_CATEGORIES.length} default categories for user ${userId}`);
@@ -265,7 +268,10 @@ export class DbService {
     if (accCount === 0) {
       await prisma.account.createMany({
         data: DEFAULT_ACCOUNTS.map(a => ({
-          ...a, userId, createdAt: now,
+          ...a,
+          id: uuidv4(),
+          userId,
+          createdAt: now,
           initialBalance: a.initialBalance ?? 0,
         })),
       });
