@@ -16,9 +16,12 @@
 import { createRequire } from 'node:module';
 import { PrismaLibSql } from '@prisma/adapter-libsql';
 
-// Load PrismaClient at runtime — esbuild will not attempt to bundle this
-const require = createRequire(import.meta.url);
-const { PrismaClient } = require('@prisma/client') as typeof import('@prisma/client');
+// Load PrismaClient at runtime — esbuild will not attempt to bundle this.
+// We cast to `any` to avoid TypeScript resolving @prisma/client's type chain
+// through the generated .prisma/client/default (which varies per environment).
+const _require = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const PrismaClient: any = (_require('@prisma/client') as any).PrismaClient;
 
 const url   = process.env['TURSO_DATABASE_URL'];
 const token = process.env['TURSO_AUTH_TOKEN'];
@@ -38,4 +41,4 @@ const adapter = new PrismaLibSql({
 });
 
 // Single shared instance — not created per-request like SheetsService was.
-export const prisma = new PrismaClient({ adapter } as any);
+export const prisma: any = new PrismaClient({ adapter });
