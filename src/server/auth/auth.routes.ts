@@ -97,7 +97,14 @@ export function createAuthRouter(): Router {
 
       setSession(req, { user });
 
-      res.redirect('/dashboard');
+      // WHY: On Vercel's Lambda adapter, res.redirect() bypasses cookie-session's
+      // on-headers hook so Set-Cookie is dropped. The session cookie only gets
+      // written correctly on a proper 200 response. We send a tiny HTML page
+      // that immediately redirects client-side — the browser stores the cookie
+      // from this 200 response, then navigates to /dashboard with it.
+      res.status(200).send(`<!doctype html><html><head><meta charset="utf-8">
+<script>window.location.replace('/dashboard');</script>
+</head><body>Signing you in…</body></html>`);
     } catch (err: any) {
       console.error('OAuth callback error:', err.message);
       res.redirect(`/login?auth_error=${encodeURIComponent(err.message ?? 'unknown_error')}`);
