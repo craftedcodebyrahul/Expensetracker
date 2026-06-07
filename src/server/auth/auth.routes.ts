@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { google } from 'googleapis';
-import crypto from 'node:crypto';
 import {
   createOAuthClient,
+  generateOAuthState,
+  verifyOAuthState,
   GOOGLE_SCOPES,
   SessionUser,
   getSession,
@@ -16,10 +17,12 @@ export function createAuthRouter(): Router {
   const router = Router();
 
   // ── Step 1: Redirect to Google ────────────────────────────────────────────
+  // State is an HMAC-signed token — no session cookie needed to store it.
+  // This avoids the Vercel Lambda adapter issue where res.redirect() can bypass
+  // cookie-session's on-headers hook, causing Set-Cookie to be dropped.
 
   router.get('/google', (req: Request, res: Response): void => {
-    const state = crypto.randomBytes(16).toString('hex');
-    setSession(req, { oauthState: state });
+    const state = generateOAuthState();
 
     const oauth2Client = createOAuthClient();
     const url = oauth2Client.generateAuthUrl({
@@ -36,19 +39,17 @@ export function createAuthRouter(): Router {
 
   router.get('/google/callback', async (req: Request, res: Response): Promise<void> => {
     const { code, state, error } = req.query as Record<string, string>;
-    const session = getSession(req);
 
     if (error) {
       res.redirect(`/login?auth_error=${encodeURIComponent(error)}`);
       return;
     }
 
-    if (!state || state !== session['oauthState']) {
+    // Verify the HMAC signature — no session lookup needed
+    if (!state || !verifyOAuthState(state)) {
       res.redirect('/login?auth_error=invalid_state');
       return;
     }
-
-    setSession(req, { oauthState: undefined });
 
     try {
       // Exchange code for tokens (only needed to get user profile — not stored)
