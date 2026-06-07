@@ -97,6 +97,14 @@ export function createAuthRouter(): Router {
 
       setSession(req, { user });
 
+      console.log('[DEBUG /google/callback] Session set successfully:', {
+        userId: user.userId,
+        email: user.email,
+        secure: req.secure,
+        trustProxy: req.app.get('trust proxy'),
+        headersCookie: req.headers.cookie ? 'present' : 'absent',
+      });
+
       // WHY: On Vercel's Lambda adapter, res.redirect() bypasses cookie-session's
       // on-headers hook so Set-Cookie is dropped. The session cookie only gets
       // written correctly on a proper 200 response. We send a tiny HTML page
@@ -123,6 +131,14 @@ export function createAuthRouter(): Router {
   router.get('/me', (req: Request, res: Response): void => {
     const session = getSession(req);
     const user = session['user'] as SessionUser | undefined;
+
+    console.log('[DEBUG /auth/me] Request status:', {
+      hasSession: !!(req as any).session,
+      hasUser: !!user,
+      secure: req.secure,
+      trustProxy: req.app.get('trust proxy'),
+      headersCookie: req.headers.cookie ? 'present' : 'absent',
+    });
 
     if (!user) {
       res.json({ success: true, data: null });

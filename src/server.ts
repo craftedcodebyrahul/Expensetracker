@@ -33,6 +33,11 @@ try {
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 const app = express();
+
+// Trust reverse proxy (Vercel edge gateway) to ensure req.secure works correctly
+// and cookie-session (secure: true) operates properly in production.
+app.set('trust proxy', 1);
+
 const angularApp = new AngularNodeAppEngine();
 
 // ── Body parsing ──────────────────────────────────────────────────────────────
