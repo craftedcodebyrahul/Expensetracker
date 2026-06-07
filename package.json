@@ -9,6 +9,7 @@
     "ng": "ng",
     "start": "node dist/Expensetracker/server/server.mjs",
     "build": "node node_modules/@angular/cli/bin/ng.js build",
+    "postinstall": "prisma generate",
     "dev": "ng serve",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",

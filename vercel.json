@@ -1,10 +1,10 @@
 {
   "version": 2,
-  "buildCommand": "npx prisma generate && node node_modules/@angular/cli/bin/ng.js build",
+  "buildCommand": "node node_modules/@angular/cli/bin/ng.js build",
   "installCommand": "npm install",
   "functions": {
     "api/index.mjs": {
-      "includeFiles": "node_modules/@prisma/client/**,node_modules/.prisma/**,node_modules/@prisma/adapter-libsql/**,node_modules/@libsql/**"
+      "includeFiles": "{node_modules/@prisma/client,node_modules/.prisma,node_modules/@prisma/adapter-libsql,node_modules/@libsql}/**"
     }
   },
   "rewrites": [
@@ -14,4 +14,3 @@
     }
   ]
 }
-

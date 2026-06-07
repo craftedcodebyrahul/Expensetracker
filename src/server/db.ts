@@ -7,21 +7,20 @@
  *   TURSO_DATABASE_URL  — e.g. "libsql://tcflow-yourname.turso.io"
  *   TURSO_AUTH_TOKEN    — from `turso db tokens create tcflow`
  *
- * NOTE: PrismaClient is loaded via createRequire to prevent esbuild from
- * trying to bundle .prisma/client/default at build time. It is server-only
- * and resolved from node_modules at runtime.
+ * WHY dynamic import() instead of createRequire():
+ *   The old createRequire() trick prevented esbuild from bundling the client
+ *   (which would fail on native bindings), but it also hid the dependency from
+ *   Vercel's @vercel/nft file tracer — so @prisma/client was never packaged
+ *   into the serverless function, causing "Cannot find module" at runtime.
+ *
+ *   Since @prisma/client is already in externalDependencies in angular.json,
+ *   esbuild will NOT bundle it regardless of how it is imported. Using a plain
+ *   ESM dynamic import() achieves the same build-time result AND is visible to
+ *   @vercel/nft so the package gets included in the Vercel function bundle.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { createRequire } from 'node:module';
 import { PrismaLibSql } from '@prisma/adapter-libsql';
-
-// Load PrismaClient at runtime — esbuild will not attempt to bundle this.
-// We cast to `any` to avoid TypeScript resolving @prisma/client's type chain
-// through the generated .prisma/client/default (which varies per environment).
-const _require = createRequire(import.meta.url);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const PrismaClient: any = (_require('@prisma/client') as any).PrismaClient;
 
 const url   = process.env['TURSO_DATABASE_URL'];
 const token = process.env['TURSO_AUTH_TOKEN'];
@@ -34,11 +33,13 @@ if (!url) {
   );
 }
 
-// PrismaLibSql accepts the config object directly
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { PrismaClient } = (await import('@prisma/client')) as any;
+
 const adapter = new PrismaLibSql({
   url,
   authToken: token || undefined,
 });
 
-// Single shared instance — not created per-request like SheetsService was.
+// Single shared instance — not created per-request.
 export const prisma: any = new PrismaClient({ adapter });
