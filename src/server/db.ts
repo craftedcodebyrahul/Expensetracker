@@ -7,14 +7,18 @@
  *   TURSO_DATABASE_URL  — e.g. "libsql://tcflow-yourname.turso.io"
  *   TURSO_AUTH_TOKEN    — from `turso db tokens create tcflow`
  *
- * For local development without a Turso account, set:
- *   TURSO_DATABASE_URL="file:./dev.db"
- *   TURSO_AUTH_TOKEN=""   (leave empty for local file)
+ * NOTE: PrismaClient is loaded via createRequire to prevent esbuild from
+ * trying to bundle .prisma/client/default at build time. It is server-only
+ * and resolved from node_modules at runtime.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { PrismaClient } from '@prisma/client';
+import { createRequire } from 'node:module';
 import { PrismaLibSql } from '@prisma/adapter-libsql';
+
+// Load PrismaClient at runtime — esbuild will not attempt to bundle this
+const require = createRequire(import.meta.url);
+const { PrismaClient } = require('@prisma/client') as typeof import('@prisma/client');
 
 const url   = process.env['TURSO_DATABASE_URL'];
 const token = process.env['TURSO_AUTH_TOKEN'];
@@ -27,12 +31,11 @@ if (!url) {
   );
 }
 
-// PrismaLibSql accepts the config object directly — NOT a @libsql/client Client instance.
+// PrismaLibSql accepts the config object directly
 const adapter = new PrismaLibSql({
   url,
   authToken: token || undefined,
 });
 
 // Single shared instance — not created per-request like SheetsService was.
-// Prisma manages connection internally.
 export const prisma = new PrismaClient({ adapter } as any);
