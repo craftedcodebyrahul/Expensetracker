@@ -160,7 +160,7 @@ export class ApiService {
     return this.http.put<ApiResponse<any>>(`${this.baseUrl}/settings`, settings);
   }
 
-  syncStatus(): Observable<ApiResponse<{ connected: boolean; spreadsheetId: string; lastSync: string }>> {
+  syncStatus(): Observable<ApiResponse<{ connected: boolean; provider: string; lastSync: string }>> {
     return this.http.get<ApiResponse<any>>(`${this.baseUrl}/sync/status`);
   }
 }

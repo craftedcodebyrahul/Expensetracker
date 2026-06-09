@@ -148,7 +148,7 @@
 
 /* ── Features ─────────────────────────────────────────────────────────────── */
 .features-section { padding: 5rem 2rem; max-width: 1200px; margin: 0 auto; }
-.features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+.features-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
 .feature-card {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius-lg); padding: 1.75rem;

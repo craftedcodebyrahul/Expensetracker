@@ -46,33 +46,33 @@ export class NotificationService {
     });
 
     // 2. Reactive Watcher for Account Balances
-    effect(() => {
-      const balances = this.accountService.accountBalances();
-      const accounts = this.accountService.accounts();
-      if (accounts.length === 0) return;
+    // effect(() => {
+    //   const balances = this.accountService.accountBalances();
+    //   const accounts = this.accountService.accounts();
+    //   if (accounts.length === 0) return;
 
-      accounts.forEach(a => {
-        const bal = balances[a.id] ?? 0;
-        if (a.type === 'asset') {
-          if (bal < 250) {
-            this.add(
-              `⚠️ Low Balance: ${a.name}`,
-              `The balance of your ${a.name} account has dropped to $${bal.toFixed(2)}, which is below the safe threshold of $250.00.`,
-              'warning'
-            );
-          }
-        } else if (a.type === 'liability') {
-          // Liability balance is positive (representing the amount owed). Warn if it exceeds $1,500.00.
-          if (bal > 1500) {
-            this.add(
-              `💳 High Debt Warning: ${a.name}`,
-              `Your ${a.name} balance has reached $${bal.toFixed(2)}, exceeding the warning threshold of $1,500.00.`,
-              'warning'
-            );
-          }
-        }
-      });
-    });
+    //   accounts.forEach(a => {
+    //     const bal = balances[a.id] ?? 0;
+    //     if (a.type === 'asset') {
+    //       if (bal < 250) {
+    //         this.add(
+    //           `⚠️ Low Balance: ${a.name}`,
+    //           `The balance of your ${a.name} account has dropped to $${bal.toFixed(2)}, which is below the safe threshold of $250.00.`,
+    //           'warning'
+    //         );
+    //       }
+    //     } else if (a.type === 'liability') {
+    //       // Liability balance is positive (representing the amount owed). Warn if it exceeds $1,500.00.
+    //       if (bal > 1500) {
+    //         this.add(
+    //           `💳 High Debt Warning: ${a.name}`,
+    //           `Your ${a.name} balance has reached $${bal.toFixed(2)}, exceeding the warning threshold of $1,500.00.`,
+    //           'warning'
+    //         );
+    //       }
+    //     }
+    //   });
+    // });
 
     // 3. Reactive Watcher for Transaction Actions (Create / Update / Delete)
     effect(() => {

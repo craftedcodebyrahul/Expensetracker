@@ -31,11 +31,11 @@ interface NavItem { path: string; label: string; icon: string; }
         <button class="mobile-close-btn" (click)="layout.toggleMobileMenu()" aria-label="Close menu">✕</button>
       </div>
 
-      <!-- Sync status -->
+      <!-- DB status -->
       @if (!layout.collapsed()) {
         <div class="sync-status" [class.connected]="syncConnected()">
           <span class="sync-dot"></span>
-          <span class="sync-label">{{ syncConnected() ? 'Sheets Connected' : 'Connecting...' }}</span>
+          <span class="sync-label">{{ syncConnected() ? 'DB Connected' : 'Connecting...' }}</span>
         </div>
       }
 

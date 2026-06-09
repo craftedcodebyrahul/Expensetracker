@@ -33,7 +33,7 @@
     <div class="hero-content">
       <div class="hero-badge">
         <span class="badge-dot"></span>
-        Free · No credit card · Your data stays in your Drive
+        Free · No credit card · No Google Drive required
       </div>
 
       <h1 class="hero-title">
@@ -42,9 +42,9 @@
       </h1>
 
       <p class="hero-subtitle">
-        TCFlow is a personal finance tracker that stores everything in your own
-        Google Spreadsheet. Track income, expenses, budgets, and get AI-style
-        insights — all in one clean dashboard.
+        TCFlow is a personal finance tracker backed by a fast, private database.
+        Track income, expenses, budgets, and recurring transactions — and get
+        AI-powered insights — all in one clean dashboard.
       </p>
 
       <div class="hero-actions">
@@ -67,11 +67,13 @@
       </div>
 
       <div class="hero-trust">
-        <span class="trust-item">🔒 Data stays in your Google Drive</span>
+        <span class="trust-item">🗄️ Private Turso database</span>
         <span class="trust-sep">·</span>
         <span class="trust-item">🚫 No ads, no tracking</span>
         <span class="trust-sep">·</span>
-        <span class="trust-item">✅ Google OAuth verified</span>
+        <span class="trust-item">✅ Google sign-in only</span>
+        <span class="trust-sep">·</span>
+        <span class="trust-item">🤖 AI-powered insights</span>
       </div>
     </div>
 
@@ -163,13 +165,13 @@
   <!-- ── Data privacy callout ──────────────────────────────────────────────── -->
   <section class="privacy-callout">
     <div class="privacy-callout-inner">
-      <span class="pc-icon">🔒</span>
+      <span class="pc-icon">🛡️</span>
       <div class="pc-text">
-        <h3>Your data never leaves your Google account</h3>
+        <h3>Your data is private and isolated to your account</h3>
         <p>
-          TCFlow stores everything in a Google Spreadsheet in your own Drive.
-          We never store your financial data on our servers. You can open, edit,
-          or delete your spreadsheet at any time — no lock-in.
+          TCFlow stores your financial records in a private Turso (edge SQLite) database.
+          No other user can see your data. We use Google OAuth only to verify your identity —
+          no Drive access, no Sheets access, no tokens stored after login.
         </p>
       </div>
       <a routerLink="/privacy" class="btn btn-ghost btn-sm">Read Privacy Policy →</a>
@@ -187,7 +189,7 @@
       <a routerLink="/terms">Terms of Service</a>
       <a href="https://github.com/craftedcodebyrahul/Expensetracker" target="_blank" rel="noopener">GitHub</a>
     </div>
-    <p class="footer-copy">© {{ year }} TCFlow. Your data, your Drive.</p>
+    <p class="footer-copy">© {{ year }} TCFlow. Fast, private, yours.</p>
   </footer>
 
 </div>

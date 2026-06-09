@@ -39,24 +39,22 @@ import { HeaderComponent } from '../../layout/header.component';
         }
       </div>
 
-      <!-- Google Sheets Card -->
+      <!-- Database Card -->
       <div class="card settings-section">
-        <h3 class="section-title">📊 Google Sheets Storage</h3>
+        <h3 class="section-title">🗄️ Database</h3>
         <p class="section-desc">
-          Your financial data is stored in a private Google Spreadsheet in your own Drive.
-          Only you have access to it.
+          Your financial data is stored securely in a private Turso database — fast edge SQLite,
+          fully isolated to your account.
         </p>
 
         <div class="connection-status" [class.connected]="syncStatus()?.connected">
           <div class="status-dot"></div>
           <div class="status-info">
             <span class="status-label">
-              {{ syncStatus()?.connected ? 'Connected to Google Sheets' : 'Checking connection...' }}
+              {{ syncStatus()?.connected ? 'Turso DB Connected' : 'Checking connection...' }}
             </span>
-            @if (syncStatus()?.spreadsheetId) {
-              <span class="status-sub">
-                Spreadsheet ID: <code class="inline-code">{{ syncStatus()!.spreadsheetId }}</code>
-              </span>
+            @if (syncStatus()?.provider) {
+              <span class="status-sub">Provider: <code class="inline-code">{{ syncStatus()!.provider }}</code></span>
             }
             @if (syncStatus()?.lastSync) {
               <span class="status-sub">Last checked: {{ syncStatus()!.lastSync | date:'medium' }}</span>
@@ -65,28 +63,18 @@ import { HeaderComponent } from '../../layout/header.component';
           <button class="btn btn-ghost btn-sm" (click)="checkSync()">Refresh</button>
         </div>
 
-        @if (syncStatus()?.spreadsheetId) {
-          <a class="open-sheet-btn"
-             [href]="'https://docs.google.com/spreadsheets/d/' + syncStatus()!.spreadsheetId"
-             target="_blank" rel="noopener noreferrer">
-            <span>📋</span>
-            <span>Open My Spreadsheet in Google Sheets</span>
-            <span class="external-icon">↗</span>
-          </a>
-        }
-
         <div class="sheets-info">
           <div class="info-item">
+            <span class="info-icon">⚡</span>
+            <span>Edge SQLite — reads and writes complete in under 20ms, no quota limits.</span>
+          </div>
+          <div class="info-item">
             <span class="info-icon">🔒</span>
-            <span>Your spreadsheet is private — only accessible by you and this app.</span>
+            <span>Your data is fully isolated — no other user can access it.</span>
           </div>
           <div class="info-item">
-            <span class="info-icon">✏️</span>
-            <span>You can view and edit data directly in Google Sheets at any time.</span>
-          </div>
-          <div class="info-item">
-            <span class="info-icon">🔄</span>
-            <span>Every change syncs instantly — no manual export needed.</span>
+            <span class="info-icon">🛡️</span>
+            <span>ACID transactions ensure your records are always consistent, even with recurring entries.</span>
           </div>
         </div>
       </div>
@@ -144,27 +132,13 @@ import { HeaderComponent } from '../../layout/header.component';
           </div>
 
           <div class="data-action-card">
-            <span class="da-icon">🔄</span>
+            <span class="da-icon">🔍</span>
             <div class="da-info">
-              <span class="da-title">Re-check Connection</span>
-              <span class="da-desc">Verify the Google Sheets connection is working</span>
+              <span class="da-title">Check Connection</span>
+              <span class="da-desc">Verify the Turso database connection is healthy</span>
             </div>
             <button class="btn btn-ghost btn-sm" (click)="checkSync()">Check Now</button>
           </div>
-
-          @if (syncStatus()?.spreadsheetId) {
-            <div class="data-action-card">
-              <span class="da-icon">📋</span>
-              <div class="da-info">
-                <span class="da-title">View Raw Data</span>
-                <span class="da-desc">Open your spreadsheet directly in Google Sheets</span>
-              </div>
-              <a [href]="'https://docs.google.com/spreadsheets/d/' + syncStatus()!.spreadsheetId"
-                 target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm">
-                Open ↗
-              </a>
-            </div>
-          }
         </div>
       </div>
 
@@ -172,12 +146,14 @@ import { HeaderComponent } from '../../layout/header.component';
       <div class="card settings-section">
         <h3 class="section-title">ℹ️ About TCFlow</h3>
         <div class="about-grid">
-          <div class="about-item"><span class="about-label">Version</span><span>1.0.0</span></div>
+          <div class="about-item"><span class="about-label">Version</span><span>2.0.0</span></div>
           <div class="about-item"><span class="about-label">Framework</span><span>Angular 21 + Express</span></div>
           <div class="about-item"><span class="about-label">Auth</span><span>Google OAuth 2.0</span></div>
-          <div class="about-item"><span class="about-label">Storage</span><span>Google Sheets API v4</span></div>
+          <div class="about-item"><span class="about-label">Database</span><span>Turso (libSQL / SQLite)</span></div>
+          <div class="about-item"><span class="about-label">ORM</span><span>Prisma 7</span></div>
           <div class="about-item"><span class="about-label">Charts</span><span>Chart.js</span></div>
-          <div class="about-item"><span class="about-label">Data ownership</span><span>100% yours (your Drive)</span></div>
+          <div class="about-item"><span class="about-label">AI Advisor</span><span>Google Gemini 1.5 Flash</span></div>
+          <div class="about-item"><span class="about-label">Data ownership</span><span>100% yours — private DB</span></div>
         </div>
       </div>
 
@@ -273,28 +249,7 @@ import { HeaderComponent } from '../../layout/header.component';
       border-radius: 4px;
     }
 
-    /* Open sheet button */
-    .open-sheet-btn {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.875rem 1rem;
-      background: rgba(66, 133, 244, 0.08);
-      border: 1px solid rgba(66, 133, 244, 0.25);
-      border-radius: var(--radius-md);
-      color: #4285F4;
-      text-decoration: none;
-      font-size: 0.875rem;
-      font-weight: 500;
-      transition: var(--transition);
-    }
-    .open-sheet-btn:hover {
-      background: rgba(66, 133, 244, 0.15);
-      color: #4285F4;
-    }
-    .external-icon { margin-left: auto; font-size: 0.875rem; }
-
-    /* Sheets info bullets */
+    /* DB connection status */
     .sheets-info { display: flex; flex-direction: column; gap: 0.625rem; }
     .info-item {
       display: flex;
