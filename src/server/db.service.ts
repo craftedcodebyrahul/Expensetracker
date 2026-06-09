@@ -913,7 +913,7 @@ export class DbService {
     return {
       totalIncome: income, totalExpenses: expenses, netBalance: net,
       transactionCount: filtered.length, savingsRate: Math.round(savingsRate * 10) / 10,
-      fixedExpenses, variableExpenses, fixedPct, variablePct, byCategory,
+      fixedExpenses, variableExpenses, fixedPct, variablePct, categoryBreakdown: byCategory,
     };
   }
 
@@ -960,7 +960,7 @@ export class DbService {
     const filtered = await this._getFilteredTransactions(userId, startDate, endDate, accountId);
     const categories = await this.getCategories(userId);
     const report = this._buildReport(filtered);
-    const { totalIncome: income, totalExpenses: expenses, netBalance: net, savingsRate, fixedExpenses, variableExpenses, fixedPct, variablePct, byCategory } = report;
+    const { totalIncome: income, totalExpenses: expenses, netBalance: net, savingsRate, fixedExpenses, variableExpenses, fixedPct, variablePct, categoryBreakdown: byCategory } = report;
 
     const apiKey = process.env['GEMINI_API_KEY'];
     const topCategoriesText = Object.entries(byCategory)
