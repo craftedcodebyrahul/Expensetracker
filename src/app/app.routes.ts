@@ -57,6 +57,18 @@ export const routes: Routes = [
     title: 'Budgets — TCFlow'
   },
   {
+    path: 'goals',
+    loadComponent: () => import('./features/goals/goals.component').then(m => m.GoalsComponent),
+    canActivate: [authGuard],
+    title: 'Goals — TCFlow'
+  },
+  {
+    path: 'bills-calendar',
+    loadComponent: () => import('./features/bills-calendar/bills-calendar.component').then(m => m.BillsCalendarComponent),
+    canActivate: [authGuard],
+    title: 'Upcoming Bills — TCFlow'
+  },
+  {
     path: 'categories',
     loadComponent: () => import('./features/categories/categories.component').then(m => m.CategoriesComponent),
     canActivate: [authGuard],

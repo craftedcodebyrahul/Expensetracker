@@ -11,3 +11,15 @@ export interface RecurringSchedule {
   toAccountId?: string;
   createdAt?: string;
 }
+
+export interface DetectedBill {
+  description: string;
+  type: 'income' | 'expense';
+  amount: number;
+  category: string;
+  accountId: string;
+  frequency: 'weekly' | 'monthly' | 'yearly';
+  startDate: string;
+  nextDueDate: string;
+  matchCount: number;
+}

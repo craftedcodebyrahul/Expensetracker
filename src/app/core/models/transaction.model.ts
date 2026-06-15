@@ -29,6 +29,7 @@ export interface TransactionFilter {
   tags?: string[];
   minAmount?: number;
   maxAmount?: number;
+  accountId?: string;
 }
 
 export interface TransactionSummary {

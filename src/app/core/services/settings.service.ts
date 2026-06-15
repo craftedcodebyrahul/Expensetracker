@@ -4,6 +4,7 @@ import { ToastService } from './toast.service';
 import { tap, catchError, of } from 'rxjs';
 
 export interface AppSettings {
+  currency: string;
   currencySymbol: string;
   dateFormat: string;
 }
@@ -14,6 +15,7 @@ export class SettingsService {
   private toast = inject(ToastService);
 
   // Global reactive settings — used by pipes and components across the app
+  readonly currency = signal('USD');
   readonly currencySymbol = signal('$');
   readonly dateFormat = signal('MM/dd/yyyy');
   readonly loaded = signal(false);
@@ -22,6 +24,7 @@ export class SettingsService {
     return this.api.getSettings().pipe(
       tap(res => {
         if (res.success && res.data) {
+          this.currency.set(res.data.currency ?? 'USD');
           this.currencySymbol.set(res.data.currencySymbol ?? '$');
           this.dateFormat.set(res.data.dateFormat ?? 'MM/dd/yyyy');
         }
@@ -38,6 +41,7 @@ export class SettingsService {
     return this.api.updateSettings(settings).pipe(
       tap(res => {
         if (res.success) {
+          this.currency.set(settings.currency);
           this.currencySymbol.set(settings.currencySymbol);
           this.dateFormat.set(settings.dateFormat);
           this.toast.success('Preferences saved!');

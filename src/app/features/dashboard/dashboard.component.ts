@@ -6,9 +6,13 @@ import { CategoryService } from '../../core/services/category.service';
 import { parseLocalDate } from '../../shared/utils/date.utils';
 import { BudgetService } from '../../core/services/budget.service';
 import { AccountService } from '../../core/services/account.service';
+import { ApiService } from '../../core/services/api.service';
+import { GoalService } from '../../core/services/goal.service';
+import { RecurringService } from '../../core/services/recurring.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { Chart, registerables } from 'chart.js';
+import { Goal } from '../../core/models';
 
 Chart.register(...registerables);
 
@@ -208,7 +212,7 @@ Chart.register(...registerables);
             </div>
           } @else {
             <div class="budget-list">
-              @for (alert of budgetService.budgetAlerts().slice(0, 6); track alert.categoryId) {
+              @for (alert of budgetService.budgetAlerts().slice(0, 5); track alert.categoryId) {
                 <div class="budget-item">
                   <div class="budget-header">
                     <span class="budget-name">{{ alert.categoryName }}</span>
@@ -233,10 +237,92 @@ Chart.register(...registerables);
           }
         </div>
 
+        <!-- Goals Progress Widget -->
+        <div class="card dashboard-goals-card">
+          <div class="card-header">
+            <span class="card-title">Savings Goals</span>
+            <a routerLink="/goals" class="btn btn-ghost btn-sm">View All</a>
+          </div>
+          @if (goalService.goals().length === 0) {
+            <div class="empty-state">
+              <span class="empty-icon">🏆</span>
+              <p>No goals set</p>
+              <a routerLink="/goals" class="btn btn-primary btn-sm">Set Goals</a>
+            </div>
+          } @else {
+            <div class="dash-goal-list">
+              @for (goal of goalService.goals().slice(0, 3); track goal.id) {
+                @let pct = getGoalPct(goal);
+                <div class="dash-goal-item">
+                  <div class="dg-header">
+                    <span class="dg-name">{{ goal.name }}</span>
+                    <span class="dg-pct">{{ pct }}%</span>
+                  </div>
+                  <div class="progress-bar" style="height: 5px; margin: 0.25rem 0;">
+                    <div class="progress-fill" [style.width.%]="pct"
+                         [style.background]="pct >= 100 ? 'var(--accent-green)' : 'var(--accent-blue)'"></div>
+                  </div>
+                  <div class="dg-amounts">
+                    <span>{{ goal.currentAmount | currencyFormat }}</span>
+                    <span>of {{ goal.targetAmount | currencyFormat }}</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- Upcoming Bills Widget -->
+        <div class="card dashboard-bills-card">
+          <div class="card-header">
+            <span class="card-title">Upcoming Bills</span>
+            <a routerLink="/bills-calendar" class="btn btn-ghost btn-sm">Calendar</a>
+          </div>
+          @if (recurringService.schedules().length === 0) {
+            <div class="empty-state">
+              <span class="empty-icon">📅</span>
+              <p>No schedules set</p>
+              <a routerLink="/bills-calendar" class="btn btn-primary btn-sm">Add Schedule</a>
+            </div>
+          } @else {
+            <div class="dash-bill-list">
+              @for (schedule of recurringService.schedules().slice(0, 3); track schedule.id) {
+                <div class="dash-bill-item">
+                  <span class="db-icon">{{ schedule.type === 'transfer' ? '🔄' : getCategoryIcon(schedule.category) }}</span>
+                  <div class="db-details">
+                    <span class="db-desc">{{ schedule.description }}</span>
+                    <span class="db-date">Due: {{ formatDueDate(schedule.nextDueDate) }}</span>
+                  </div>
+                  <span class="db-amount" [class.text-expense]="schedule.type === 'expense'" [class.text-income]="schedule.type === 'income'">
+                    {{ schedule.amount | currencyFormat }}
+                  </span>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
         <!-- Top Spending Pie -->
         <div class="card category-card">
           <div class="card-header"><span class="card-title">Top Spending</span></div>
           <div class="chart-container-sm"><canvas #pieChart></canvas></div>
+        </div>
+      </div>
+
+      <!-- AI Smart Audit Banner -->
+      <div class="card ai-banner" *ngIf="aiAudit()">
+        <div class="ai-banner-header">
+          <span class="ai-banner-title">🤖 AI Smart Financial Audit</span>
+          <span class="ai-badge animate-pulse" [class.heuristic]="!aiAudit().isAiGenerated">
+            {{ aiAudit().isAiGenerated ? 'Gemini AI Active' : 'Heuristic Active' }}
+          </span>
+        </div>
+        <p class="ai-banner-text">"{{ aiAudit().healthOverview }}"</p>
+        <div class="ai-recommendations" *ngIf="aiAudit().recommendations?.length > 0">
+          <span class="rec-label">💡 AI Action Items:</span>
+          <ul>
+            <li *ngFor="let rec of aiAudit().recommendations">{{ rec }}</li>
+          </ul>
         </div>
       </div>
 
@@ -285,12 +371,11 @@ Chart.register(...registerables);
     .chart-container { height: 220px; position: relative; }
     .chart-container-sm { height: 200px; position: relative; }
 
-    /* Bottom Row */
-    .bottom-row { display: grid; grid-template-columns: 1.2fr 300px 300px 280px; gap: 1rem; }
-    .recent-card, .accounts-card, .budget-card, .category-card { display: flex; flex-direction: column; }
+    /* Bottom Row Grid */
+    .bottom-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; }
+    .recent-card, .accounts-card, .budget-card, .category-card, .dashboard-goals-card, .dashboard-bills-card { display: flex; flex-direction: column; }
 
     /* Accounts Widget */
-    .accounts-card { display: flex; flex-direction: column; gap: 0.875rem; }
     .net-worth-section {
       background: linear-gradient(135deg, rgba(92, 107, 192, 0.12) 0%, rgba(33, 150, 243, 0.04) 100%);
       border: 1px solid var(--border);
@@ -347,8 +432,62 @@ Chart.register(...registerables);
     .empty-icon { font-size: 2.5rem; }
     .empty-state p { color: var(--text-muted); font-size: 0.875rem; }
 
+    /* AI Smart Audit Banner styling */
+    .ai-banner {
+      background: linear-gradient(135deg, rgba(92, 107, 192, 0.08) 0%, rgba(30, 33, 48, 0.95) 100%);
+      border: 1px solid var(--border-light);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow-glow-blue);
+      margin-top: 0.5rem;
+    }
+    .ai-banner-header { display: flex; justify-content: space-between; align-items: center; }
+    .ai-banner-title { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); }
+    .ai-banner-text { font-size: 0.875rem; color: var(--text-secondary); font-style: italic; line-height: 1.45; }
+    .ai-recommendations { display: flex; flex-direction: column; gap: 0.375rem; margin-top: 0.25rem; }
+    .rec-label { font-size: 0.75rem; font-weight: 700; color: var(--accent-blue-light); text-transform: uppercase; }
+    .ai-recommendations ul { list-style: none; padding-left: 0.25rem; display: flex; flex-direction: column; gap: 0.25rem; }
+    .ai-recommendations li { font-size: 0.8125rem; color: var(--text-secondary); position: relative; padding-left: 1rem; }
+    .ai-recommendations li::before { content: '•'; position: absolute; left: 0; color: var(--accent-blue-light); }
+
+    .ai-badge {
+      background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+      color: #fff;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: 100px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .ai-badge.heuristic {
+      background: var(--bg-input);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    /* Goals Widget styling */
+    .dash-goal-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .dash-goal-item { display: flex; flex-direction: column; gap: 0.125rem; }
+    .dg-header { display: flex; justify-content: space-between; font-size: 0.8125rem; font-weight: 500; }
+    .dg-pct { font-weight: 700; color: var(--accent-blue-light); }
+    .dg-amounts { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted); }
+
+    /* Bills Widget styling */
+    .dash-bill-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .dash-bill-item { display: flex; align-items: center; gap: 0.625rem; padding: 0.375rem 0.5rem; border-radius: var(--radius-sm); background: var(--bg-input); border: 1px solid var(--border); }
+    .db-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .db-details { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .db-desc { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .db-date { font-size: 0.65rem; color: var(--text-muted); }
+    .db-amount { font-size: 0.8125rem; font-weight: 700; }
+
     @media (max-width: 1400px) {
-      .bottom-row { grid-template-columns: 1fr 1fr; }
+      .bottom-row { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 1200px) {
       .summary-grid { grid-template-columns: repeat(2, 1fr); }
@@ -368,6 +507,11 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   categoryService = inject(CategoryService);
   budgetService = inject(BudgetService);
   accountService = inject(AccountService);
+  api = inject(ApiService);
+  goalService = inject(GoalService);
+  recurringService = inject(RecurringService);
+
+  aiAudit = signal<any>(null);
 
   @ViewChild('doughnutChart') doughnutRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('barChart') barRef!: ElementRef<HTMLCanvasElement>;
@@ -409,7 +553,14 @@ export class DashboardComponent implements OnInit, AfterViewInit {
         const d = parseLocalDate(t.date);
         return d.getFullYear() === y && d.getMonth() === m;
       })
-      .sort((a, b) => new Date(b.date + 'T00:00:00').getTime() - new Date(a.date + 'T00:00:00').getTime())
+      .sort((a, b) => {
+        if (a.date !== b.date) {
+          return b.date.localeCompare(a.date);
+        }
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      })
       .slice(0, 10);
   });
 
@@ -501,6 +652,26 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     this.categoryService.loadCategories().subscribe();
     this.budgetService.loadBudgets(y, m + 1).subscribe();
     this.accountService.loadAccounts().subscribe();
+    this.goalService.loadGoals().subscribe();
+    this.recurringService.loadSchedules().subscribe();
+
+    // Load AI smart audit banner
+    const startStr = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const endStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    this.api.getExecutiveReport(startStr, endStr).subscribe(res => {
+      if (res.success) this.aiAudit.set(res.data);
+    });
+  }
+
+  getGoalPct(goal: Goal): number {
+    if (goal.targetAmount <= 0) return 0;
+    return Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100));
+  }
+
+  formatDueDate(dateStr: string): string {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
   ngAfterViewInit() { this.initCharts(); }

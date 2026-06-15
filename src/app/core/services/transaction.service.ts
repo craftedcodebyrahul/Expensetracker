@@ -19,23 +19,33 @@ export class TransactionService {
   });
 
   readonly filteredTransactions = computed(() => {
-    const txns = this.postedTransactions();
+    const txns = this.transactions();
     const f = this.filter();
-    return txns.filter(t => {
-      if (f.type && f.type !== 'all' && t.type !== f.type) return false;
-      if (f.category && t.category !== f.category) return false;
-      if (f.dateFrom && t.date < f.dateFrom) return false;
-      if (f.dateTo && t.date > f.dateTo) return false;
-      if (f.search) {
-        const q = f.search.toLowerCase();
-        if (!t.description.toLowerCase().includes(q) &&
-            !t.category.toLowerCase().includes(q) &&
-            !(t.notes?.toLowerCase().includes(q))) return false;
-      }
-      if (f.minAmount != null && t.amount < f.minAmount) return false;
-      if (f.maxAmount != null && t.amount > f.maxAmount) return false;
-      return true;
-    });
+    return txns
+      .filter(t => {
+        if (f.accountId && t.accountId !== f.accountId && t.toAccountId !== f.accountId) return false;
+        if (f.type && f.type !== 'all' && t.type !== f.type) return false;
+        if (f.category && t.category !== f.category) return false;
+        if (f.dateFrom && t.date < f.dateFrom) return false;
+        if (f.dateTo && t.date > f.dateTo) return false;
+        if (f.search) {
+          const q = f.search.toLowerCase();
+          if (!t.description.toLowerCase().includes(q) &&
+              !t.category.toLowerCase().includes(q) &&
+              !(t.notes?.toLowerCase().includes(q))) return false;
+        }
+        if (f.minAmount != null && t.amount < f.minAmount) return false;
+        if (f.maxAmount != null && t.amount > f.maxAmount) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        if (a.date !== b.date) {
+          return b.date.localeCompare(a.date);
+        }
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
   });
 
   readonly summary = computed<TransactionSummary>(() => {
@@ -62,7 +72,14 @@ export class TransactionService {
 
   readonly recentTransactions = computed(() =>
     [...this.postedTransactions()]
-      .sort((a, b) => new Date(b.date + 'T00:00:00').getTime() - new Date(a.date + 'T00:00:00').getTime())
+      .sort((a, b) => {
+        if (a.date !== b.date) {
+          return b.date.localeCompare(a.date);
+        }
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      })
       .slice(0, 10)
   );
 

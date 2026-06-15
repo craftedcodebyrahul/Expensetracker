@@ -1,6 +1,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { ApiService } from './api.service';
 import { TransactionService } from './transaction.service';
+import { SettingsService } from './settings.service';
 import { Account } from '../models';
 import { tap, catchError, of } from 'rxjs';
 
@@ -8,8 +9,10 @@ import { tap, catchError, of } from 'rxjs';
 export class AccountService {
   private api = inject(ApiService);
   private txnService = inject(TransactionService);
+  private settingsService = inject(SettingsService);
 
   readonly accounts = signal<Account[]>([]);
+  readonly exchangeRates = signal<Record<string, number>>({});
   readonly loading = signal(false);
 
   readonly assetAccounts = computed(() =>
@@ -24,8 +27,18 @@ export class AccountService {
     return this.accounts().find(a => a.id === id);
   }
 
+  loadExchangeRates() {
+    return this.api.getExchangeRates().pipe(
+      tap(res => {
+        if (res.success) this.exchangeRates.set(res.data);
+      }),
+      catchError(() => of(null))
+    );
+  }
+
   loadAccounts() {
     this.loading.set(true);
+    this.loadExchangeRates().subscribe();
     return this.api.getAccounts().pipe(
       tap(res => {
         if (res.success) {
@@ -120,13 +133,25 @@ export class AccountService {
   readonly netWorth = computed(() => {
     const balances = this.accountBalances();
     const accs = this.accounts();
+    const rates = this.exchangeRates();
+    const primaryCurrency = this.settingsService.currency();
+    
     let netWorth = 0;
     accs.forEach(a => {
       const bal = balances[a.id] || 0;
+      const accCurrency = a.currency || 'USD';
+      
+      let convertedBal = bal;
+      if (accCurrency.toUpperCase() !== primaryCurrency.toUpperCase() && Object.keys(rates).length > 0) {
+        const fromRate = rates[accCurrency.toUpperCase()] || 1.0;
+        const toRate = rates[primaryCurrency.toUpperCase()] || 1.0;
+        convertedBal = (bal / fromRate) * toRate;
+      }
+      
       if (a.type === 'asset') {
-        netWorth += bal; // assets add to net worth
+        netWorth += convertedBal;
       } else {
-        netWorth -= bal; // liabilities reduce net worth (bal is positive = what you owe)
+        netWorth -= convertedBal;
       }
     });
     return netWorth;

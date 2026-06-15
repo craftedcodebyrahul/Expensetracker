@@ -252,13 +252,18 @@ import { Account, Transaction } from '../../core/models';
                 <option value="liability">Liability (Money you owe: credit cards, loans, debt)</option>
               </select>
             </div>
-            <div class="form-group">
+            <div class="form-group" [class.disabled-field]="editingAccount()">
               <label class="form-label">Initial Balance</label>
               <div class="input-prefix">
                 <span class="prefix">$</span>
                 <input type="number" class="form-control" [(ngModel)]="form.initialBalance"
-                       placeholder="0.00" step="0.01">
+                       placeholder="0.00" step="0.01" [disabled]="!!editingAccount()">
               </div>
+              @if (editingAccount()) {
+                <span class="field-help text-xs text-muted" style="display: block; margin-top: 0.25rem;">Initial balance cannot be modified once the account is created. To adjust the balance, please log transactions.</span>
+              } @else {
+                <span class="field-help text-xs text-muted" style="display: block; margin-top: 0.25rem;">💡 **Tip:** If you plan to import or log past transactions for this account, set the initial balance to what it was *before* those transactions took place. Otherwise, leave it as 0.</span>
+              }
             </div>
           </div>
           <div class="modal-footer">
@@ -581,7 +586,14 @@ export class AccountsComponent implements OnInit {
         const typeOk  = type === 'all' || t.type === type;
         return forThisAccount && inRange && typeOk;
       })
-      .sort((a, b) => b.date.localeCompare(a.date));
+      .sort((a, b) => {
+        if (a.date !== b.date) {
+          return b.date.localeCompare(a.date);
+        }
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
   });
 
   // ── Computed: summary stats for the drilldown panel ───────────────
@@ -695,19 +707,24 @@ export class AccountsComponent implements OnInit {
     if (!this.form.name) return;
     this.submitting.set(true);
 
-    let initial = this.form.initialBalance != null ? Number(this.form.initialBalance) : 0;
-    if (isNaN(initial)) initial = 0;
-    initial = Math.abs(initial);
+    const isEdit = !!this.editingAccount();
+    let payload: any = { name: this.form.name, type: this.form.type };
+    
+    if (!isEdit) {
+      let initial = this.form.initialBalance != null ? Number(this.form.initialBalance) : 0;
+      if (isNaN(initial)) initial = 0;
+      initial = Math.abs(initial);
+      payload.initialBalance = initial;
+    }
 
-    const payload = { name: this.form.name, type: this.form.type, initialBalance: initial };
-    const obs = this.editingAccount()
+    const obs = isEdit
       ? this.accountService.updateAccount(this.editingAccount()!.id, payload)
       : this.accountService.createAccount(payload);
 
     obs.subscribe(() => {
       this.submitting.set(false);
       this.closeForm();
-      this.toast.success(this.editingAccount() ? 'Account updated!' : 'Account added!');
+      this.toast.success(isEdit ? 'Account updated!' : 'Account added!');
     });
   }
 

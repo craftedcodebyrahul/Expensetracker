@@ -208,6 +208,239 @@
       </div>
     </div>
 
+    <!-- Premium Visualizations -->
+    <div class="charts-2col">
+      <!-- Sankey Cashflow Flowchart -->
+      <!-- Sunburst Cashflow Chart -->
+      <div class="card sunburst-card">
+        <div class="card-header">
+          <span class="card-title">🌞 Sunburst Cashflow Diagram</span>
+          <span class="card-hint">Concentric breakdown of funds: Inflow/Sources (right) vs Outflow/Allocation (left)</span>
+        </div>
+        <div class="sunburst-container">
+          @if (sunburstSegments().length === 0) {
+            <p class="empty-text">No cashflow data available for this period.</p>
+          } @else {
+            <div class="sunburst-layout">
+              <!-- SVG Radial Chart -->
+              <div class="sunburst-chart-wrapper">
+                <svg viewBox="0 0 500 500" class="sunburst-svg" preserveAspectRatio="xMidYMid meet">
+                  
+                  <!-- Segments (depth 1 and depth 2) -->
+                  @for (seg of sunburstSegments(); track seg.id) {
+                    <path [attr.d]="seg.path"
+                          [attr.fill]="seg.color"
+                          [style.fill-opacity]="isSegmentHighlighted(seg.id) ? (hoveredSegment() ? 0.95 : 0.8) : 0.08"
+                          class="sunburst-segment"
+                          (mouseenter)="hoveredSegment.set(seg)"
+                          (mouseleave)="hoveredSegment.set(null)">
+                      <title>{{ seg.name }}: {{ seg.value | currencyFormat }} ({{ seg.percentage }}%)</title>
+                    </path>
+                  }
+
+                  <!-- Center Circle display -->
+                  <circle cx="250" cy="250" r="70" class="sunburst-center-circle"></circle>
+
+                  <!-- Icons on wider segments -->
+                  @for (seg of sunburstSegments(); track seg.id + '_icon') {
+                    @if (seg.depth === 2 && seg.showText) {
+                      <text [attr.x]="seg.textX"
+                            [attr.y]="seg.textY"
+                            text-anchor="middle"
+                            dominant-baseline="central"
+                            class="sunburst-segment-icon"
+                            [style.opacity]="isSegmentHighlighted(seg.id) ? 1.0 : 0.2"
+                            (mouseenter)="hoveredSegment.set(seg)"
+                            (mouseleave)="hoveredSegment.set(null)">
+                        {{ seg.icon }}
+                      </text>
+                    }
+                  }
+
+                  <!-- Interactive center texts -->
+                  <g class="sunburst-center-text" pointer-events="none">
+                    @if (hoveredSegment()) {
+                      <!-- Hover info -->
+                      <text x="250" y="225" class="center-title-hover" text-anchor="middle">
+                        {{ hoveredSegment()!.icon }} {{ hoveredSegment()!.name }}
+                      </text>
+                      <text x="250" y="252" class="center-value" text-anchor="middle">
+                        {{ hoveredSegment()!.value | currencyFormat }}
+                      </text>
+                      <text x="250" y="278" class="center-sub-hover" text-anchor="middle">
+                        {{ hoveredSegment()!.percentage }}% of {{ hoveredSegment()!.type === 'income' ? 'Income' : 'Allocation' }}
+                      </text>
+                    } @else {
+                      <!-- Overall stats -->
+                      <text x="250" y="222" class="center-title" text-anchor="middle">Cashflow Balance</text>
+                      <text x="250" y="252" class="center-value" [class.text-income]="netBalance() >= 0" [class.text-expense]="netBalance() < 0" text-anchor="middle">
+                        {{ netBalance() >= 0 ? '+' : '' }}{{ netBalance() | currencyFormat }}
+                      </text>
+                      <text x="250" y="278" class="center-sub" text-anchor="middle">
+                        {{ savingsRate() }}% savings rate
+                      </text>
+                    }
+                  </g>
+
+                </svg>
+              </div>
+
+              <!-- Premium Legend columns -->
+              <div class="sunburst-legend">
+                <div class="legend-column">
+                  <h4 class="legend-title text-income">📈 Sources (Inflow)</h4>
+                  <div class="legend-list">
+                    <div class="legend-item root-legend-item" 
+                         [class.active]="hoveredSegment()?.id === 'inflow_root'"
+                         (mouseenter)="hoveredSegment.set(inflowRoot())" 
+                         (mouseleave)="hoveredSegment.set(null)">
+                      <span class="legend-dot" style="background-color: var(--accent-blue);"></span>
+                      <span class="legend-name">Total Income</span>
+                      <span class="legend-value">{{ totalIncome() | currencyFormat }}</span>
+                    </div>
+                    @for (seg of incomeSegments(); track seg.id) {
+                      <div class="legend-item" 
+                           [class.active]="hoveredSegment()?.id === seg.id"
+                           (mouseenter)="hoveredSegment.set(seg)" 
+                           (mouseleave)="hoveredSegment.set(null)">
+                        <span class="legend-dot" [style.background-color]="seg.color"></span>
+                        <span class="legend-icon">{{ seg.icon }}</span>
+                        <span class="legend-name">{{ seg.name }}</span>
+                        <span class="legend-value">{{ seg.value | currencyFormat }}</span>
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <div class="legend-column">
+                  <h4 class="legend-title text-expense">📉 Allocation (Outflow)</h4>
+                  <div class="legend-list">
+                    <div class="legend-item root-legend-item" 
+                         [class.active]="hoveredSegment()?.id === 'outflow_root'"
+                         (mouseenter)="hoveredSegment.set(outflowRoot())" 
+                         (mouseleave)="hoveredSegment.set(null)">
+                      <span class="legend-dot" style="background-color: var(--accent-purple);"></span>
+                      <span class="legend-name">Total Expenses</span>
+                      <span class="legend-value">{{ totalExpenses() | currencyFormat }}</span>
+                    </div>
+                    @for (seg of expenseSegments(); track seg.id) {
+                      <div class="legend-item" 
+                           [class.active]="hoveredSegment()?.id === seg.id"
+                           (mouseenter)="hoveredSegment.set(seg)" 
+                           (mouseleave)="hoveredSegment.set(null)">
+                        <span class="legend-dot" [style.background-color]="seg.color"></span>
+                        <span class="legend-icon">{{ seg.icon }}</span>
+                        <span class="legend-name">{{ seg.name }}</span>
+                        <span class="legend-value">{{ seg.value | currencyFormat }}</span>
+                      </div>
+                    }
+                  </div>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- Calendar Spending Heatmap -->
+      <div class="card heatmap-card">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+          <div>
+            <span class="card-title">📅 Calendar Spending Heatmap</span>
+            <span class="card-hint">Daily spending intensity over the last year</span>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <!-- Category Selector -->
+            <select class="selector-control sm" [ngModel]="heatmapCategory()" (ngModelChange)="heatmapCategory.set($event)" style="font-size: 0.75rem; padding: 0.25rem 0.5rem; height: auto;">
+              <option value="all">All Categories</option>
+              @for (cat of catService.categories(); track cat.id) {
+                @if (cat.type === 'expense' || cat.type === 'both') {
+                  <option [value]="cat.id">{{ cat.name }}</option>
+                }
+              }
+            </select>
+            <!-- Theme Selector -->
+            <select class="selector-control sm" [ngModel]="heatmapTheme()" (ngModelChange)="heatmapTheme.set($event)" style="font-size: 0.75rem; padding: 0.25rem 0.5rem; height: auto;">
+              <option value="indigo">Indigo Theme</option>
+              <option value="emerald">Emerald Theme</option>
+              <option value="sunset">Sunset Theme</option>
+              <option value="rose">Rose Theme</option>
+            </select>
+          </div>
+        </div>
+        <div class="heatmap-container">
+          @if (isMonthlyHeatmap()) {
+            <!-- Monthly Calendar View -->
+            <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+              <!-- Weekday Header Labels -->
+              <div class="monthly-calendar-headers" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; width: 100%; max-width: 240px; margin-bottom: 6px; text-align: center;">
+                <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700;">S</span>
+                <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700;">M</span>
+                <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700;">T</span>
+                <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700;">W</span>
+                <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700;">T</span>
+                <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700;">F</span>
+                <span style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700;">S</span>
+              </div>
+              
+              <!-- Grid -->
+              <div class="heatmap-grid-monthly">
+                @for (day of heatmapDays(); track day.date) {
+                  <div [class]="'heatmap-day lvl-' + day.level + ' theme-' + heatmapTheme()"
+                       [class.is-buffer]="day.isBuffer"
+                       [attr.data-tooltip]="day.isBuffer ? null : day.tooltip">
+                       @if (!day.isBuffer) {
+                         <span class="day-number">{{ getDayNumber(day.date) }}</span>
+                       }
+                  </div>
+                }
+              </div>
+            </div>
+          } @else {
+            <!-- Rolling Year View -->
+            <div style="display: flex; align-items: flex-start;">
+              <!-- Weekday Labels -->
+              <div class="heatmap-weekdays" style="display: grid; grid-template-rows: repeat(7, 1fr); gap: 2.5px; height: 92px; margin-right: 6px; align-items: center; text-align: right; padding-top: 18px;">
+                <span style="grid-row-start: 2; font-size: 0.65rem; color: var(--text-muted); font-weight: 500;">Mon</span>
+                <span style="grid-row-start: 4; font-size: 0.65rem; color: var(--text-muted); font-weight: 500;">Wed</span>
+                <span style="grid-row-start: 6; font-size: 0.65rem; color: var(--text-muted); font-weight: 500;">Fri</span>
+              </div>
+              
+              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+                <!-- Month labels row -->
+                <div class="heatmap-months-row" style="display: grid; grid-template-columns: repeat(53, 1fr); gap: 2.5px; margin-bottom: 4px; height: 14px;">
+                  @for (m of heatmapMonths(); track m.col) {
+                    <span [style.grid-column-start]="m.col + 1" class="month-label" style="font-size: 0.65rem; color: var(--text-muted); text-align: left; font-weight: 600;">
+                      {{ m.name }}
+                    </span>
+                  }
+                </div>
+
+                <!-- Grid -->
+                <div class="heatmap-grid" style="grid-auto-flow: column;">
+                  @for (day of heatmapDays(); track day.date) {
+                    <div [class]="'heatmap-day lvl-' + day.level + ' theme-' + heatmapTheme()"
+                         [attr.data-tooltip]="day.tooltip">
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+
+          <div class="heatmap-legend" style="margin-top: 12px;">
+            <span>Less</span>
+            <div [class]="'box lvl-0 theme-' + heatmapTheme()"></div>
+            <div [class]="'box lvl-1 theme-' + heatmapTheme()"></div>
+            <div [class]="'box lvl-2 theme-' + heatmapTheme()"></div>
+            <div [class]="'box lvl-3 theme-' + heatmapTheme()"></div>
+            <div [class]="'box lvl-4 theme-' + heatmapTheme()"></div>
+            <span>More</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Main Charts Section -->
     <div class="charts-2col">
       <div class="card">
@@ -321,71 +554,73 @@
   }
 </div>
 
-<!-- AI Financial Advisor Dialog Modal -->
+<!-- AI Financial Advisor Dialog Modal (Chatbot Interface) -->
 @if (showAiAdviceDialog()) {
   <div class="modal-overlay" (click)="closeAiAdvice()">
-    <div class="modal ai-modal" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+    <div class="modal ai-chat-modal" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
       <div class="modal-header">
         <div class="header-ai-title">
           <span class="ai-sparkle">🤖</span>
-          <h3>AI Financial Advisor</h3>
+          <h3>TCFlow AI Copilot</h3>
         </div>
         <button class="btn btn-ghost btn-icon" (click)="closeAiAdvice()">✕</button>
       </div>
 
-      <div class="modal-body ai-body-container">
-        @if (aiLoading()) {
-          <div class="ai-loading">
-            <div class="pulse-bars">
-              <span class="pulse-bar"></span>
-              <span class="pulse-bar"></span>
-              <span class="pulse-bar"></span>
-            </div>
-            <p class="loading-heading">Consulting AI Advisor...</p>
-            <p class="loading-subtext text-muted">Analyzing your spending behavior, comparing periods, and drafting personalized cashflow tips...</p>
-          </div>
-        } @else if (aiError()) {
-          <div class="ai-error-container">
-            <span class="error-icon">⚠️</span>
-            <h4>Advice Unavailable</h4>
-            <p class="error-msg">{{ aiError() }}</p>
-            
-            <div class="api-key-alert">
-              <h5>How to enable AI Advice:</h5>
-              <p>To enable smart AI recommendations, please add your Google Gemini API key to the environment file in the project root:</p>
-              <pre>GEMINI_API_KEY=your_gemini_api_key_here</pre>
-              <p class="text-sm text-muted mt-1">Once added, restart your TCFlow server process to apply the environment configuration.</p>
-            </div>
-          </div>
-        } @else {
-          <!-- AI Response Summary -->
-          @if (aiSummary()) {
-            <div class="ai-summary-card">
-              <span class="quote-mark">“</span>
-              <p class="summary-text">{{ aiSummary() }}</p>
+      <div class="modal-body ai-chat-body">
+        <div class="chat-messages-container">
+          @for (msg of chatMessages(); track msg.text + msg.timestamp) {
+            <div class="chat-message-row" [class.user-row]="msg.role === 'user'" [class.model-row]="msg.role === 'model'">
+              <div class="chat-avatar">
+                {{ msg.role === 'user' ? '👤' : '🤖' }}
+              </div>
+              <div class="chat-bubble-container">
+                <div class="chat-bubble">
+                  <div class="chat-text">{{ msg.text }}</div>
+                </div>
+                <span class="chat-time">{{ msg.timestamp }}</span>
+              </div>
             </div>
           }
 
-          <!-- AI Specific Advice Chips -->
-          <div class="ai-advice-list">
-            <h4>💡 Personalized Financial Advice</h4>
-            @for (adv of aiAdvice(); track adv.text) {
-              <div class="ai-advice-card" [class]="'ai-card-' + adv.type">
-                <div class="ai-card-icon-wrap">
-                  <span class="ai-card-icon">{{ adv.icon }}</span>
-                </div>
-                <div class="ai-card-content">
-                  <span class="ai-card-title">{{ adv.title }}</span>
-                  <p class="ai-card-text">{{ adv.text }}</p>
+          @if (chatLoading()) {
+            <div class="chat-message-row model-row">
+              <div class="chat-avatar">🤖</div>
+              <div class="chat-bubble-container">
+                <div class="chat-bubble typing-bubble">
+                  <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
                 </div>
               </div>
-            }
-          </div>
-        }
+            </div>
+          }
+
+          @if (chatError()) {
+            <div class="chat-error-message">
+              <span class="error-icon">⚠️</span>
+              <span>{{ chatError() }}</span>
+            </div>
+          }
+        </div>
       </div>
 
-      <div class="modal-footer">
-        <button class="btn btn-primary" (click)="closeAiAdvice()">Dismiss Advisor</button>
+      <div class="modal-footer ai-chat-footer">
+        <form class="chat-input-form" (ngSubmit)="sendChatMessage()">
+          <input type="text" 
+                 class="form-control chat-input-field" 
+                 [ngModel]="chatInput()" 
+                 (ngModelChange)="chatInput.set($event)"
+                 name="chatInput" 
+                 placeholder="Ask TCFlow Copilot something..." 
+                 [disabled]="chatLoading()"
+                 autocomplete="off"
+                 required>
+          <button type="submit" class="btn btn-primary btn-chat-send" [disabled]="chatLoading() || !chatInput().trim()">
+            <span>Send</span>
+          </button>
+        </form>
       </div>
     </div>
   </div>

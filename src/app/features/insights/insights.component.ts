@@ -7,10 +7,12 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
+import { AccountService } from '../../core/services/account.service';
 import { ApiService } from '../../core/services/api.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { parseLocalDate } from '../../shared/utils/date.utils';
+import { ChatMessage } from '../../core/models';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -18,6 +20,32 @@ Chart.register(...registerables);
 type PeriodType = 'monthly' | 'quarterly' | 'semi-annually' | 'yearly';
 interface AutoInsight { icon: string; text: string; type: 'good' | 'warn' | 'info' | 'bad'; }
 interface CategoryTrend { id: string; name: string; icon: string; color: string; current: number; previous: number; change: number; barPct: number; }
+
+export interface SunburstSegment {
+  id: string;
+  name: string;
+  value: number;
+  type: 'income' | 'expense' | 'root';
+  depth: number;
+  startAngle: number;
+  endAngle: number;
+  path: string;
+  color: string;
+  icon: string;
+  percentage: number;
+  textX?: number;
+  textY?: number;
+  showText?: boolean;
+}
+
+interface HeatmapDay {
+  date: string;
+  dayOfWeek: number;
+  amount: number;
+  level: number;
+  tooltip: string;
+  isBuffer?: boolean;
+}
 
 @Component({
   selector: 'app-insights',
@@ -28,7 +56,8 @@ interface CategoryTrend { id: string; name: string; icon: string; color: string;
 })
 export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
   private txnService = inject(TransactionService);
-  private catService = inject(CategoryService);
+  protected catService = inject(CategoryService);
+  private accountService = inject(AccountService);
   private api = inject(ApiService);
   private route = inject(ActivatedRoute);
 
@@ -50,12 +79,12 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
   selectedQuarter = signal<number>(Math.floor(new Date().getMonth() / 3) + 1);
   selectedHalf = signal<number>(new Date().getMonth() < 6 ? 1 : 2);
 
-  // AI Advice Modal Signals
+  // AI Chat Copilot Dialog Signals
   showAiAdviceDialog = signal(false);
-  aiLoading = signal(false);
-  aiSummary = signal('');
-  aiAdvice = signal<any[]>([]);
-  aiError = signal('');
+  chatMessages = signal<ChatMessage[]>([]);
+  chatInput = signal('');
+  chatLoading = signal(false);
+  chatError = signal('');
 
   goalAmount = 10000;
   goalMonthly = 500;
@@ -335,26 +364,48 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
   // AI Advice dialog query
   askAiAdvisor() {
     this.showAiAdviceDialog.set(true);
-    this.aiLoading.set(true);
-    this.aiError.set('');
-    this.aiSummary.set('');
-    this.aiAdvice.set([]);
-
-    const { startDate, endDate, prevStartDate, prevEndDate } = this.periodBoundaries();
     
-    this.api.getAiAdvice(startDate, endDate, prevStartDate, prevEndDate).subscribe({
+    // Initialize chat with a welcome message if empty
+    if (this.chatMessages().length === 0) {
+      this.chatMessages.set([
+        {
+          role: 'model',
+          text: 'Hello! I am your TCFlow Copilot. I can analyze your transactions, accounts, and budgets to help you answer questions or optimize your spending. What would you like to discuss today?',
+          timestamp: new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    }
+  }
+
+  sendChatMessage() {
+    const text = this.chatInput().trim();
+    if (!text || this.chatLoading()) return;
+
+    const timestamp = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    const userMsg: ChatMessage = { role: 'user', text, timestamp };
+    
+    this.chatMessages.update(msgs => [...msgs, userMsg]);
+    this.chatInput.set('');
+    this.chatLoading.set(true);
+    this.chatError.set('');
+
+    this.api.sendAiChatMessage(this.chatMessages()).subscribe({
       next: res => {
-        this.aiLoading.set(false);
-        if (res.success && res.data) {
-          this.aiSummary.set(res.data.summary);
-          this.aiAdvice.set(res.data.advice);
+        this.chatLoading.set(false);
+        if (res.success && res.data?.response) {
+          const modelMsg: ChatMessage = {
+            role: 'model',
+            text: res.data.response,
+            timestamp: new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+          };
+          this.chatMessages.update(msgs => [...msgs, modelMsg]);
         } else {
-          this.aiError.set(res.error ?? 'Failed to load AI advice.');
+          this.chatError.set(res.error || 'Failed to get a response from the AI Copilot.');
         }
       },
-      error: err => {
-        this.aiLoading.set(false);
-        this.aiError.set('An error occurred while connecting to the AI service.');
+      error: () => {
+        this.chatLoading.set(false);
+        this.chatError.set('Connection error: could not reach TCFlow Copilot.');
       }
     });
   }
@@ -405,7 +456,474 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
       this.loading.set(false);
     });
     this.catService.loadCategories().subscribe();
+    this.accountService.loadAccounts().subscribe();
   }
+
+  // ── Sankey Cashflow Flowchart computed data ──
+  // ── Sunburst Cashflow Chart computed data ──
+  getSunburstData = computed(() => {
+    const txns = this.currentPeriodTransactions().filter(t => t.type !== 'transfer');
+    if (txns.length === 0) {
+      return { segments: [], netBalance: 0, savingsRate: 0, totalIncome: 0, totalExpenses: 0 };
+    }
+
+    const totalIncome = txns.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const totalExpenses = txns.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const netBalance = totalIncome - totalExpenses;
+    const savingsRate = totalIncome > 0 ? Math.max(0, Math.round((netBalance / totalIncome) * 100)) : 0;
+
+    // Group income by category
+    const rawIncomeByCat: Record<string, number> = {};
+    txns.filter(t => t.type === 'income').forEach(t => {
+      rawIncomeByCat[t.category] = (rawIncomeByCat[t.category] || 0) + t.amount;
+    });
+
+    const sortedIncomeKeys = Object.keys(rawIncomeByCat).sort((a, b) => rawIncomeByCat[b] - rawIncomeByCat[a]);
+    const topIncomeKeys = new Set(sortedIncomeKeys.slice(0, 3));
+
+    const incomeByCat: Array<{ id: string; name: string; value: number; color: string; icon: string }> = [];
+    let otherIncomeVal = 0;
+
+    Object.entries(rawIncomeByCat).forEach(([catId, val]) => {
+      if (val <= 0) return;
+      if (topIncomeKeys.has(catId)) {
+        const cat = this.catService.getCategoryById(catId);
+        incomeByCat.push({
+          id: catId,
+          name: cat?.name ?? catId,
+          value: val,
+          color: cat?.color ?? 'var(--accent-green)',
+          icon: cat?.icon ?? '📈'
+        });
+      } else {
+        otherIncomeVal += val;
+      }
+    });
+
+    if (otherIncomeVal > 0) {
+      incomeByCat.push({
+        id: 'other_income',
+        name: 'Other Income',
+        value: otherIncomeVal,
+        color: '#81c784',
+        icon: '📦'
+      });
+    }
+    incomeByCat.sort((a, b) => b.value - a.value);
+
+    // Group expenses by category
+    const rawExpenseByCat: Record<string, number> = {};
+    txns.filter(t => t.type === 'expense').forEach(t => {
+      rawExpenseByCat[t.category] = (rawExpenseByCat[t.category] || 0) + t.amount;
+    });
+
+    const sortedExpenseKeys = Object.keys(rawExpenseByCat).sort((a, b) => rawExpenseByCat[b] - rawExpenseByCat[a]);
+    const topExpenseKeys = new Set(sortedExpenseKeys.slice(0, 5));
+
+    const expenseByCat: Array<{ id: string; name: string; value: number; color: string; icon: string }> = [];
+    let otherExpenseVal = 0;
+
+    Object.entries(rawExpenseByCat).forEach(([catId, val]) => {
+      if (val <= 0) return;
+      if (topExpenseKeys.has(catId)) {
+        const cat = this.catService.getCategoryById(catId);
+        expenseByCat.push({
+          id: catId,
+          name: cat?.name ?? catId,
+          value: val,
+          color: cat?.color ?? 'var(--accent-red)',
+          icon: cat?.icon ?? '💸'
+        });
+      } else {
+        otherExpenseVal += val;
+      }
+    });
+
+    if (otherExpenseVal > 0) {
+      expenseByCat.push({
+        id: 'other_expense',
+        name: 'Other Expenses',
+        value: otherExpenseVal,
+        color: '#90a4ae',
+        icon: '📦'
+      });
+    }
+    expenseByCat.sort((a, b) => b.value - a.value);
+
+    // Coordinate & Trigonometry Helpers
+    const cx = 250;
+    const cy = 250;
+    const r1 = 75;
+    const r2 = 125;
+    const r3 = 130;
+    const r4 = 210;
+
+    const describeArcSegment = (x: number, y: number, rIn: number, rOut: number, startAngle: number, endAngle: number): string => {
+      const sin0 = Math.sin(startAngle);
+      const cos0 = Math.cos(startAngle);
+      const sin1 = Math.sin(endAngle);
+      const cos1 = Math.cos(endAngle);
+
+      const xIn0 = x + rIn * cos0;
+      const yIn0 = y + rIn * sin0;
+      const xOut0 = x + rOut * cos0;
+      const yOut0 = y + rOut * sin0;
+
+      const xIn1 = x + rIn * cos1;
+      const yIn1 = y + rIn * sin1;
+      const xOut1 = x + rOut * cos1;
+      const yOut1 = y + rOut * sin1;
+
+      const largeArcFlag = (endAngle - startAngle) > Math.PI ? 1 : 0;
+
+      return `M ${xIn0} ${yIn0} L ${xOut0} ${yOut0} A ${rOut} ${rOut} 0 ${largeArcFlag} 1 ${xOut1} ${yOut1} L ${xIn1} ${yIn1} A ${rIn} ${rIn} 0 ${largeArcFlag} 0 ${xIn0} ${yIn0} Z`;
+    };
+
+    const describeArc = (x: number, y: number, rIn: number, rOut: number, startAngle: number, endAngle: number): string => {
+      const PI2 = Math.PI * 2;
+      const diff = endAngle - startAngle;
+      if (diff >= PI2 - 0.0001) {
+        const halfAngle = startAngle + Math.PI;
+        const path1 = describeArcSegment(x, y, rIn, rOut, startAngle, halfAngle);
+        const path2 = describeArcSegment(x, y, rIn, rOut, halfAngle, endAngle);
+        return `${path1} ${path2}`;
+      }
+      return describeArcSegment(x, y, rIn, rOut, startAngle, endAngle);
+    };
+
+    const V = Math.max(totalIncome, totalExpenses);
+    if (V <= 0) {
+      return { segments: [], netBalance, savingsRate, totalIncome, totalExpenses };
+    }
+
+    const segments: SunburstSegment[] = [];
+
+    // ── RIGHT HALF: Inflow (Income / Deficit) ──
+    const inflowAngleStart = -Math.PI / 2;
+    const inflowAngleEnd = Math.PI / 2;
+    const inflowPath = describeArc(cx, cy, r1, r2, inflowAngleStart, inflowAngleEnd);
+    
+    // Inflow Inner Segment
+    segments.push({
+      id: 'inflow_root',
+      name: 'Total Income',
+      value: totalIncome,
+      type: 'income',
+      depth: 1,
+      startAngle: inflowAngleStart,
+      endAngle: inflowAngleEnd,
+      path: inflowPath,
+      color: 'var(--accent-blue)',
+      icon: '📈',
+      percentage: 100
+    });
+
+    // Inflow Outer Categories
+    let currentInflowAngle = inflowAngleStart;
+    incomeByCat.forEach(item => {
+      const span = (item.value / V) * Math.PI;
+      const endAngle = currentInflowAngle + span;
+      const path = describeArc(cx, cy, r3, r4, currentInflowAngle, endAngle);
+      const angleMid = (currentInflowAngle + endAngle) / 2;
+      
+      segments.push({
+        id: `in_cat_${item.id}`,
+        name: item.name,
+        value: item.value,
+        type: 'income',
+        depth: 2,
+        startAngle: currentInflowAngle,
+        endAngle: endAngle,
+        path: path,
+        color: item.color,
+        icon: item.icon,
+        percentage: totalIncome > 0 ? Math.round((item.value / totalIncome) * 100) : 0,
+        textX: cx + ((r3 + r4) / 2) * Math.cos(angleMid),
+        textY: cy + ((r3 + r4) / 2) * Math.sin(angleMid),
+        showText: (endAngle - currentInflowAngle) > 0.18
+      });
+      currentInflowAngle = endAngle;
+    });
+
+    // Deficit Outer Segment (fills remaining Right Half if expenses exceed income)
+    const deficit = V - totalIncome;
+    if (deficit > 0) {
+      const path = describeArc(cx, cy, r3, r4, currentInflowAngle, inflowAngleEnd);
+      const angleMid = (currentInflowAngle + inflowAngleEnd) / 2;
+      segments.push({
+        id: 'deficit',
+        name: 'Deficit / Debt',
+        value: deficit,
+        type: 'income',
+        depth: 2,
+        startAngle: currentInflowAngle,
+        endAngle: inflowAngleEnd,
+        path: path,
+        color: 'var(--accent-red)',
+        icon: '⚠️',
+        percentage: Math.round((deficit / V) * 100),
+        textX: cx + ((r3 + r4) / 2) * Math.cos(angleMid),
+        textY: cy + ((r3 + r4) / 2) * Math.sin(angleMid),
+        showText: (inflowAngleEnd - currentInflowAngle) > 0.18
+      });
+    }
+
+    // ── LEFT HALF: Outflow (Expenses / Savings) ──
+    const outflowAngleStart = Math.PI / 2;
+    const outflowAngleEnd = 1.5 * Math.PI;
+    const outflowPath = describeArc(cx, cy, r1, r2, outflowAngleStart, outflowAngleEnd);
+
+    // Outflow Inner Segment
+    segments.push({
+      id: 'outflow_root',
+      name: 'Total Expenses',
+      value: totalExpenses,
+      type: 'expense',
+      depth: 1,
+      startAngle: outflowAngleStart,
+      endAngle: outflowAngleEnd,
+      path: outflowPath,
+      color: 'var(--accent-purple)',
+      icon: '📉',
+      percentage: 100
+    });
+
+    // Outflow Outer Categories
+    let currentOutflowAngle = outflowAngleStart;
+    expenseByCat.forEach(item => {
+      const span = (item.value / V) * Math.PI;
+      const endAngle = currentOutflowAngle + span;
+      const path = describeArc(cx, cy, r3, r4, currentOutflowAngle, endAngle);
+      const angleMid = (currentOutflowAngle + endAngle) / 2;
+
+      segments.push({
+        id: `out_cat_${item.id}`,
+        name: item.name,
+        value: item.value,
+        type: 'expense',
+        depth: 2,
+        startAngle: currentOutflowAngle,
+        endAngle: endAngle,
+        path: path,
+        color: item.color,
+        icon: item.icon,
+        percentage: totalExpenses > 0 ? Math.round((item.value / totalExpenses) * 100) : 0,
+        textX: cx + ((r3 + r4) / 2) * Math.cos(angleMid),
+        textY: cy + ((r3 + r4) / 2) * Math.sin(angleMid),
+        showText: (endAngle - currentOutflowAngle) > 0.18
+      });
+      currentOutflowAngle = endAngle;
+    });
+
+    // Net Savings Outer Segment (fills remaining Left Half if income exceeds expenses)
+    const savings = V - totalExpenses;
+    if (savings > 0) {
+      const path = describeArc(cx, cy, r3, r4, currentOutflowAngle, outflowAngleEnd);
+      const angleMid = (currentOutflowAngle + outflowAngleEnd) / 2;
+      segments.push({
+        id: 'savings',
+        name: 'Net Savings',
+        value: savings,
+        type: 'expense',
+        depth: 2,
+        startAngle: currentOutflowAngle,
+        endAngle: outflowAngleEnd,
+        path: path,
+        color: 'var(--accent-green)',
+        icon: '💰',
+        percentage: Math.round((savings / totalIncome) * 100),
+        textX: cx + ((r3 + r4) / 2) * Math.cos(angleMid),
+        textY: cy + ((r3 + r4) / 2) * Math.sin(angleMid),
+        showText: (outflowAngleEnd - currentOutflowAngle) > 0.18
+      });
+    }
+
+    return { segments, netBalance, savingsRate, totalIncome, totalExpenses };
+  });
+
+  sunburstSegments = computed(() => this.getSunburstData().segments);
+  incomeSegments = computed(() => this.sunburstSegments().filter(s => s.depth === 2 && s.type === 'income'));
+  expenseSegments = computed(() => this.sunburstSegments().filter(s => s.depth === 2 && s.type === 'expense'));
+  netBalance = computed(() => this.getSunburstData().netBalance);
+  savingsRate = computed(() => this.getSunburstData().savingsRate);
+  totalIncome = computed(() => this.getSunburstData().totalIncome);
+  totalExpenses = computed(() => this.getSunburstData().totalExpenses);
+  inflowRoot = computed(() => this.sunburstSegments().find(s => s.id === 'inflow_root') || null);
+  outflowRoot = computed(() => this.sunburstSegments().find(s => s.id === 'outflow_root') || null);
+
+  // Hover states for Sunburst Chart
+  hoveredSegment = signal<SunburstSegment | null>(null);
+
+  isSegmentHighlighted(segId: string): boolean {
+    const hovered = this.hoveredSegment();
+    if (!hovered) return true;
+    if (hovered.id === segId) return true;
+    
+    // Highlight matching category or root segment relations
+    if (hovered.depth === 1) {
+      // Hovering Inner Root (Inflow/Outflow) -> highlight all child categories
+      const seg = this.sunburstSegments().find(s => s.id === segId);
+      return seg ? seg.type === hovered.type : false;
+    } else {
+      // Hovering Category -> highlight it and its parent root
+      if (segId === 'inflow_root' && hovered.type === 'income') return true;
+      if (segId === 'outflow_root' && hovered.type === 'expense') return true;
+    }
+    return false;
+  }
+
+  // Heatmap customization signals
+  heatmapCategory = signal<string>('all');
+  heatmapTheme = signal<string>('indigo');
+
+  isMonthlyHeatmap = computed(() => this.periodType() === 'monthly');
+
+  getDayNumber(dateStr: string): number {
+    if (!dateStr || dateStr.startsWith('buffer')) return 0;
+    const parts = dateStr.split('-');
+    return parseInt(parts[2], 10);
+  }
+
+  // ── Heatmap computed data ──
+  heatmapDays = computed(() => {
+    const txns = this.txnService.postedTransactions();
+    const selectedCat = this.heatmapCategory();
+    const type = this.periodType();
+    
+    // Group expenses by date
+    const spentByDate: Record<string, number> = {};
+    txns.filter(t => 
+      t.type === 'expense' && 
+      (selectedCat === 'all' || t.category === selectedCat)
+    ).forEach(t => {
+      spentByDate[t.date] = (spentByDate[t.date] || 0) + t.amount;
+    });
+
+    const grid: HeatmapDay[] = [];
+
+    if (type === 'monthly') {
+      const year = this.selectedYear();
+      const month = this.selectedMonth();
+      
+      const numDays = new Date(year, month + 1, 0).getDate();
+      const firstDayIndex = new Date(year, month, 1).getDay(); // Sunday is 0
+
+      // Prepend buffer days
+      for (let i = 0; i < firstDayIndex; i++) {
+        grid.push({
+          date: `buffer-prev-${i}`,
+          dayOfWeek: i,
+          amount: 0,
+          level: 0,
+          tooltip: '',
+          isBuffer: true
+        });
+      }
+
+      // Add actual days of the month
+      for (let dayNum = 1; dayNum <= numDays; dayNum++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+        const amount = spentByDate[dateStr] || 0;
+
+        let level = 0;
+        if (amount > 0) {
+          if (amount <= 15) level = 1;
+          else if (amount <= 50) level = 2;
+          else if (amount <= 150) level = 3;
+          else level = 4;
+        }
+
+        const d = new Date(year, month, dayNum);
+        const dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const tooltip = `${dateFormatted}: $${amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} spent`;
+
+        grid.push({
+          date: dateStr,
+          dayOfWeek: d.getDay(),
+          amount,
+          level,
+          tooltip
+        });
+      }
+
+      // Append buffer days to complete the week
+      let padIndex = 0;
+      while (grid.length % 7 !== 0) {
+        grid.push({
+          date: `buffer-next-${padIndex}`,
+          dayOfWeek: grid.length % 7,
+          amount: 0,
+          level: 0,
+          tooltip: '',
+          isBuffer: true
+        });
+        padIndex++;
+      }
+    } else {
+      // Rolling year view (for Yearly, Quarterly, Semi-Annually)
+      const today = new Date();
+      const oneYearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+      const oneYearAgoStr = oneYearAgo.toLocaleDateString('en-CA');
+      
+      const startDayOffset = 364 + today.getDay();
+      
+      for (let i = 0; i < 371; i++) {
+        const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (startDayOffset - i));
+        
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const dateStr = `${yyyy}-${mm}-${dd}`;
+        
+        const isFuture = dateStr > today.toLocaleDateString('en-CA');
+        const amount = isFuture ? 0 : (spentByDate[dateStr] || 0);
+
+        let level = 0;
+        if (amount > 0) {
+          if (amount <= 15) level = 1;
+          else if (amount <= 50) level = 2;
+          else if (amount <= 150) level = 3;
+          else level = 4;
+        }
+
+        const dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const tooltip = isFuture 
+          ? 'Future'
+          : `${dateFormatted}: $${amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} spent`;
+
+        grid.push({
+          date: dateStr,
+          dayOfWeek: d.getDay(),
+          amount,
+          level,
+          tooltip
+        });
+      }
+    }
+
+    return grid;
+  });
+
+  // Month labels positioning based on column index Sunday dates
+  heatmapMonths = computed(() => {
+    if (this.isMonthlyHeatmap()) return []; // monthly calendar doesn't need column labels
+    const days = this.heatmapDays();
+    const labels: Array<{ name: string; col: number }> = [];
+    let lastMonth = -1;
+
+    for (let col = 0; col < 53; col++) {
+      const idx = col * 7;
+      if (idx < days.length) {
+        const d = new Date(days[idx].date + 'T00:00:00');
+        const m = d.getMonth();
+        if (m !== lastMonth) {
+          labels.push({ name: d.toLocaleDateString('en-US', { month: 'short' }), col });
+          lastMonth = m;
+        }
+      }
+    }
+    return labels;
+  });
 
   ngAfterViewInit() {}
   ngOnDestroy() { this.charts.forEach(c => c.destroy()); }

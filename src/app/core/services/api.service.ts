@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Transaction, TransactionFilter, Category, Budget, Account } from '../models';
+import { Transaction, TransactionFilter, Category, Budget, Account, Goal, RecurringSchedule, ChatMessage, DetectedBill } from '../models';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -72,8 +72,10 @@ export class ApiService {
     return this.http.put<ApiResponse<Category>>(`${this.baseUrl}/categories/${id}`, category);
   }
 
-  deleteCategory(id: string): Observable<ApiResponse<void>> {
-    return this.http.delete<ApiResponse<void>>(`${this.baseUrl}/categories/${id}`);
+  deleteCategory(id: string, reassignTo?: string): Observable<ApiResponse<void>> {
+    let params = new HttpParams();
+    if (reassignTo) params = params.set('reassignTo', reassignTo);
+    return this.http.delete<ApiResponse<void>>(`${this.baseUrl}/categories/${id}`, { params });
   }
 
   // ── Budgets ───────────────────────────────────────────────────────────────
@@ -132,6 +134,10 @@ export class ApiService {
     return this.http.get<ApiResponse<{ summary: string; advice: any[] }>>(`${this.baseUrl}/reports/ai-advice`, { params });
   }
 
+  sendAiChatMessage(messages: ChatMessage[]): Observable<ApiResponse<{ response: string }>> {
+    return this.http.post<ApiResponse<{ response: string }>>(`${this.baseUrl}/reports/ai-chat`, { messages });
+  }
+
   // ── Accounts ──────────────────────────────────────────────────────────────
 
   getAccounts(): Observable<ApiResponse<Account[]>> {
@@ -162,5 +168,66 @@ export class ApiService {
 
   syncStatus(): Observable<ApiResponse<{ connected: boolean; provider: string; lastSync: string }>> {
     return this.http.get<ApiResponse<any>>(`${this.baseUrl}/sync/status`);
+  }
+
+  // ── Goals ──────────────────────────────────────────────────────────────────
+
+  getGoals(): Observable<ApiResponse<Goal[]>> {
+    return this.http.get<ApiResponse<Goal[]>>(`${this.baseUrl}/goals`);
+  }
+
+  createGoal(goal: Omit<Goal, 'id' | 'createdAt'>): Observable<ApiResponse<Goal>> {
+    return this.http.post<ApiResponse<Goal>>(`${this.baseUrl}/goals`, goal);
+  }
+
+  updateGoal(id: string, goal: Partial<Goal>): Observable<ApiResponse<Goal>> {
+    return this.http.put<ApiResponse<Goal>>(`${this.baseUrl}/goals/${id}`, goal);
+  }
+
+  deleteGoal(id: string): Observable<ApiResponse<void>> {
+    return this.http.delete<ApiResponse<void>>(`${this.baseUrl}/goals/${id}`);
+  }
+
+  // ── Exchange Rates ──────────────────────────────────────────────────────────
+
+  getExchangeRates(): Observable<ApiResponse<Record<string, number>>> {
+    return this.http.get<ApiResponse<Record<string, number>>>(`${this.baseUrl}/exchange-rates`);
+  }
+
+  // ── AI Suggest Category ─────────────────────────────────────────────────────
+
+  suggestCategory(description: string, type: string): Observable<ApiResponse<{ categoryId: string | null }>> {
+    const params = new HttpParams().set('description', description).set('type', type);
+    return this.http.get<ApiResponse<{ categoryId: string | null }>>(`${this.baseUrl}/ai/suggest-category`, { params });
+  }
+
+  // ── PDF Audit Printable ────────────────────────────────────────────────────
+
+  getExportPdfAudit(startDate: string, endDate: string, accountId?: string): Observable<ApiResponse<{ markdown: string }>> {
+    let params = new HttpParams().set('startDate', startDate).set('endDate', endDate);
+    if (accountId) params = params.set('accountId', accountId);
+    return this.http.get<ApiResponse<{ markdown: string }>>(`${this.baseUrl}/reports/pdf-audit`, { params });
+  }
+
+  // ── Recurring Schedules ───────────────────────────────────────────────────
+
+  getRecurringSchedules(): Observable<ApiResponse<RecurringSchedule[]>> {
+    return this.http.get<ApiResponse<RecurringSchedule[]>>(`${this.baseUrl}/recurring`);
+  }
+
+  createRecurringSchedule(schedule: Omit<RecurringSchedule, 'id' | 'createdAt'>): Observable<ApiResponse<RecurringSchedule>> {
+    return this.http.post<ApiResponse<RecurringSchedule>>(`${this.baseUrl}/recurring`, schedule);
+  }
+
+  updateRecurringSchedule(id: string, schedule: Partial<RecurringSchedule>): Observable<ApiResponse<RecurringSchedule>> {
+    return this.http.put<ApiResponse<RecurringSchedule>>(`${this.baseUrl}/recurring/${id}`, schedule);
+  }
+
+  deleteRecurringSchedule(id: string): Observable<ApiResponse<void>> {
+    return this.http.delete<ApiResponse<void>>(`${this.baseUrl}/recurring/${id}`);
+  }
+
+  detectRecurringBills(): Observable<ApiResponse<DetectedBill[]>> {
+    return this.http.get<ApiResponse<DetectedBill[]>>(`${this.baseUrl}/recurring/detect`);
   }
 }

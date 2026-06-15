@@ -69,12 +69,11 @@ export class CategoryService {
     );
   }
 
-  deleteCategory(id: string) {
-    return this.api.deleteCategory(id).pipe(
+  deleteCategory(id: string, reassignTo?: string) {
+    return this.api.deleteCategory(id, reassignTo).pipe(
       tap(res => {
         if (res.success) this.categories.update(cats => cats.filter(c => c.id !== id));
-      }),
-      catchError(err => of(null))
+      })
     );
   }
 }

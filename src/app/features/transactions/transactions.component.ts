@@ -91,6 +91,16 @@ import { advanceDateByFrequency } from '../../shared/utils/date.utils';
               }
             </select>
 
+            <!-- Account filter -->
+            <select class="form-control filter-select"
+                    [ngModel]="txnService.filter().accountId"
+                    (ngModelChange)="txnService.updateFilter({ accountId: $event || undefined })">
+              <option value="">All Accounts</option>
+              @for (acc of accountService.accounts(); track acc.id) {
+                <option [value]="acc.id">{{ acc.type === 'asset' ? '🏦' : '💳' }} {{ acc.name }}</option>
+              }
+            </select>
+
             <!-- Recurring filter -->
             <select class="form-control filter-select"
                     [ngModel]="recurringFilter()"
@@ -140,16 +150,24 @@ import { advanceDateByFrequency } from '../../shared/utils/date.utils';
                     <th>Category</th>
                     <th>Account</th>
                     <th>Tags</th>
+                    @if (txnService.filter().accountId) {
+                      <th class="text-right">Running Balance</th>
+                    }
                     <th class="text-right">Amount</th>
                     <th class="text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   @for (txn of displayedTransactions(); track txn.id) {
-                    <tr [class.recurring-row]="txn.isRecurring">
+                    <tr [class.recurring-row]="txn.isRecurring" [class.future-row]="isFuture(txn.date)">
                       <td>
                         <div class="date-cell">
-                          <span class="date-main">{{ formatDate(txn.date) }}</span>
+                          <span class="date-main">
+                            {{ formatDate(txn.date) }}
+                            @if (isFuture(txn.date)) {
+                              <span class="badge badge-future" title="Future-dated transaction">⏳ Future</span>
+                            }
+                          </span>
                           @if (txn.isRecurring) {
                             <span class="badge badge-recurring">🔄 {{ txn.recurringFrequency }}</span>
                           }
@@ -197,6 +215,11 @@ import { advanceDateByFrequency } from '../../shared/utils/date.utils';
                           }
                         </div>
                       </td>
+                      @if (txnService.filter().accountId) {
+                        <td class="text-right font-mono text-muted text-sm" style="font-size: 0.85rem;">
+                          {{ runningBalances()[txn.id] | currencyFormat }}
+                        </td>
+                      }
                       <td class="text-right">
                         <span class="amount-cell" [class.text-income]="txn.type === 'income'"
                               [class.text-expense]="txn.type === 'expense'"
@@ -460,6 +483,25 @@ import { advanceDateByFrequency } from '../../shared/utils/date.utils';
       text-transform: capitalize;
     }
 
+    .future-row {
+      background: rgba(255, 193, 7, 0.015);
+      border-left: 3px dashed var(--accent-yellow);
+    }
+    .future-row td {
+      opacity: 0.85;
+    }
+    .badge-future {
+      display: inline-block;
+      background: rgba(255, 193, 7, 0.12);
+      color: var(--accent-yellow);
+      border: 1px solid rgba(255, 193, 7, 0.25);
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      margin-left: 0.35rem;
+    }
+
     .date-cell { display: flex; flex-direction: column; gap: 0.25rem; }
     .date-main { font-size: 0.875rem; color: var(--text-primary); }
 
@@ -513,6 +555,71 @@ export class TransactionsComponent implements OnInit {
   stoppingSeriesName = signal<string>('');
   deletingSeriesId = signal<string | null>(null);
   deletingSeriesName = signal<string>('');
+
+  isFuture(dateStr: string): boolean {
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    return dateStr > todayStr;
+  }
+
+  runningBalances = computed(() => {
+    const filter = this.txnService.filter();
+    const accountId = filter.accountId;
+    if (!accountId) return {};
+
+    const acc = this.accountService.getAccountById(accountId);
+    if (!acc) return {};
+
+    // Get all transactions for this account (posted and future)
+    const allTxns = this.txnService.transactions().filter(t => 
+      t.accountId === accountId || t.toAccountId === accountId
+    );
+
+    // Sort chronologically (oldest first)
+    const sorted = [...allTxns].sort((a, b) => {
+      if (a.date !== b.date) {
+        return a.date.localeCompare(b.date);
+      }
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeA - timeB;
+    });
+
+    const balances: Record<string, number> = {};
+    let currentBalance = Math.abs(acc.initialBalance ?? 0);
+
+    sorted.forEach(t => {
+      if (t.accountId === accountId) {
+        // Current account is the source/origin
+        if (t.type === 'income') {
+          currentBalance += t.amount;
+        } else if (t.type === 'expense') {
+          if (acc.type === 'liability') {
+            currentBalance += t.amount; // Owe more
+          } else {
+            currentBalance -= t.amount; // Asset decreases
+          }
+        } else if (t.type === 'transfer') {
+          if (acc.type === 'liability') {
+            currentBalance += t.amount; // Transfer from liability -> owe more
+          } else {
+            currentBalance -= t.amount; // Transfer from asset -> asset decreases
+          }
+        }
+      } else if (t.toAccountId === accountId) {
+        // Current account is the destination of a transfer
+        if (t.type === 'transfer') {
+          if (acc.type === 'liability') {
+            currentBalance -= t.amount; // Transfer to liability -> pay down debt
+          } else {
+            currentBalance += t.amount; // Transfer to asset -> asset increases
+          }
+        }
+      }
+      balances[t.id] = currentBalance;
+    });
+
+    return balances;
+  });
 
   recurringSchedules = computed(() => {
     const txns = this.txnService.transactions();

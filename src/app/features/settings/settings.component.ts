@@ -85,18 +85,11 @@ import { HeaderComponent } from '../../layout/header.component';
 
         <div class="settings-grid">
           <div class="form-group">
-            <label class="form-label" for="currency">Currency Symbol</label>
-            <select id="currency" class="form-control" [(ngModel)]="settings.currencySymbol">
-              <option value="$">$ — US Dollar</option>
-              <option value="€">€ — Euro</option>
-              <option value="£">£ — British Pound</option>
-              <option value="¥">¥ — Japanese Yen</option>
-              <option value="₹">₹ — Indian Rupee</option>
-              <option value="₩">₩ — Korean Won</option>
-              <option value="₿">₿ — Bitcoin</option>
-              <option value="CHF">CHF — Swiss Franc</option>
-              <option value="CAD$">CAD$ — Canadian Dollar</option>
-              <option value="A$">A$ — Australian Dollar</option>
+            <label class="form-label" for="currency">Primary Currency</label>
+            <select id="currency" class="form-control" [ngModel]="settings.currency" (ngModelChange)="onCurrencyChange($event)">
+              @for (c of currencies; track c.code) {
+                <option [value]="c.code">{{ c.code }} — {{ c.name }} ({{ c.symbol }})</option>
+              }
             </select>
           </div>
 
@@ -305,15 +298,34 @@ export class SettingsComponent implements OnInit {
 
   syncStatus = signal<any>(null);
   saving = signal(false);
-  settings = { currencySymbol: '$', dateFormat: 'MM/dd/yyyy' };
+  settings = { currency: 'USD', currencySymbol: '$', dateFormat: 'MM/dd/yyyy' };
+
+  currencies = [
+    { code: 'USD', symbol: '$', name: 'US Dollar' },
+    { code: 'EUR', symbol: '€', name: 'Euro' },
+    { code: 'GBP', symbol: '£', name: 'British Pound' },
+    { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+    { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+    { code: 'KRW', symbol: '₩', name: 'Korean Won' },
+    { code: 'CAD', symbol: 'CAD$', name: 'Canadian Dollar' },
+    { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+    { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
+  ];
 
   ngOnInit() {
     this.checkSync();
     // Load current settings from Sheets and pre-fill the form
     this.settingsService.load().subscribe(() => {
+      this.settings.currency = this.settingsService.currency();
       this.settings.currencySymbol = this.settingsService.currencySymbol();
       this.settings.dateFormat = this.settingsService.dateFormat();
     });
+  }
+
+  onCurrencyChange(code: string) {
+    this.settings.currency = code;
+    const found = this.currencies.find(c => c.code === code);
+    this.settings.currencySymbol = found ? found.symbol : '$';
   }
 
   checkSync() {

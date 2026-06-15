@@ -80,13 +80,20 @@ Chart.register(...registerables);
               <label class="form-label">End Date</label>
               <input type="date" class="form-control" [ngModel]="customEndDate()" (ngModelChange)="customEndDate.set($event); loadReport()">
             </div>
+            <div class="control-group">
+              <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
+            <button class="btn btn-primary" (click)="loadReport()" [disabled]="loading()">
+              {{ loading() ? 'Loading...' : '🔄 Refresh' }}
+            </button>
+          </div>
+      </div>
           }
 
-          <div style="flex: 1;"></div>
-
-          <button class="btn btn-primary" (click)="loadReport()" [disabled]="loading()">
-            {{ loading() ? 'Loading...' : '🔄 Refresh' }}
-          </button>
+          @if (reportType() !== 'custom') {
+            <button class="btn btn-primary" (click)="loadReport()" [disabled]="loading()">
+              {{ loading() ? 'Loading...' : '🔄 Refresh' }}
+            </button>
+          }
         </div>
       </div>
 
@@ -220,20 +227,22 @@ Chart.register(...registerables);
           }
         </div>
 
-        <!-- Category Exploration Drill-down Panel -->
-        @if (selectedCategoryId()) {
-          @let catName = getCategoryName(selectedCategoryId()!);
-          @let catColor = getCategoryColor(selectedCategoryId()!);
-          
-          <div class="card category-drilldown-card" [style.border-left-color]="catColor">
-            <div class="drilldown-header">
-              <div class="drilldown-title">
-                <span style="font-size: 1.5rem;">{{ getCategoryIcon(selectedCategoryId()!) }}</span>
-                <h3>Category Audit: <span [style.color]="catColor">{{ catName }}</span></h3>
-              </div>
-              <button class="btn btn-ghost btn-sm" (click)="closeCategoryExploration()" aria-label="Close Audit">✕ Close Audit</button>
+        <!-- Category Audit Popup Modal -->
+    @if (selectedCategoryId()) {
+      @let catName = getCategoryName(selectedCategoryId()!);
+      @let catColor = getCategoryColor(selectedCategoryId()!);
+
+      <div class="modal-overlay" (click)="closeCategoryExploration()">
+        <div class="modal audit-popup-modal" role="dialog" aria-modal="true" (click)="$event.stopPropagation()" [style.border-left]="'4px solid ' + catColor">
+          <div class="modal-header">
+            <div class="drilldown-title">
+              <span style="font-size: 1.5rem; margin-right: 0.5rem;">{{ getCategoryIcon(selectedCategoryId()!) }}</span>
+              <h3 style="margin: 0; font-size: 1.25rem;">Category Audit: <span [style.color]="catColor">{{ catName }}</span></h3>
             </div>
-            
+            <button class="btn btn-ghost btn-icon" (click)="closeCategoryExploration()" aria-label="Close Audit">✕</button>
+          </div>
+
+          <div class="modal-body audit-popup-body">
             @if (categoryTxnsLoading()) {
               <div class="drilldown-loading">
                 <div class="spinner-sm"></div>
@@ -241,7 +250,7 @@ Chart.register(...registerables);
               </div>
             } @else if (categoryStats()) {
               <!-- Stats Grid -->
-              <div class="drilldown-stats-grid">
+              <div class="drilldown-stats-grid" style="margin-bottom: 1.5rem;">
                 <div class="dd-stat-card">
                   <span class="dd-stat-label">Total Outflow</span>
                   <span class="dd-stat-val text-expense">{{ categoryStats().total | currencyFormat }}</span>
@@ -262,41 +271,49 @@ Chart.register(...registerables);
                   </span>
                 </div>
               </div>
-              
+
               <!-- Transactions list -->
-              <div class="table-wrapper">
-                <table class="drilldown-table">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Description</th>
-                      <th>Account</th>
-                      <th class="text-right">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @for (t of categoryTxns(); track t.id) {
+              @if (categoryTxns() && categoryTxns()!.length > 0) {
+                <div class="table-wrapper">
+                  <table class="drilldown-table">
+                    <thead>
                       <tr>
-                        <td style="white-space: nowrap;">{{ t.date }}</td>
-                        <td class="font-semibold">{{ t.description }}</td>
-                        <td class="text-muted">
-                          @if (t.type === 'transfer') {
-                            {{ getAccountName(t.accountId) }} ➔ {{ getAccountName(t.toAccountId || '') }}
-                          } @else {
-                            {{ getAccountName(t.accountId) }}
-                          }
-                        </td>
-                        <td class="text-right font-semibold text-expense">{{ t.amount | currencyFormat }}</td>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Account</th>
+                        <th class="text-right">Amount</th>
                       </tr>
-                    }
-                  </tbody>
-                </table>
-              </div>
-            } @else {
-              <p class="text-muted text-center p-4">No transaction details found for this category in the selected range.</p>
+                    </thead>
+                    <tbody>
+                      @for (t of categoryTxns(); track t.id) {
+                        <tr>
+                          <td style="white-space: nowrap;">{{ t.date }}</td>
+                          <td class="font-semibold">{{ t.description }}</td>
+                          <td class="text-muted">
+                            @if (t.type === 'transfer') {
+                              {{ getAccountName(t.accountId) }} ➔ {{ getAccountName(t.toAccountId || '') }}
+                            } @else {
+                              {{ getAccountName(t.accountId) }}
+                            }
+                          </td>
+                          <td class="text-right font-semibold text-expense">{{ t.amount | currencyFormat }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              } @else {
+                <p class="text-muted text-center p-4">No transaction details found for this category in the selected range.</p>
+              }
             }
           </div>
-        }
+
+          <div class="modal-footer">
+            <button class="btn btn-ghost" (click)="closeCategoryExploration()">Close</button>
+          </div>
+        </div>
+      </div>
+    }
 
         <!-- Charts -->
         <div class="charts-grid" [class.single-chart]="reportType() !== 'yearly'">
@@ -576,34 +593,36 @@ Chart.register(...registerables);
       line-height: 1.4;
     }
 
-    /* Category Drilldown Card */
-    .category-drilldown-card {
-      border-left: 4px solid var(--border);
-      background: rgba(30, 33, 48, 0.85);
-      backdrop-filter: blur(10px);
-      box-shadow: var(--shadow-glow-blue);
-      display: flex;
-      flex-direction: column;
-      gap: 1.25rem;
-      animation: slideUp 0.25s ease;
+    /* Modal Styling */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
     }
-    .drilldown-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      width: 90%; max-width: 600px;
+      max-height: 90vh;
+      display: flex; flex-direction: column;
+      animation: slideUp 0.3s ease;
+    }
+    .modal-header {
+      padding: 1rem 1.25rem;
       border-bottom: 1px solid var(--border);
-      padding-bottom: 0.75rem;
+      display: flex; justify-content: space-between; align-items: center;
     }
+    .modal-body { padding: 1.25rem; overflow-y: auto; }
+    .modal-footer { padding: 1rem 1.25rem; border-top: 1px solid var(--border); text-align: right; }
+
+    /* Category Drilldown Card */
     .drilldown-title {
       display: flex;
       align-items: center;
       gap: 0.75rem;
-    }
-    .drilldown-title h3 {
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin: 0;
     }
     .drilldown-loading {
       display: flex;
@@ -861,6 +880,7 @@ export class ReportsComponent implements OnInit, AfterViewInit {
             this.reportData.set(clientRollup);
             setTimeout(() => this.renderCharts(), 100);
           } else {
+            this.loading.set(false);
             this.reportData.set(null);
           }
         },

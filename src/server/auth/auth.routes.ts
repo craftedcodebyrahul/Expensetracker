@@ -135,6 +135,7 @@ export function createAuthRouter(): Router {
     console.log('[DEBUG /auth/me] Request status:', {
       hasSession: !!(req as any).session,
       hasUser: !!user,
+      user: user,
       secure: req.secure,
       trustProxy: req.app.get('trust proxy'),
       headersCookie: req.headers.cookie ? 'present' : 'absent',

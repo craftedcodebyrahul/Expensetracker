@@ -46,7 +46,8 @@
       <!-- Description -->
       <div class="form-group">
         <label for="description">Description *</label>
-        <input id="description" type="text" class="form-control" [(ngModel)]="form.description"
+        <input id="description" type="text" class="form-control" [ngModel]="form.description"
+               (ngModelChange)="form.description = $event; onDescriptionChange($event)"
                name="description" placeholder="What was this for?" required>
       </div>
 
@@ -90,8 +91,15 @@
       <!-- Category (Only for non-transfers) -->
       @if (form.type !== 'transfer') {
         <div class="form-group">
-          <label for="category">Category *</label>
-          <select id="category" class="form-control" [(ngModel)]="form.category" name="category" required>
+          <div class="category-label-row">
+            <label for="category">Category *</label>
+            @if (aiCategorizing()) {
+              <span class="ai-categorize-badge loading">✨ Thinking...</span>
+            } @else if (aiSuggested()) {
+              <span class="ai-categorize-badge success">✨ AI Classified</span>
+            }
+          </div>
+          <select id="category" class="form-control" [(ngModel)]="form.category" name="category" required (change)="aiSuggested.set(false)">
             <option value="">Choose a category</option>
             @for (cat of (form.type === 'income' ? categoryService.incomeCategories() : categoryService.expenseCategories()); track cat.id) {
               <option [value]="cat.id">{{ cat.icon }} {{ cat.name }}</option>

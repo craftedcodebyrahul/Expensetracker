@@ -22,10 +22,15 @@ interface NavItem { path: string; label: string; icon: string; }
            [class.mobile-open]="layout.mobileMenuOpen()">
 
       <!-- Logo -->
-      <div class="sidebar-logo">
-        <img src="logo.svg" alt="TCFlow" class="logo-img">
-        @if (!layout.collapsed()) {
-          <span class="logo-title">TC<span class="logo-accent">Flow</span></span>
+      <div class="sidebar-logo" [class.collapsed-logo]="layout.collapsed() && !layout.mobileMenuOpen()">
+        @if (!layout.collapsed() || layout.mobileMenuOpen()) {
+          <div class="logo-brand">
+            <img src="logo.svg" alt="TCFlow" class="logo-img">
+            <span class="logo-title">TC<span class="logo-accent">Flow</span></span>
+          </div>
+          <button class="desktop-toggle-btn" (click)="layout.toggle()" aria-label="Collapse sidebar" title="Collapse sidebar">☰</button>
+        } @else {
+          <button class="desktop-toggle-btn collapsed" (click)="layout.toggle()" aria-label="Expand sidebar" title="Expand sidebar">☰</button>
         }
         <!-- Close button only visible on mobile -->
         <button class="mobile-close-btn" (click)="layout.toggleMobileMenu()" aria-label="Close menu">✕</button>
@@ -162,16 +167,54 @@ interface NavItem { path: string; label: string; icon: string; }
     .sidebar-logo {
       display: flex;
       align-items: center;
-      gap: 0.625rem;
+      justify-content: space-between;
       padding: 0.875rem 1rem;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
       min-height: 56px;
       overflow: hidden;
+      width: 100%;
+    }
+    .sidebar-logo.collapsed-logo {
+      justify-content: center;
+      padding: 0.875rem 0;
+    }
+    .logo-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
     }
     .logo-img { width: 28px; height: 28px; flex-shrink: 0; }
     .logo-title { font-size: 1.1rem; font-weight: 800; color: var(--text-primary); white-space: nowrap; letter-spacing: -0.02em; }
     .logo-accent { color: var(--accent-blue-light); }
+
+    /* Desktop toggle button inside sidebar logo header */
+    .desktop-toggle-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 1.25rem;
+      cursor: pointer;
+      padding: 0.25rem;
+      border-radius: var(--radius-sm);
+      transition: var(--transition);
+      line-height: 1;
+      width: 32px;
+      height: 32px;
+      flex-shrink: 0;
+    }
+    .desktop-toggle-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-card);
+    }
+    @media (max-width: 640px) {
+      .desktop-toggle-btn {
+        display: none;
+      }
+    }
 
     /* ── Sync status ─────────────────────────────────────────────── */
     .sync-status {
@@ -256,14 +299,16 @@ export class SidebarComponent {
   syncConnected = signal(false);
 
   navItems: NavItem[] = [
-    { path: '/dashboard',    label: 'Dashboard',    icon: '📊' },
-    { path: '/quick-log',    label: 'Quick Log',    icon: '⚡' },
-    { path: '/transactions', label: 'Transactions', icon: '💳' },
-    { path: '/accounts',     label: 'Accounts',     icon: '🏦' },
-    { path: '/insights',     label: 'Insights',     icon: '🔮' },
-    { path: '/budgets',      label: 'Budgets',      icon: '🎯' },
-    { path: '/categories',   label: 'Categories',   icon: '🏷️' },
-    { path: '/reports',      label: 'Reports',      icon: '📈' },
+    { path: '/dashboard',      label: 'Dashboard',      icon: '📊' },
+    { path: '/quick-log',      label: 'Quick Log',      icon: '⚡' },
+    { path: '/transactions',   label: 'Transactions',   icon: '💳' },
+    { path: '/accounts',       label: 'Accounts',       icon: '🏦' },
+    { path: '/insights',       label: 'Insights',       icon: '🔮' },
+    { path: '/budgets',        label: 'Budgets',        icon: '🎯' },
+    { path: '/goals',          label: 'Goals',          icon: '🏆' },
+    { path: '/bills-calendar', label: 'Upcoming Bills', icon: '📅' },
+    { path: '/categories',     label: 'Categories',     icon: '🏷️' },
+    { path: '/reports',        label: 'Reports',        icon: '📈' },
   ];
 
   constructor() {

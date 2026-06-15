@@ -81,7 +81,19 @@ export interface Account {
   id: string;
   name: string;
   type: 'asset' | 'liability';
+  currency?: string;
   initialBalance?: number;
+  createdAt?: string;
+}
+
+export interface Goal {
+  id: string;
+  userId?: string;
+  name: string;
+  targetAmount: number;
+  targetDate: string;
+  currentAmount: number;
+  accountId?: string | null;
   createdAt?: string;
 }
 
@@ -231,6 +243,39 @@ const DEFAULT_ACCOUNTS: Omit<Account, 'createdAt'>[] = [
   { id: 'credit_card',  name: 'Credit Card',      type: 'liability', initialBalance: 0 },
   { id: 'debt_line',    name: 'Debt Line',         type: 'liability', initialBalance: 0 },
 ];
+
+const EXCHANGE_RATES: Record<string, number> = {
+  USD: 1.0,
+  EUR: 0.92,
+  GBP: 0.78,
+  INR: 83.5,
+  CAD: 1.37,
+  AUD: 1.51,
+  JPY: 157.0,
+};
+
+let cachedRates: Record<string, number> = { ...EXCHANGE_RATES };
+let lastRatesFetch = 0;
+
+export async function getExchangeRates(): Promise<Record<string, number>> {
+  const now = Date.now();
+  if (now - lastRatesFetch < 3600000) {
+    return cachedRates;
+  }
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    if (res.ok) {
+      const data = await res.json() as any;
+      if (data && data.rates) {
+        cachedRates = data.rates;
+        lastRatesFetch = now;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to fetch exchange rates, using fallback:', err);
+  }
+  return cachedRates;
+}
 
 // ── DbService ─────────────────────────────────────────────────────────────────
 
@@ -655,11 +700,39 @@ export class DbService {
     return { ...updated, type: updated.type as Category['type'], budget: updated.budget ?? undefined };
   }
 
-  async deleteCategory(userId: string, id: string): Promise<boolean> {
+  async deleteCategory(userId: string, id: string, reassignCategoryId?: string): Promise<{ success: boolean; hasTransactions: boolean; count?: number }> {
     const existing = await prisma.category.findFirst({ where: { id, userId } });
-    if (!existing) return false;
+    if (!existing) return { success: false, hasTransactions: false };
+
+    // Check if there are any transactions using this category
+    const transactionCount = await prisma.transaction.count({
+      where: { userId, category: id }
+    });
+
+    if (transactionCount > 0) {
+      if (!reassignCategoryId) {
+        return { success: false, hasTransactions: true, count: transactionCount };
+      }
+      // Reassign all transactions
+      await prisma.transaction.updateMany({
+        where: { userId, category: id },
+        data: { category: reassignCategoryId }
+      });
+    }
+
+    // Reassign any recurring schedules using this category
+    await prisma.recurringSchedule.updateMany({
+      where: { userId, category: id },
+      data: { category: reassignCategoryId || null }
+    });
+
+    // Delete any budgets for this category
+    await prisma.budget.deleteMany({
+      where: { userId, categoryId: id }
+    });
+
     await prisma.category.delete({ where: { id } });
-    return true;
+    return { success: true, hasTransactions: false };
   }
 
   // ── Accounts ──────────────────────────────────────────────────────────────
@@ -669,10 +742,11 @@ export class DbService {
       where: { userId },
       orderBy: { createdAt: 'asc' },
     });
-    return rows.map((r: PrismaAccountRow) => ({
+    return rows.map((r: any) => ({
       id: r.id,
       name: r.name,
       type: r.type as Account['type'],
+      currency: r.currency || 'USD',
       initialBalance: r.initialBalance,
       createdAt: r.createdAt,
     }));
@@ -688,11 +762,12 @@ export class DbService {
         id: uuidv4(), userId,
         name: data.name,
         type: data.type,
+        currency: data.currency ?? 'USD',
         initialBalance: data.initialBalance ?? 0,
         createdAt: now,
       },
     });
-    return { ...row, type: row.type as Account['type'] };
+    return { ...row, type: row.type as Account['type'], currency: row.currency };
   }
 
   async updateAccount(
@@ -707,10 +782,10 @@ export class DbService {
       data: {
         ...(data.name           !== undefined && { name: data.name }),
         ...(data.type           !== undefined && { type: data.type }),
-        ...(data.initialBalance !== undefined && { initialBalance: data.initialBalance }),
+        ...(data.currency       !== undefined && { currency: data.currency }),
       },
     });
-    return { ...updated, type: updated.type as Account['type'] };
+    return { ...updated, type: updated.type as Account['type'], currency: updated.currency };
   }
 
   async deleteAccount(userId: string, id: string): Promise<boolean> {
@@ -892,7 +967,28 @@ export class DbService {
           : {}),
       },
     });
-    return rows.map(rowToTransaction);
+    const txns = rows.map(rowToTransaction);
+    try {
+      const settings = await this.getSettings(userId);
+      const primaryCurrency = settings.currency || 'USD';
+      const accounts = await this.getAccounts(userId);
+      const rates = await getExchangeRates();
+
+      return txns.map((t: Transaction) => {
+        const acc = accounts.find(a => a.id === t.accountId);
+        const accCurrency = acc?.currency || 'USD';
+        if (accCurrency.toUpperCase() !== primaryCurrency.toUpperCase()) {
+          const fromRate = rates[accCurrency.toUpperCase()] || 1.0;
+          const toRate = rates[primaryCurrency.toUpperCase()] || 1.0;
+          const convertedAmount = (t.amount / fromRate) * toRate;
+          return { ...t, amount: parseFloat(convertedAmount.toFixed(2)) };
+        }
+        return t;
+      });
+    } catch (err) {
+      console.error('Error normalizing currency in getFilteredTransactions:', err);
+      return txns;
+    }
   }
 
   private _buildReport(filtered: Transaction[]) {
@@ -973,7 +1069,7 @@ export class DbService {
         const prompt = `You are a professional financial auditor. Write a formal executive financial summary for the period (${startDate} to ${endDate}):\n\nMETRICS:\n- Income: $${income.toFixed(2)}\n- Expenses: $${expenses.toFixed(2)} (Fixed: $${fixedExpenses.toFixed(2)} [${fixedPct}%], Variable: $${variableExpenses.toFixed(2)} [${variablePct}%])\n- Net: $${net.toFixed(2)}\n- Savings Rate: ${savingsRate.toFixed(1)}%\n\nTOP CATEGORIES:\n${topCategoriesText || 'None'}\n\nReturn JSON: { "healthOverview": "...", "categoryAudit": "...", "runwayOutlook": "...", "recommendations": ["...","...","..."] }`;
 
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1069,7 +1165,7 @@ PREVIOUS PERIOD (${prevStartDate} to ${prevEndDate}):
 Return JSON: { "summary": "2-3 sentence comparison of the two periods", "advice": [ { "icon": "emoji", "title": "short title", "text": "1-2 sentence action", "type": "good|warn|info|bad" }, ... ] } — exactly 4 advice items.`;
 
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1133,6 +1229,101 @@ Return JSON: { "summary": "2-3 sentence comparison of the two periods", "advice"
       summary: `You earned $${curr.income.toFixed(2)} and spent $${curr.expenses.toFixed(2)} this period. ${expChange > 10 ? `Expenses rose ${expChange.toFixed(0)}% vs the previous period.` : expChange < -10 ? `Expenses dropped ${Math.abs(expChange).toFixed(0)}% vs the previous period.` : 'Spending was relatively stable vs the previous period.'}`,
       advice,
     };
+  }
+
+  // ── AI Chat Copilot ───────────────────────────────────────────────────────
+
+  async getAiChatResponse(
+    userId: string,
+    chatHistory: Array<{ role: 'user' | 'model'; text: string }>
+  ): Promise<{ response: string }> {
+    const apiKey = process.env['GEMINI_API_KEY'];
+    if (!apiKey) {
+      return { response: 'AI Copilot is unavailable because the GEMINI_API_KEY is not configured on the server. Please add it to your environment file.' };
+    }
+
+    try {
+      // 1. Gather live financial context
+      const accounts = await this.getAccounts(userId);
+      const budgets = await this.getBudgets(userId);
+      const categories = await this.getCategories(userId);
+      const recentTxns = await prisma.transaction.findMany({
+        where: { userId },
+        take: 20,
+        orderBy: [
+          { date: 'desc' },
+          { createdAt: 'desc' }
+        ],
+      });
+
+      const settings = await this.getSettings(userId);
+      const currency = settings.currency || 'USD';
+
+      // Format accounts context
+      const accountsStr = accounts.map((a: any) => `- ${a.name}: $${(a.initialBalance ?? 0).toFixed(2)} (${a.type})`).join('\n');
+      
+      // Format budgets context
+      const budgetsStr = budgets.map((b: any) => {
+        return `- Category: ${b.categoryName || b.categoryId}, Limit $${b.amount.toFixed(2)}, Period: ${b.period}, Spent: $${b.spent.toFixed(2)}`;
+      }).join('\n');
+
+      // Format recent transactions context
+      const txnsStr = recentTxns.map((t: any) => {
+        const catName = categories.find(c => c.id === t.category)?.name ?? t.category;
+        return `- ${t.date}: ${t.type === 'income' ? '+' : t.type === 'expense' ? '-' : ''}$${t.amount.toFixed(2)} | ${t.description} (${catName})`;
+      }).join('\n');
+
+      const systemInstruction = `You are TCFlow Copilot, an expert AI personal financial advisor integrated inside the TCFlow (FinTrack Pro) app.
+Your tone is encouraging, professional, analytical, and friendly. Always format amounts in ${currency}.
+Use markdown (bold, bullet lists) to make recommendations easy to scan. Be concise.
+
+Below is the user's live financial data for context:
+
+ACCOUNTS:
+${accountsStr || 'No accounts created.'}
+
+BUDGETS:
+${budgetsStr || 'No budgets set.'}
+
+RECENT TRANSACTIONS (Last 20):
+${txnsStr || 'No recent transactions logged.'}
+
+Guidelines:
+1. Provide concrete suggestions. If spending is high in a category, give advice.
+2. If asked about math (e.g. totals), calculate it accurately based on the transactions list.
+3. Do not make up accounts or transactions not listed above. Refer strictly to this context.`;
+
+      // Map history to Gemini API format
+      const contents = chatHistory.map(msg => ({
+        role: msg.role === 'model' ? 'model' : 'user',
+        parts: [{ text: msg.text }]
+      }));
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            contents,
+            generationConfig: { maxOutputTokens: 800 },
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const json = await response.json() as any;
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          return { response: text };
+        }
+      }
+      throw new Error(`Gemini API returned status ${response.status}`);
+    } catch (err: any) {
+      console.error('Gemini Chat error:', err);
+      return { response: `I encountered an error connecting to the AI service: ${err?.message || 'Unknown error'}. Please try again later.` };
+    }
   }
 
   // ── Bank Imports (future feature) ─────────────────────────────────────────
@@ -1226,6 +1417,278 @@ Return JSON: { "summary": "2-3 sentence comparison of the two periods", "advice"
       errorMessage: updated.errorMessage ?? undefined,
       completedAt: updated.completedAt ?? undefined,
     };
+  }
+
+  // ── Goals CRUD ────────────────────────────────────────────────────────────
+
+  async getGoals(userId: string): Promise<Goal[]> {
+    const rows = await prisma.goal.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      targetAmount: r.targetAmount,
+      targetDate: r.targetDate,
+      currentAmount: r.currentAmount,
+      accountId: r.accountId ?? undefined,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  async createGoal(userId: string, data: Omit<Goal, 'id' | 'createdAt'>): Promise<Goal> {
+    const now = new Date().toISOString();
+    const id = uuidv4();
+    const row = await prisma.goal.create({
+      data: {
+        id,
+        userId,
+        name: data.name,
+        targetAmount: data.targetAmount,
+        targetDate: data.targetDate,
+        currentAmount: data.currentAmount ?? 0,
+        accountId: data.accountId ?? null,
+        createdAt: now,
+      },
+    });
+    return {
+      id: row.id,
+      name: row.name,
+      targetAmount: row.targetAmount,
+      targetDate: row.targetDate,
+      currentAmount: row.currentAmount,
+      accountId: row.accountId ?? undefined,
+      createdAt: row.createdAt,
+    };
+  }
+
+  async updateGoal(userId: string, id: string, data: Partial<Goal>): Promise<Goal | null> {
+    const existing = await prisma.goal.findFirst({ where: { id, userId } });
+    if (!existing) return null;
+    const updated = await prisma.goal.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.targetAmount !== undefined && { targetAmount: data.targetAmount }),
+        ...(data.targetDate !== undefined && { targetDate: data.targetDate }),
+        ...(data.currentAmount !== undefined && { currentAmount: data.currentAmount }),
+        ...(data.accountId !== undefined && { accountId: data.accountId ?? null }),
+      },
+    });
+    return {
+      id: updated.id,
+      name: updated.name,
+      targetAmount: updated.targetAmount,
+      targetDate: updated.targetDate,
+      currentAmount: updated.currentAmount,
+      accountId: updated.accountId ?? undefined,
+      createdAt: updated.createdAt,
+    };
+  }
+
+  async deleteGoal(userId: string, id: string): Promise<boolean> {
+    const existing = await prisma.goal.findFirst({ where: { id, userId } });
+    if (!existing) return false;
+    await prisma.goal.delete({ where: { id } });
+    return true;
+  }
+
+  async suggestCategory(userId: string, description: string, type: string): Promise<string | null> {
+    const categories = await this.getCategories(userId);
+    const recentTxns = await prisma.transaction.findMany({
+      where: { userId, type },
+      take: 100,
+      orderBy: { date: 'desc' },
+      select: { description: true, category: true },
+    });
+
+    const apiKey = process.env['GEMINI_API_KEY'];
+    if (apiKey && categories.length > 0) {
+      try {
+        const catList = categories.map(c => `- ${c.id}: ${c.name} (${c.type})`).join('\n');
+        const examples = recentTxns.slice(0, 15).map((t: any) => `- "${t.description}" -> ${t.category}`).join('\n');
+        
+        const prompt = `You are a financial classification system. Map a new transaction description to the most appropriate category ID from the list below.
+        
+CATEGORIES AVAILABLE:
+${catList}
+
+RECENT EXAMPLES FOR REFERENCE:
+${examples || 'None'}
+
+NEW TRANSACTION DESCRIPTION:
+"${description}"
+Type: ${type}
+
+Respond with ONLY the exact category ID (e.g. food) from the list. If unsure, respond with: null`;
+
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { maxOutputTokens: 20 },
+            }),
+          }
+        );
+        if (response.ok) {
+          const json = await response.json() as any;
+          const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (text) {
+            const cleanId = text.replace(/['"`\s]/g, '');
+            const matching = categories.find(c => c.id.toLowerCase() === cleanId.toLowerCase() || c.name.toLowerCase() === cleanId.toLowerCase());
+            if (matching) return matching.id;
+          }
+        }
+      } catch (err) {
+        console.error('AI category suggestion failed:', err);
+      }
+    }
+
+    // Heuristic fallback
+    const descLower = description.toLowerCase();
+    for (const cat of categories) {
+      if (descLower.includes(cat.name.toLowerCase()) || descLower.includes(cat.id.toLowerCase())) {
+        return cat.id;
+      }
+    }
+    // Check recent exact description match
+    const exactMatch = recentTxns.find((t: any) => t.description.toLowerCase() === descLower);
+    if (exactMatch && exactMatch.category) return exactMatch.category;
+
+    return null;
+  }
+
+  // ── Smart Subscription/Bill Detector ───────────────────────────────────────
+
+  async detectRecurringBills(userId: string): Promise<any[]> {
+    const transactions = await prisma.transaction.findMany({
+      where: { userId, type: { in: ['income', 'expense'] } },
+      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    if (transactions.length < 2) return [];
+
+    const existingSchedules = await this.getRecurringSchedules(userId);
+    const existingNormalized = new Set(
+      existingSchedules.map(s => this.normalizeDescription(s.description))
+    );
+
+    const groups: Record<string, any[]> = {};
+    transactions.forEach((t: any) => {
+      const norm = this.normalizeDescription(t.description);
+      if (norm.length >= 3) {
+        if (!groups[norm]) groups[norm] = [];
+        groups[norm].push(t);
+      }
+    });
+
+    const suggestions: any[] = [];
+
+    const addDays = (dateStr: string, days: number): string => {
+      const d = new Date(dateStr + 'T00:00:00');
+      d.setDate(d.getDate() + days);
+      return d.toISOString().split('T')[0];
+    };
+
+    for (const [normDesc, txns] of Object.entries(groups)) {
+      if (txns.length < 2) continue;
+      if (existingNormalized.has(normDesc)) continue;
+
+      const intervals: number[] = [];
+      for (let i = 1; i < txns.length; i++) {
+        const d1 = new Date(txns[i - 1].date + 'T00:00:00').getTime();
+        const d2 = new Date(txns[i].date + 'T00:00:00').getTime();
+        const diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+        intervals.push(diffDays);
+      }
+
+      const avgInterval = intervals.reduce((s, x) => s + x, 0) / intervals.length;
+      
+      let consistent = true;
+      if (intervals.length >= 2) {
+        for (const interval of intervals) {
+          if (Math.abs(interval - avgInterval) > 4) {
+            consistent = false;
+            break;
+          }
+        }
+      }
+
+      if (!consistent) continue;
+
+      let frequency: 'weekly' | 'monthly' | 'yearly' | null = null;
+      let targetInterval = 30;
+
+      if (avgInterval >= 5 && avgInterval <= 9) {
+        frequency = 'weekly';
+        targetInterval = 7;
+      } else if (avgInterval >= 11 && avgInterval <= 16) {
+        frequency = 'weekly';
+        targetInterval = 14;
+      } else if (avgInterval >= 25 && avgInterval <= 34) {
+        frequency = 'monthly';
+        targetInterval = 30;
+      } else if (avgInterval >= 340 && avgInterval <= 380) {
+        frequency = 'yearly';
+        targetInterval = 365;
+      }
+
+      if (!frequency) continue;
+
+      const amounts = txns.map(t => t.amount);
+      const minAmount = Math.min(...amounts);
+      const maxAmount = Math.max(...amounts);
+      const avgAmount = amounts.reduce((s, x) => s + x, 0) / amounts.length;
+
+      const amtDiff = maxAmount - minAmount;
+      const amtDiffPct = maxAmount > 0 ? (amtDiff / maxAmount) * 100 : 0;
+      
+      if (amtDiff > 5 && amtDiffPct > 12) continue;
+
+      const categoriesCount: Record<string, number> = {};
+      const accountsCount: Record<string, number> = {};
+      txns.forEach(t => {
+        categoriesCount[t.category] = (categoriesCount[t.category] || 0) + 1;
+        accountsCount[t.accountId] = (accountsCount[t.accountId] || 0) + 1;
+      });
+
+      const mostCommonCategory = Object.entries(categoriesCount).sort((a, b) => b[1] - a[1])[0][0];
+      const mostCommonAccount = Object.entries(accountsCount).sort((a, b) => b[1] - a[1])[0][0];
+
+      const latestTxn = txns[txns.length - 1];
+      const nextDue = addDays(latestTxn.date, targetInterval);
+
+      suggestions.push({
+        description: latestTxn.description,
+        type: latestTxn.type,
+        amount: Math.round(avgAmount * 100) / 100,
+        category: mostCommonCategory,
+        accountId: mostCommonAccount,
+        frequency,
+        startDate: latestTxn.date,
+        nextDueDate: nextDue,
+        matchCount: txns.length,
+      });
+    }
+
+    return suggestions;
+  }
+
+  normalizeDescription(desc: string): string {
+    if (!desc) return '';
+    return desc
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/[0-9]/g, '')
+      .replace(/\b(at|in|on|to|from|for|of|with|by|the|an|a)\b/gi, '')
+      .replace(/\b(purchase|txn|payment|charge|recurring|subscription|direct debit|dd)\b/gi, '')
+      .replace(/(?:[^a-zA-Z\s]|^)(?:com|co|net|org|edu|gov|io|app)(?:\b|$)/gi, '')
+      .replace(/[^a-z\s]/gi, '')
+      .trim();
   }
 }
 

@@ -99,6 +99,7 @@ export function clearSession(req: Request): void {
 
 export function requireAuth(req: Request, res: Response, next: () => void): void {
   const session = getSession(req);
+  console.log('[DEBUG requireAuth USER]', session['user']);
   if (session['user']) {
     next();
   } else {

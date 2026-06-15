@@ -151,8 +151,20 @@ export function createApiRouter(): Router {
 
   router.delete('/categories/:id', async (req: Request, res: Response): Promise<void> => {
     try {
-      if (!await dbService.deleteCategory(getUserId(req), pid(req))) {
-        fail(res, 'Category not found', 404); return;
+      const { reassignTo } = req.query as Record<string, string>;
+      const result = await dbService.deleteCategory(getUserId(req), pid(req), reassignTo);
+      if (!result.success) {
+        if (result.hasTransactions) {
+          res.status(400).json({
+            success: false,
+            error: 'HAS_TRANSACTIONS',
+            message: `Category has ${result.count} transactions associated with it.`,
+            count: result.count
+          });
+          return;
+        }
+        fail(res, 'Category not found', 404);
+        return;
       }
       ok(res, null, 'Category deleted');
     } catch (e) { fail(res, e); }
@@ -245,6 +257,115 @@ export function createApiRouter(): Router {
     } catch (e) { fail(res, e); }
   });
 
+  router.post('/reports/ai-chat', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { messages } = req.body;
+      if (!messages || !Array.isArray(messages)) {
+        fail(res, 'Missing required body parameter: messages array', 400); return;
+      }
+      ok(res, await dbService.getAiChatResponse(getUserId(req), messages));
+    } catch (e) { fail(res, e); }
+  });
+
+  // ── Goals ──────────────────────────────────────────────────────────────────
+
+  router.get('/goals', async (req: Request, res: Response): Promise<void> => {
+    try {
+      ok(res, await dbService.getGoals(getUserId(req)));
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/goals', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { name, targetAmount, targetDate, currentAmount, accountId } = req.body;
+      if (!name || !targetAmount || !targetDate) {
+        fail(res, 'Missing required fields: name, targetAmount, targetDate', 400);
+        return;
+      }
+      ok(res, await dbService.createGoal(getUserId(req), {
+        name,
+        targetAmount: parseFloat(targetAmount),
+        targetDate,
+        currentAmount: currentAmount != null ? parseFloat(currentAmount) : 0,
+        accountId,
+      }), 'Goal created');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.put('/goals/:id', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const g = await dbService.updateGoal(getUserId(req), pid(req), req.body);
+      if (!g) { fail(res, 'Goal not found', 404); return; }
+      ok(res, g, 'Goal updated');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.delete('/goals/:id', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const deleted = await dbService.deleteGoal(getUserId(req), pid(req));
+      if (!deleted) { fail(res, 'Goal not found', 404); return; }
+      ok(res, null, 'Goal deleted');
+    } catch (e) { fail(res, e); }
+  });
+
+  // ── Exchange Rates ──────────────────────────────────────────────────────────
+
+  router.get('/exchange-rates', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { getExchangeRates } = await import('./db.service.js');
+      const rates = await getExchangeRates();
+      ok(res, rates);
+    } catch (e) { fail(res, e); }
+  });
+
+  // ── AI Suggest Category ─────────────────────────────────────────────────────
+
+  router.get('/ai/suggest-category', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { description, type } = req.query as Record<string, string>;
+      if (!description || !type) {
+        fail(res, 'Missing required parameters: description, type', 400);
+        return;
+      }
+      const suggestion = await dbService.suggestCategory(getUserId(req), description, type);
+      ok(res, { categoryId: suggestion });
+    } catch (e) { fail(res, e); }
+  });
+
+  // ── PDF Audit Printable ────────────────────────────────────────────────────
+
+  router.get('/reports/pdf-audit', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { startDate, endDate, accountId } = req.query as Record<string, string>;
+      if (!startDate || !endDate) {
+        fail(res, 'startDate and endDate are required', 400); return;
+      }
+      const audit = await dbService.getExecutiveReport(getUserId(req), startDate, endDate, accountId);
+      
+      const markdown = `
+# TCFlow Financial Audit Report
+**Period:** ${startDate} to ${endDate}
+**Generated on:** ${new Date().toLocaleDateString()}
+
+## 1. Executive Summary
+${audit.healthOverview}
+
+## 2. Commitments & Category Outflows
+${audit.categoryAudit}
+
+## 3. Runway & Cash buffer
+${audit.runwayOutlook}
+
+## 4. Key Action Items & Recommendations
+${audit.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n')}
+
+---
+*FinTrack Pro — Private & Confidential*
+`;
+      ok(res, { markdown });
+    } catch (e) { fail(res, e); }
+  });
+
   // ── Accounts ────────────────────────────────────────────────────────────────
 
   router.get('/accounts', async (req: Request, res: Response): Promise<void> => {
@@ -282,6 +403,12 @@ export function createApiRouter(): Router {
   });
 
   // ── Recurring Schedules ───────────────────────────────────────────────────
+  
+  router.get('/recurring/detect', async (req: Request, res: Response): Promise<void> => {
+    try {
+      ok(res, await dbService.detectRecurringBills(getUserId(req)));
+    } catch (e) { fail(res, e); }
+  });
 
   router.get('/recurring', async (req: Request, res: Response): Promise<void> => {
     try {

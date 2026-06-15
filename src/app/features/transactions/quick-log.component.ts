@@ -6,6 +6,7 @@ import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
 import { AccountService } from '../../core/services/account.service';
 import { ToastService } from '../../core/services/toast.service';
+import { ApiService } from '../../core/services/api.service';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 
 @Component({
@@ -14,8 +15,30 @@ import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
   imports: [CommonModule, FormsModule, RouterLink, CurrencyFormatPipe],
   templateUrl: './quick-log.component.html',
   styles: [`
-    .quick-log-page { padding: 1.5rem 1rem; display: flex; justify-content: center; min-height: calc(100vh - 4rem); }
-    .quick-log-card { width: min(100%, 580px); display: flex; flex-direction: column; gap: 1.25rem; padding: 1.75rem; align-self: flex-start; }
+    :host {
+      display: block;
+      height: 100%;
+      width: 100%;
+    }
+    .quick-log-page {
+      padding: 1.5rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .quick-log-card {
+      width: min(100%, 580px);
+      max-height: calc(100% - 3rem);
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      padding: 1.75rem;
+      overflow-y: auto;
+    }
     .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
     .eyebrow { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent-blue-light); margin-bottom: 0.25rem; }
     h1 { margin: 0; font-size: 1.5rem; line-height: 1.2; color: var(--text-primary); }
@@ -48,6 +71,10 @@ import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
     .recent-icon { font-size: 1rem; flex-shrink: 0; width: 24px; text-align: center; }
     .recent-desc { flex: 1; font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .recent-amount { font-size: 0.8125rem; font-weight: 600; flex-shrink: 0; }
+    .category-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.125rem; }
+    .ai-categorize-badge { font-size: 0.7rem; font-weight: 600; padding: 0.125rem 0.375rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.25rem; }
+    .ai-categorize-badge.loading { color: var(--accent-yellow); background: rgba(255,193,7,0.1); }
+    .ai-categorize-badge.success { color: var(--accent-green); background: rgba(76,175,80,0.1); }
     @media (max-width: 600px) { .quick-log-card { padding: 1.25rem; } .page-header { flex-direction: column; } .form-row { grid-template-columns: 1fr; } }
   `]
 })
@@ -56,11 +83,15 @@ export class QuickLogComponent implements OnInit {
   categoryService = inject(CategoryService);
   accountService = inject(AccountService);
   private toast = inject(ToastService);
-
+  private api = inject(ApiService);
+ 
   submitting = signal(false);
   justSaved = signal(false);
   lastSavedDesc = signal('');
   lastSavedAmount = signal('');
+  aiCategorizing = signal(false);
+  aiSuggested = signal(false);
+  private debounceTimeout: any;
 
   form = {
     type: 'expense' as 'income' | 'expense' | 'transfer',
@@ -83,6 +114,7 @@ export class QuickLogComponent implements OnInit {
 
   setType(type: 'income' | 'expense' | 'transfer') {
     this.form.type = type;
+    this.aiSuggested.set(false);
     if (type === 'transfer') {
       this.form.category = '';
     } else {
@@ -91,6 +123,39 @@ export class QuickLogComponent implements OnInit {
       if (type === 'income' && !inIncome) this.form.category = '';
       if (type === 'expense' && !inExpense) this.form.category = '';
     }
+  }
+
+  onDescriptionChange(desc: string) {
+    if (this.debounceTimeout) clearTimeout(this.debounceTimeout);
+    if (this.form.type === 'transfer' || !desc || desc.trim().length < 3) {
+      this.aiSuggested.set(false);
+      return;
+    }
+
+    this.debounceTimeout = setTimeout(() => {
+      this.aiCategorizing.set(true);
+      this.api.suggestCategory(desc, this.form.type).subscribe({
+        next: res => {
+          this.aiCategorizing.set(false);
+          if (res.success && res.data?.categoryId) {
+            const catId = res.data.categoryId;
+            const categories = this.form.type === 'income'
+              ? this.categoryService.incomeCategories()
+              : this.categoryService.expenseCategories();
+            
+            const exists = categories.some(c => c.id === catId);
+            if (exists) {
+              this.form.category = catId;
+              this.aiSuggested.set(true);
+              this.toast.info(`AI Auto-classified as: ${this.getCategoryName(catId)}`);
+            }
+          }
+        },
+        error: () => {
+          this.aiCategorizing.set(false);
+        }
+      });
+    }, 600);
   }
 
   isValid() {
@@ -139,6 +204,7 @@ export class QuickLogComponent implements OnInit {
   getCategoryName(id: string) { return this.categoryService.getCategoryById(id)?.name ?? id; }
 
   private resetForm() {
+    this.aiSuggested.set(false);
     this.form = {
       type: this.form.type,
       amount: null,

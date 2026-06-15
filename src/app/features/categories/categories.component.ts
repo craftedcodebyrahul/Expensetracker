@@ -148,16 +148,48 @@ const PRESET_ICONS = ['💰', '🍽️', '🚗', '🏠', '💡', '🏥', '🎬',
 
     <!-- Delete Confirm -->
     @if (deletingCategory()) {
-      <div class="modal-overlay" (click)="cancelDelete()">
+      <div class="modal-overlay" (click)="onDeleteOverlayClick($event)">
         <div class="modal" style="max-width: 400px;" role="alertdialog">
-          <div class="modal-header"><h3>Delete Category</h3></div>
+          <div class="modal-header">
+            <h3>Delete Category</h3>
+            <button class="btn btn-ghost btn-icon" (click)="cancelDelete()">✕</button>
+          </div>
           <div class="modal-body">
             <p>Delete <strong>{{ deletingCategory()!.name }}</strong>?</p>
-            <p class="text-muted text-sm mt-2">Transactions using this category will keep the category ID but may not display correctly.</p>
+            
+            @if (showReassignOptions()) {
+              <div class="warning-box mt-3 mb-3" style="background: rgba(255, 193, 7, 0.1); border: 1px solid var(--accent-yellow); padding: 0.75rem; border-radius: var(--radius-sm); font-size: 0.875rem; color: var(--accent-yellow); display: flex; flex-direction: column; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
+                  <span>⚠️</span>
+                  <span>Category In Use</span>
+                </div>
+                <p style="color: var(--text-secondary); margin: 0;">This category is used in <strong>{{ affectedCount() }}</strong> transaction(s) or recurring schedule(s). To delete it, you must reassign them to another category.</p>
+              </div>
+
+              <div class="form-group" style="margin-top: 1rem;">
+                <label class="form-label" style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500; color: var(--text-secondary);">Reassign to *</label>
+                <select class="form-control" [(ngModel)]="reassignCategoryId" style="width: 100%;" required>
+                  <option value="" disabled>Select a replacement category</option>
+                  @for (cat of getReassignCategories(); track cat.id) {
+                    <option [value]="cat.id">{{ cat.icon }} {{ cat.name }} ({{ cat.type }})</option>
+                  }
+                </select>
+              </div>
+            } @else {
+              <p class="text-muted text-sm mt-2">Transactions using this category will keep the category ID but may not display correctly.</p>
+            }
           </div>
           <div class="modal-footer">
             <button class="btn btn-ghost" (click)="cancelDelete()">Cancel</button>
-            <button class="btn btn-danger" (click)="deleteCategory()">Delete</button>
+            @if (showReassignOptions()) {
+              <button class="btn btn-primary" (click)="deleteCategory()" [disabled]="!reassignCategoryId || submitting()">
+                {{ submitting() ? 'Processing...' : 'Confirm Reassign & Delete' }}
+              </button>
+            } @else {
+              <button class="btn btn-danger" (click)="deleteCategory()" [disabled]="submitting()">
+                {{ submitting() ? 'Deleting...' : 'Delete' }}
+              </button>
+            }
           </div>
         </div>
       </div>
@@ -277,6 +309,11 @@ export class CategoriesComponent implements OnInit {
   deletingCategory = signal<Category | undefined>(undefined);
   submitting = signal(false);
 
+  // Reassignment state variables
+  showReassignOptions = signal(false);
+  reassignCategoryId = '';
+  affectedCount = signal(0);
+
   presetColors = PRESET_COLORS;
   presetIcons = PRESET_ICONS;
 
@@ -320,19 +357,65 @@ export class CategoriesComponent implements OnInit {
     });
   }
 
-  confirmDelete(cat: Category) { this.deletingCategory.set(cat); }
-  cancelDelete() { this.deletingCategory.set(undefined); }
+  confirmDelete(cat: Category) {
+    this.deletingCategory.set(cat);
+    this.showReassignOptions.set(false);
+    this.reassignCategoryId = '';
+    this.affectedCount.set(0);
+  }
+
+  cancelDelete() {
+    this.deletingCategory.set(undefined);
+    this.showReassignOptions.set(false);
+    this.reassignCategoryId = '';
+    this.affectedCount.set(0);
+  }
 
   deleteCategory() {
     const cat = this.deletingCategory();
     if (!cat) return;
-    this.categoryService.deleteCategory(cat.id).subscribe(() => {
-      this.deletingCategory.set(undefined);
-      this.toast.success('Category deleted');
+    this.submitting.set(true);
+    const reassignTo = this.showReassignOptions() ? this.reassignCategoryId : undefined;
+    this.categoryService.deleteCategory(cat.id, reassignTo).subscribe({
+      next: (res: any) => {
+        this.submitting.set(false);
+        this.deletingCategory.set(undefined);
+        this.showReassignOptions.set(false);
+        this.reassignCategoryId = '';
+        this.affectedCount.set(0);
+        this.toast.success(reassignTo ? 'Category deleted and transactions reassigned!' : 'Category deleted');
+      },
+      error: (err: any) => {
+        this.submitting.set(false);
+        console.error('Category delete error:', err);
+        if (err?.error?.error === 'HAS_TRANSACTIONS') {
+          this.showReassignOptions.set(true);
+          this.affectedCount.set(err.error.count || 0);
+          this.toast.warning('Category has transactions. Please select a category to reassign them to.');
+        } else {
+          this.toast.error(err?.error?.message || 'Failed to delete category');
+        }
+      }
     });
+  }
+
+  getReassignCategories() {
+    const deletingCat = this.deletingCategory();
+    if (!deletingCat) return [];
+    const filtered = this.categoryService.categories().filter(c => 
+      c.id !== deletingCat.id && 
+      (c.type === deletingCat.type || c.type === 'both' || deletingCat.type === 'both')
+    );
+    return filtered.length > 0 
+      ? filtered 
+      : this.categoryService.categories().filter(c => c.id !== deletingCat.id);
   }
 
   onOverlayClick(e: MouseEvent) {
     if ((e.target as HTMLElement).classList.contains('modal-overlay')) this.closeForm();
+  }
+
+  onDeleteOverlayClick(e: MouseEvent) {
+    if ((e.target as HTMLElement).classList.contains('modal-overlay')) this.cancelDelete();
   }
 }

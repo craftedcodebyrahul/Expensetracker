@@ -31,6 +31,7 @@ model User {
   budgets            Budget[]
   bankImports        BankImport[]
   settings           Settings?
+  goals              Goal[]
 
   @@map("users")
 }
@@ -42,6 +43,7 @@ model Account {
   userId         String  @map("user_id")
   name           String
   type           String                // 'asset' | 'liability'
+  currency       String  @default("USD")
   initialBalance Float   @default(0) @map("initial_balance")
   createdAt      String  @map("created_at")
 
@@ -200,4 +202,22 @@ model BankImport {
 
   @@index([userId, createdAt(sort: Desc)])
   @@map("bank_imports")
+}
+
+// ── GOALS ───────────────────────────────────────────────────────────────────────
+
+model Goal {
+  id            String @id
+  userId        String @map("user_id")
+  name          String
+  targetAmount  Float  @map("target_amount")
+  targetDate    String @map("target_date")          // YYYY-MM-DD
+  currentAmount Float  @default(0) @map("current_amount")
+  accountId     String? @map("account_id")          // Optional linked savings account
+  createdAt     String @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("goals")
 }
