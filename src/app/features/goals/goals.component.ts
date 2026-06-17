@@ -5,6 +5,7 @@ import { GoalService } from '../../core/services/goal.service';
 import { AccountService } from '../../core/services/account.service';
 import { TransactionService } from '../../core/services/transaction.service';
 import { ToastService } from '../../core/services/toast.service';
+import { ApiService } from '../../core/services/api.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { Goal } from '../../core/models';
@@ -84,6 +85,7 @@ import { Goal } from '../../core/models';
                   <div class="gc-title-row">
                     <span class="gc-name">{{ goal.name }}</span>
                     <div class="gc-actions">
+                      <button class="btn btn-ghost btn-icon btn-sm" (click)="getBuddyAdvice(goal)" title="Goal Buddy Advisor" style="padding: 0.25rem;">💬</button>
                       <button class="btn btn-ghost btn-icon btn-sm" (click)="openContribute(goal)" title="Add Savings" style="padding: 0.25rem;">💰</button>
                       <button class="btn btn-ghost btn-icon btn-sm" (click)="editGoal(goal)" title="Edit Goal" style="padding: 0.25rem;">✏️</button>
                       <button class="btn btn-ghost btn-icon btn-sm" (click)="confirmDelete(goal)" title="Delete Goal" style="padding: 0.25rem;">🗑️</button>
@@ -212,6 +214,70 @@ import { Goal } from '../../core/models';
             <button class="btn btn-success" (click)="submitContribution()" [disabled]="!contributionAmount || contributionAmount <= 0">
               Add Savings
             </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Goal Buddy Advice Modal -->
+    @if (showBuddyModal()) {
+      <div class="modal-overlay" (click)="showBuddyModal.set(false)">
+        <div class="modal" style="max-width: 500px;" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <h3>💬 Goal Buddy Advisor: {{ buddyGoalName() }}</h3>
+            <button class="btn btn-ghost btn-icon" (click)="showBuddyModal.set(false)">✕</button>
+          </div>
+          <div class="modal-body" style="padding-top: 0.5rem;">
+            @if (loadingBuddy()) {
+              <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem 1rem; gap: 1rem;">
+                <div class="spinner"></div>
+                <p style="color: var(--text-muted); font-size: 0.9rem;">Consulting your financial buddy...</p>
+              </div>
+            } @else if (buddyAdviceObj()) {
+              <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                
+                <!-- Status Badge -->
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                  <span style="font-size: 0.875rem; color: var(--text-muted);">Current Status:</span>
+                  <span class="badge" [class.badge-income]="buddyAdviceObj().status === 'on_track'" [class.badge-expense]="buddyAdviceObj().status !== 'on_track'"
+                        style="font-size: 0.8rem; font-weight: 700; padding: 0.35rem 0.75rem; border-radius: 50px;">
+                    {{ buddyAdviceObj().status === 'on_track' ? '🟢 ON TRACK' : '🔴 OFF TRACK' }}
+                  </span>
+                </div>
+
+                <!-- Buddy Bubble Message -->
+                <div class="buddy-bubble" style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 16px; padding: 1.25rem; position: relative;">
+                  <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                    <span style="font-size: 1.75rem; line-height: 1;">🤖</span>
+                    <div style="flex: 1;">
+                      <span class="buddy-speech" style="font-size: 0.9rem; line-height: 1.5; color: var(--text-primary); font-style: italic;">
+                        "{{ buddyAdviceObj().buddyMessage }}"
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Suggested Actions Checklist -->
+                <div>
+                  <h4 style="font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 0.75rem;">
+                    💡 Suggested Actions:
+                  </h4>
+                  <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.75rem;">
+                    @for (action of buddyAdviceObj().suggestedActions; track action) {
+                      <li style="display: flex; gap: 0.75rem; align-items: flex-start; font-size: 0.875rem; line-height: 1.4; color: var(--text-secondary);">
+                        <input type="checkbox" style="margin-top: 0.2rem; cursor: pointer; flex-shrink: 0; width: 16px; height: 16px; accent-color: var(--accent-blue);">
+                        <span>{{ action }}</span>
+                      </li>
+                    }
+                  </ul>
+                </div>
+              </div>
+            } @else {
+              <p style="color: var(--text-muted); text-align: center; padding: 2rem 0;">No advice available.</p>
+            }
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-primary" (click)="showBuddyModal.set(false)">Got it, thanks!</button>
           </div>
         </div>
       </div>
@@ -357,6 +423,31 @@ import { Goal } from '../../core/models';
 
     @media (max-width: 900px) { .goals-grid { grid-template-columns: 1fr; } }
     @media (max-width: 640px) { .goals-page { padding: 1rem; } .overview-bar { flex-direction: column; align-items: flex-start; padding: 1rem; } .overview-divider { display: none; } }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .buddy-bubble {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1rem;
+      position: relative;
+    }
+    .buddy-speech {
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: var(--text-primary);
+      font-style: italic;
+    }
   `]
 })
 export class GoalsComponent implements OnInit {
@@ -364,6 +455,12 @@ export class GoalsComponent implements OnInit {
   accountService = inject(AccountService);
   txnService = inject(TransactionService);
   private toast = inject(ToastService);
+  private api = inject(ApiService);
+
+  showBuddyModal = signal(false);
+  loadingBuddy = signal(false);
+  buddyAdviceObj = signal<any | null>(null);
+  buddyGoalName = signal<string>('');
 
   protected Math = Math;
   showForm = signal(false);
@@ -401,6 +498,29 @@ export class GoalsComponent implements OnInit {
     if (total === 0) return 0;
     return Math.round((this.totalSavedAmount() / total) * 100);
   });
+
+  getBuddyAdvice(goal: Goal) {
+    this.buddyGoalName.set(goal.name);
+    this.showBuddyModal.set(true);
+    this.loadingBuddy.set(true);
+    this.buddyAdviceObj.set(null);
+    this.api.goalBuddyAdvisor(goal.id).subscribe({
+      next: (res) => {
+        this.loadingBuddy.set(false);
+        if (res.success) {
+          this.buddyAdviceObj.set(res.data);
+        } else {
+          this.toast.error(res.error || 'Failed to get advice');
+          this.showBuddyModal.set(false);
+        }
+      },
+      error: (err) => {
+        this.loadingBuddy.set(false);
+        this.toast.error('Failed to contact financial advisor buddy.');
+        this.showBuddyModal.set(false);
+      }
+    });
+  }
 
   ngOnInit() {
     this.goalService.loadGoals().subscribe();

@@ -233,9 +233,9 @@ export function createApiRouter(): Router {
 
   router.get('/reports/executive', async (req: Request, res: Response): Promise<void> => {
     try {
-      const { startDate, endDate, accountId } = req.query as Record<string, string>;
+      const { startDate, endDate, accountId, useAi } = req.query as Record<string, string>;
       if (!startDate || !endDate) { fail(res, 'startDate and endDate are required', 400); return; }
-      ok(res, await dbService.getExecutiveReport(getUserId(req), startDate, endDate, accountId));
+      ok(res, await dbService.getExecutiveReport(getUserId(req), startDate, endDate, accountId, useAi === 'true'));
     } catch (e) { fail(res, e); }
   });
 
@@ -249,21 +249,74 @@ export function createApiRouter(): Router {
 
   router.get('/reports/ai-advice', async (req: Request, res: Response): Promise<void> => {
     try {
-      const { startDate, endDate, prevStartDate, prevEndDate } = req.query as Record<string, string>;
+      const { startDate, endDate, prevStartDate, prevEndDate, useAi } = req.query as Record<string, string>;
       if (!startDate || !endDate || !prevStartDate || !prevEndDate) {
         fail(res, 'Missing parameters', 400); return;
       }
-      ok(res, await dbService.getAiAdviceForPeriod(getUserId(req), startDate, endDate, prevStartDate, prevEndDate));
+      ok(res, await dbService.getAiAdviceForPeriod(getUserId(req), startDate, endDate, prevStartDate, prevEndDate, useAi === 'true'));
     } catch (e) { fail(res, e); }
   });
 
-  router.post('/reports/ai-chat', async (req: Request, res: Response): Promise<void> => {
+  // ── Phase 3 Endpoints ──────────────────────────────────────────────────────
+
+  router.post('/transactions/bulk', async (req: Request, res: Response): Promise<void> => {
     try {
-      const { messages } = req.body;
-      if (!messages || !Array.isArray(messages)) {
-        fail(res, 'Missing required body parameter: messages array', 400); return;
+      const { transactions } = req.body;
+      if (!transactions || !Array.isArray(transactions)) {
+        fail(res, 'Missing required parameter: transactions array', 400); return;
       }
-      ok(res, await dbService.getAiChatResponse(getUserId(req), messages));
+      const saved = await dbService.saveBulkTransactions(getUserId(req), transactions);
+      ok(res, saved, `Imported ${saved.length} transactions successfully`);
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/transactions/import-heuristics', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { descriptions } = req.body;
+      if (!descriptions || !Array.isArray(descriptions)) {
+        fail(res, 'Missing required parameter: descriptions array', 400); return;
+      }
+      const userId = getUserId(req);
+      const results: Record<string, string | null> = {};
+      for (const desc of descriptions) {
+        results[desc] = await dbService.findLocalHeuristicCategory(userId, desc);
+      }
+      ok(res, results);
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/ai/parse-log', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { sentence, clientDate } = req.body;
+      if (!sentence) { fail(res, 'Missing required parameter: sentence', 400); return; }
+      const parsed = await dbService.parseNaturalLanguageLog(getUserId(req), sentence, clientDate);
+      ok(res, parsed);
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/ai/predict-batch', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { items } = req.body;
+      if (!items || !Array.isArray(items)) {
+        fail(res, 'Missing required parameter: items array', 400); return;
+      }
+      const userId = getUserId(req);
+      const predictions = await dbService.predictCategoriesBatch(userId, items);
+      ok(res, predictions);
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/ai/optimize-budgets', async (req: Request, res: Response): Promise<void> => {
+    try {
+      ok(res, await dbService.optimizeBudgets(getUserId(req)));
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/ai/goal-buddy', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { goalId } = req.body;
+      if (!goalId) { fail(res, 'Missing required parameter: goalId', 400); return; }
+      ok(res, await dbService.evaluateGoalBuddy(getUserId(req), goalId));
     } catch (e) { fail(res, e); }
   });
 

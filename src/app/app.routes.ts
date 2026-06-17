@@ -45,6 +45,12 @@ export const routes: Routes = [
     title: 'Quick Log — TCFlow'
   },
   {
+    path: 'transactions/import',
+    loadComponent: () => import('./features/transactions/bank-import.component').then(m => m.BankImportComponent),
+    canActivate: [authGuard],
+    title: 'Import Statement — TCFlow'
+  },
+  {
     path: 'transactions',
     loadComponent: () => import('./features/transactions/transactions.component').then(m => m.TransactionsComponent),
     canActivate: [authGuard],

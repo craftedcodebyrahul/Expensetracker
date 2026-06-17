@@ -203,6 +203,37 @@ function advanceDateByFrequency(dateStr: string, frequency: string): string {
   return date.toISOString().split('T')[0];
 }
 
+/** Fetch from Gemini API with exponential backoff retry for 503/429 errors */
+async function fetchGeminiWithRetry(url: string, options: RequestInit, retries = 2, delayMs = 1000): Promise<Response> {
+  let lastResponse: Response | null = null;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok) {
+        return response;
+      }
+      lastResponse = response;
+      if (response.status === 503 || response.status === 429) {
+        console.warn(`Gemini API returned status ${response.status}. Retrying in ${delayMs}ms (attempt ${i + 1}/${retries})...`);
+        if (i < retries) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          delayMs *= 2; // exponential backoff
+          continue;
+        }
+      }
+      return response;
+    } catch (err) {
+      if (i === retries) {
+        throw err;
+      }
+      console.warn(`Gemini API fetch error. Retrying in ${delayMs}ms...`, err);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      delayMs *= 2;
+    }
+  }
+  return lastResponse!;
+}
+
 // ── Default seed data ─────────────────────────────────────────────────────────
 
 const DEFAULT_CATEGORIES: Omit<Category, 'createdAt'>[] = [
@@ -1051,7 +1082,8 @@ export class DbService {
     userId: string,
     startDate: string,
     endDate: string,
-    accountId?: string
+    accountId?: string,
+    useAi = false
   ) {
     const filtered = await this._getFilteredTransactions(userId, startDate, endDate, accountId);
     const categories = await this.getCategories(userId);
@@ -1064,11 +1096,11 @@ export class DbService {
       .map(([id, amt]) => `- ${categories.find(c => c.id === id)?.name ?? id}: $${amt.toFixed(2)}`)
       .join('\n');
 
-    if (apiKey) {
+    if (useAi && apiKey) {
       try {
         const prompt = `You are a professional financial auditor. Write a formal executive financial summary for the period (${startDate} to ${endDate}):\n\nMETRICS:\n- Income: $${income.toFixed(2)}\n- Expenses: $${expenses.toFixed(2)} (Fixed: $${fixedExpenses.toFixed(2)} [${fixedPct}%], Variable: $${variableExpenses.toFixed(2)} [${variablePct}%])\n- Net: $${net.toFixed(2)}\n- Savings Rate: ${savingsRate.toFixed(1)}%\n\nTOP CATEGORIES:\n${topCategoriesText || 'None'}\n\nReturn JSON: { "healthOverview": "...", "categoryAudit": "...", "runwayOutlook": "...", "recommendations": ["...","...","..."] }`;
 
-        const response = await fetch(
+        const response = await fetchGeminiWithRetry(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
           {
             method: 'POST',
@@ -1123,7 +1155,8 @@ export class DbService {
     startDate: string,
     endDate: string,
     prevStartDate: string,
-    prevEndDate: string
+    prevEndDate: string,
+    useAi = false
   ) {
     const getPeriodStats = async (from: string, to: string) => {
       const txns = await this._getFilteredTransactions(userId, from, to);
@@ -1143,7 +1176,7 @@ export class DbService {
     const categories = await this.getCategories(userId);
 
     const apiKey = process.env['GEMINI_API_KEY'];
-    if (apiKey) {
+    if (useAi && apiKey) {
       try {
         const topCurr = Object.entries(curr.byCategory)
           .sort((a, b) => b[1] - a[1]).slice(0, 5)
@@ -1164,7 +1197,7 @@ PREVIOUS PERIOD (${prevStartDate} to ${prevEndDate}):
 
 Return JSON: { "summary": "2-3 sentence comparison of the two periods", "advice": [ { "icon": "emoji", "title": "short title", "text": "1-2 sentence action", "type": "good|warn|info|bad" }, ... ] } — exactly 4 advice items.`;
 
-        const response = await fetch(
+        const response = await fetchGeminiWithRetry(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
           {
             method: 'POST',
@@ -1180,7 +1213,9 @@ Return JSON: { "summary": "2-3 sentence comparison of the two periods", "advice"
           const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
           if (text) {
             const data = JSON.parse(text);
-            if (data.summary && Array.isArray(data.advice)) return data;
+            if (data.summary && Array.isArray(data.advice)) {
+              return { ...data, isAiGenerated: true };
+            }
           }
         }
       } catch (err) {
@@ -1228,102 +1263,518 @@ Return JSON: { "summary": "2-3 sentence comparison of the two periods", "advice"
     return {
       summary: `You earned $${curr.income.toFixed(2)} and spent $${curr.expenses.toFixed(2)} this period. ${expChange > 10 ? `Expenses rose ${expChange.toFixed(0)}% vs the previous period.` : expChange < -10 ? `Expenses dropped ${Math.abs(expChange).toFixed(0)}% vs the previous period.` : 'Spending was relatively stable vs the previous period.'}`,
       advice,
+      isAiGenerated: false
     };
   }
 
-  // ── AI Chat Copilot ───────────────────────────────────────────────────────
+  // ── Phase 3: Natural Language Logging & Smart Import ───────────────────────
 
-  async getAiChatResponse(
+  async parseNaturalLanguageLog(
     userId: string,
-    chatHistory: Array<{ role: 'user' | 'model'; text: string }>
-  ): Promise<{ response: string }> {
+    sentence: string,
+    clientDateStr?: string
+  ): Promise<{
+    amount: number | null;
+    type: 'income' | 'expense' | 'transfer';
+    description: string | null;
+    date: string | null;
+    categoryId: string | null;
+  }> {
+    const categories = await this.getCategories(userId);
+    const today = clientDateStr ?? new Date().toISOString().split('T')[0];
     const apiKey = process.env['GEMINI_API_KEY'];
     if (!apiKey) {
-      return { response: 'AI Copilot is unavailable because the GEMINI_API_KEY is not configured on the server. Please add it to your environment file.' };
+      throw new Error('Gemini API key is not configured.');
     }
 
-    try {
-      // 1. Gather live financial context
-      const accounts = await this.getAccounts(userId);
-      const budgets = await this.getBudgets(userId);
-      const categories = await this.getCategories(userId);
-      const recentTxns = await prisma.transaction.findMany({
-        where: { userId },
-        take: 20,
-        orderBy: [
-          { date: 'desc' },
-          { createdAt: 'desc' }
-        ],
+    const catList = categories.map(c => `- ${c.id}: ${c.name} (${c.type})`).join('\n');
+
+    const prompt = `You are a financial parser for a personal finance application.
+Parse the following natural language sentence describing a financial transaction.
+Today is ${today}.
+
+SENTENCE: "${sentence}"
+
+CATEGORIES AVAILABLE:
+${catList}
+
+Extract:
+1. amount: number (absolute value, e.g. 2500 for $2500)
+2. type: 'income', 'expense', or 'transfer'. Words like 'received', 'salary', 'refund', 'earn', 'gift from' suggest income. Words like 'paid', 'spent', 'bought', 'bought for', 'lost' suggest expense. Words like 'transfer to', 'moved to' suggest transfer.
+3. description: a clean merchant name or description (e.g. 'Walmart', 'salary', 'landlord', 'transfer between accounts').
+4. date: YYYY-MM-DD. Calculate the date relative to today's date (${today}) if the user says 'today', 'yesterday', 'last monday', etc. If no date is mentioned, use today's date (${today}).
+5. categoryId: map the transaction to the most appropriate category ID from the list above. If unsure, set to null.
+
+You MUST return a JSON object with this exact structure:
+{
+  "amount": number | null,
+  "type": "income" | "expense" | "transfer",
+  "description": string | null,
+  "date": "YYYY-MM-DD" | null,
+  "categoryId": string | null
+}
+Return ONLY valid JSON. No Markdown formatting, no code block backticks, no other text.`;
+
+    const response = await fetchGeminiWithRetry(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 200 },
+        }),
+      }
+    );
+
+    if (response.ok) {
+      const json = await response.json() as any;
+      const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      if (text) {
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          console.error('Failed to parse Gemini natural language response JSON:', text, e);
+        }
+      }
+    }
+    throw new Error('Could not parse sentence');
+  }
+
+  async saveBulkTransactions(
+    userId: string,
+    txns: Array<Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>>
+  ): Promise<Transaction[]> {
+    const now = new Date().toISOString();
+    const createdTxns = [];
+
+    for (const t of txns) {
+      const id = uuidv4();
+      const dateStr = t.date;
+      const amountVal = t.amount;
+      const descStr = t.description;
+      const rawDesc = t.rawDescription ?? descStr;
+      const hash = `${userId}__${dateStr}__${amountVal.toFixed(2)}__${rawDesc}`;
+
+      const dup = await prisma.transaction.findFirst({
+        where: { userId, bankTransactionHash: hash }
       });
+      if (dup) continue;
 
-      const settings = await this.getSettings(userId);
-      const currency = settings.currency || 'USD';
+      const row = await prisma.transaction.create({
+        data: {
+          id,
+          userId,
+          type: t.type,
+          amount: t.amount,
+          category: t.category || null,
+          description: descStr,
+          date: dateStr,
+          tags: serializeTags(t.tags),
+          isRecurring: t.isRecurring ? 1 : 0,
+          recurringFrequency: t.recurringFrequency ?? null,
+          recurringId: t.recurringId ?? null,
+          paymentMethod: t.paymentMethod ?? null,
+          notes: t.notes ?? null,
+          accountId: t.accountId,
+          toAccountId: t.toAccountId ?? null,
+          source: t.source ?? 'import',
+          importId: t.importId ?? null,
+          rawDescription: rawDesc,
+          bankTransactionHash: hash,
+          createdAt: now,
+          updatedAt: now,
+        }
+      });
+      createdTxns.push(rowToTransaction(row));
+    }
 
-      // Format accounts context
-      const accountsStr = accounts.map((a: any) => `- ${a.name}: $${(a.initialBalance ?? 0).toFixed(2)} (${a.type})`).join('\n');
-      
-      // Format budgets context
-      const budgetsStr = budgets.map((b: any) => {
-        return `- Category: ${b.categoryName || b.categoryId}, Limit $${b.amount.toFixed(2)}, Period: ${b.period}, Spent: $${b.spent.toFixed(2)}`;
-      }).join('\n');
+    return createdTxns;
+  }
 
-      // Format recent transactions context
-      const txnsStr = recentTxns.map((t: any) => {
-        const catName = categories.find(c => c.id === t.category)?.name ?? t.category;
-        return `- ${t.date}: ${t.type === 'income' ? '+' : t.type === 'expense' ? '-' : ''}$${t.amount.toFixed(2)} | ${t.description} (${catName})`;
-      }).join('\n');
+  async findLocalHeuristicCategory(userId: string, description: string): Promise<string | null> {
+    const normDesc = this.normalizeDescription(description);
+    if (!normDesc) return null;
 
-      const systemInstruction = `You are TCFlow Copilot, an expert AI personal financial advisor integrated inside the TCFlow (FinTrack Pro) app.
-Your tone is encouraging, professional, analytical, and friendly. Always format amounts in ${currency}.
-Use markdown (bold, bullet lists) to make recommendations easy to scan. Be concise.
+    const recentTxns = await prisma.transaction.findMany({
+      where: { userId },
+      take: 300,
+      orderBy: { date: 'desc' },
+      select: { description: true, category: true }
+    });
 
-Below is the user's live financial data for context:
+    for (const txn of recentTxns) {
+      if (txn.category && this.normalizeDescription(txn.description) === normDesc) {
+        return txn.category;
+      }
+    }
 
-ACCOUNTS:
-${accountsStr || 'No accounts created.'}
+    for (const txn of recentTxns) {
+      if (txn.category) {
+        const normTxnDesc = this.normalizeDescription(txn.description);
+        if (normTxnDesc && (normDesc.includes(normTxnDesc) || normTxnDesc.includes(normDesc))) {
+          return txn.category;
+        }
+      }
+    }
 
-BUDGETS:
-${budgetsStr || 'No budgets set.'}
+    return null;
+  }
 
-RECENT TRANSACTIONS (Last 20):
-${txnsStr || 'No recent transactions logged.'}
+  async predictCategoriesBatch(
+    userId: string,
+    items: Array<{ description: string; type: string }>
+  ): Promise<Array<{ description: string; categoryId: string | null }>> {
+    const categories = await this.getCategories(userId);
+    const apiKey = process.env['GEMINI_API_KEY'];
+    if (!apiKey || categories.length === 0 || items.length === 0) {
+      return items.map(item => ({ description: item.description, categoryId: null }));
+    }
 
-Guidelines:
-1. Provide concrete suggestions. If spending is high in a category, give advice.
-2. If asked about math (e.g. totals), calculate it accurately based on the transactions list.
-3. Do not make up accounts or transactions not listed above. Refer strictly to this context.`;
+    const catList = categories.map(c => `- ${c.id}: ${c.name} (${c.type})`).join('\n');
+    const itemsList = items.map((item, idx) => `${idx + 1}. Description: "${item.description}", Type: ${item.type}`).join('\n');
 
-      // Map history to Gemini API format
-      const contents = chatHistory.map(msg => ({
-        role: msg.role === 'model' ? 'model' : 'user',
-        parts: [{ text: msg.text }]
-      }));
+    const prompt = `You are a financial transaction classification system.
+Map each of the transaction descriptions listed below to the most appropriate category ID from the CATEGORIES list.
 
-      const response = await fetch(
+CATEGORIES AVAILABLE:
+${catList}
+
+TRANSACTIONS TO CLASSIFY:
+${itemsList}
+
+You MUST return a JSON array where each item represents one classified transaction in the exact order:
+[
+  {
+    "description": "the original description",
+    "categoryId": "the category ID or null if unsure"
+  },
+  ...
+]
+Return ONLY valid JSON. Do not include markdown code block formatting or backticks.`;
+
+    try {
+      const response = await fetchGeminiWithRetry(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemInstruction }] },
-            contents,
-            generationConfig: { maxOutputTokens: 800 },
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 1000 },
           }),
         }
       );
 
       if (response.ok) {
         const json = await response.json() as any;
-        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text) {
-          return { response: text };
+          const parsed = JSON.parse(text);
+          if (Array.isArray(parsed)) {
+            return parsed.map((p: any) => ({
+              description: p.description,
+              categoryId: categories.find(c => c.id === p.categoryId)?.id ?? null
+            }));
+          }
         }
       }
-      throw new Error(`Gemini API returned status ${response.status}`);
-    } catch (err: any) {
-      console.error('Gemini Chat error:', err);
-      return { response: `I encountered an error connecting to the AI service: ${err?.message || 'Unknown error'}. Please try again later.` };
+    } catch (err) {
+      console.error('Batch AI category classification failed:', err);
     }
+
+    return items.map(item => {
+      const descLower = item.description.toLowerCase();
+      for (const cat of categories) {
+        if (descLower.includes(cat.name.toLowerCase()) || descLower.includes(cat.id.toLowerCase())) {
+          return { description: item.description, categoryId: cat.id };
+        }
+      }
+      return { description: item.description, categoryId: null };
+    });
+  }
+
+  async optimizeBudgets(userId: string): Promise<any> {
+    const categories = await this.getCategories(userId);
+    const budgets = await this.getBudgets(userId);
+    const transactions = await prisma.transaction.findMany({
+      where: { userId, type: 'expense' },
+      orderBy: { date: 'desc' },
+      take: 1000
+    });
+
+    const monthlySpend: Record<string, number> = {};
+    if (transactions.length > 0) {
+      const dates = transactions.map((t: any) => new Date(t.date));
+      const maxDate = new Date(Math.max(...dates.map((d: Date) => d.getTime())));
+      const minDate = new Date(Math.min(...dates.map((d: Date) => d.getTime())));
+      const diffMonths = Math.max(1, Math.round((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24 * 30.4)));
+
+      transactions.forEach((t: any) => {
+        monthlySpend[t.category ?? ''] = (monthlySpend[t.category ?? ''] || 0) + t.amount;
+      });
+      Object.keys(monthlySpend).forEach(cat => {
+        monthlySpend[cat] = monthlySpend[cat] / diffMonths;
+      });
+    }
+
+    const discretionaryCategories = categories.filter(c => {
+      const isFixed = ['housing', 'utilities', 'insurance', 'healthcare', 'taxes'].includes(c.id.toLowerCase()) || c.name.toLowerCase().includes('rent') || c.name.toLowerCase().includes('insurance') || c.name.toLowerCase().includes('utility');
+      return c.type === 'expense' && !isFixed;
+    }).map(c => c.id);
+
+    const fixedCategories = categories.filter(c => {
+      const isFixed = ['housing', 'utilities', 'insurance', 'healthcare', 'taxes'].includes(c.id.toLowerCase()) || c.name.toLowerCase().includes('rent') || c.name.toLowerCase().includes('insurance') || c.name.toLowerCase().includes('utility');
+      return c.type === 'expense' && isFixed;
+    }).map(c => c.id);
+
+    const apiKey = process.env['GEMINI_API_KEY'];
+    if (apiKey && budgets.length > 0) {
+      try {
+        const budgetStr = budgets.map(b => `- Category: ${b.categoryId} (${b.categoryName}), Current Budget Limit: $${b.amount}, Monthly Avg Spend: $${(monthlySpend[b.categoryId] || 0).toFixed(2)}`).join('\n');
+        const discretionaryStr = categories.filter(c => discretionaryCategories.includes(c.id)).map(c => `- ${c.id}: ${c.name}`).join('\n');
+        const fixedStr = categories.filter(c => fixedCategories.includes(c.id)).map(c => `- ${c.id}: ${c.name}`).join('\n');
+
+        const prompt = `You are an expert AI Budget Optimizer.
+The user wants to optimize their monthly budget. Analyze their current budgets and average spending, then propose 3 optimized budget plans: Conservative, Moderate, and Aggressive.
+
+CRITICAL RULE:
+Fixed expenses (Housing/Rent, Utilities, Insurance, Healthcare, Taxes) are frozen. Propose EXACTLY 0% cuts to these categories:
+${fixedStr}
+
+You may only suggest budget cuts to Discretionary categories:
+${discretionaryStr}
+
+Current Budgets & Historical Spending Context:
+${budgetStr}
+
+Generate 3 tiers:
+1. "Conservative": Suggest small, easy-to-achieve cuts of 5% to 10% on discretionary categories.
+2. "Moderate": Suggest balanced cuts of 15% to 20% on discretionary categories.
+3. "Aggressive": Propose tight, frugal cuts of 30% to 45% on discretionary categories.
+
+Each plan should have a friendly, encouraging explanation.
+
+Your response MUST be JSON format matching this schema (do not include Markdown or code block fences):
+{
+  "plans": [
+    {
+      "name": "Conservative",
+      "totalSavings": number,
+      "description": "string describing the approach and major changes",
+      "modifications": [
+        {
+          "categoryId": "string",
+          "categoryName": "string",
+          "currentAmount": number,
+          "proposedAmount": number,
+          "percentageCut": number
+        }
+      ]
+    },
+    ... (Moderate and Aggressive plans)
+  ]
+}`;
+
+        const response = await fetchGeminiWithRetry(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 1000 },
+            }),
+          }
+        );
+
+        if (response.ok) {
+          const json = await response.json() as any;
+          const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (text) {
+            const parsed = JSON.parse(text);
+            if (parsed && Array.isArray(parsed.plans)) {
+              return parsed;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('AI Budget Optimizer failed, using heuristic fallback:', err);
+      }
+    }
+
+    const plans = ['Conservative', 'Moderate', 'Aggressive'].map(planName => {
+      const cutRate = planName === 'Conservative' ? 0.08 : planName === 'Moderate' ? 0.18 : 0.35;
+      let totalSavings = 0;
+      const modifications: any[] = [];
+
+      budgets.forEach(b => {
+        const isDiscretionary = discretionaryCategories.includes(b.categoryId);
+        if (isDiscretionary) {
+          const cut = Math.round(b.amount * cutRate);
+          const proposed = Math.max(10, b.amount - cut);
+          const savings = b.amount - proposed;
+          totalSavings += savings;
+
+          modifications.push({
+            categoryId: b.categoryId,
+            categoryName: b.categoryName,
+            currentAmount: b.amount,
+            proposedAmount: proposed,
+            percentageCut: Math.round(cutRate * 100)
+          });
+        } else {
+          modifications.push({
+            categoryId: b.categoryId,
+            categoryName: b.categoryName,
+            currentAmount: b.amount,
+            proposedAmount: b.amount,
+            percentageCut: 0
+          });
+        }
+      });
+
+      let desc = '';
+      if (planName === 'Conservative') {
+        desc = 'A gentle adjustment trimming minor discretionary costs (8% cut). Very easy to maintain.';
+      } else if (planName === 'Moderate') {
+        desc = 'A balanced 18% cut on dining out, shopping, and entertainment. Requires conscious choice but leaves plenty of room.';
+      } else {
+        desc = 'A strict 35% cut to maximize your savings rate. High effort, high reward. Ideal if you are aiming to reach a goal quickly.';
+      }
+
+      return {
+        name: planName,
+        totalSavings,
+        description: desc,
+        modifications
+      };
+    });
+
+    return { plans };
+  }
+
+  async evaluateGoalBuddy(userId: string, goalId: string): Promise<any> {
+    const goal = await prisma.goal.findFirst({ where: { id: goalId, userId } });
+    if (!goal) throw new Error('Goal not found');
+
+    const now = new Date();
+    const reports = [];
+    for (let i = 0; i < 3; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      try {
+        const rep = await this.getMonthlyReport(userId, d.getFullYear(), d.getMonth() + 1);
+        reports.push(rep);
+      } catch {}
+    }
+    const avgSurplus = reports.length > 0
+      ? reports.reduce((s, r) => s + r.netBalance, 0) / reports.length
+      : 0;
+
+    const categories = await this.getCategories(userId);
+
+    const targetDate = new Date(goal.targetDate + 'T00:00:00');
+    const today = new Date();
+    const diffTime = targetDate.getTime() - today.getTime();
+    const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+    const monthsRemaining = Math.max(1, Math.round(diffDays / 30.4));
+
+    const remainingAmount = Math.max(0, goal.targetAmount - goal.currentAmount);
+    const requiredMonthlySavings = monthsRemaining > 0 ? remainingAmount / monthsRemaining : remainingAmount;
+
+    const isOffTrack = avgSurplus < requiredMonthlySavings;
+
+    const apiKey = process.env['GEMINI_API_KEY'];
+    if (apiKey) {
+      try {
+        const prompt = `You are a supportive, friendly personal finance buddy.
+Analyze this savings goal and the user's current cashflow surplus, then give some friendly, gentle financial advice.
+
+GOAL INFORMATION:
+- Name: "${goal.name}"
+- Target Amount: $${goal.targetAmount.toFixed(2)}
+- Current Amount Saved: $${goal.currentAmount.toFixed(2)}
+- Remaining Amount needed: $${remainingAmount.toFixed(2)}
+- Target Date: ${goal.targetDate} (${monthsRemaining} months remaining)
+- Required monthly savings to reach this goal on time: $${requiredMonthlySavings.toFixed(2)} / month
+
+USER ACTUAL CASHFLOW CONTEXT:
+- Average monthly surplus (income minus expenses) over last 3 months: $${avgSurplus.toFixed(2)} / month
+
+STATUS:
+- The user is ${isOffTrack ? 'OFF-TRACK' : 'ON-TRACK'}.
+${isOffTrack ? `They have a cashflow deficit of $${(requiredMonthlySavings - avgSurplus).toFixed(2)} / month to meet this goal.` : `They have a surplus buffer of $${(avgSurplus - requiredMonthlySavings).toFixed(2)} / month!`}
+
+Your job:
+1. Write a short, friendly encouraging message (max 3 sentences) like a financial buddy.
+2. If off-track, suggest concrete actions, e.g. extending the target date gently to a new date, or trimming some discretionary categories.
+3. If on-track, celebrate with them and suggest a minor tip (e.g. automating savings).
+
+Available discretionary categories you can mention:
+${categories.filter(c => !['housing', 'utilities', 'insurance', 'healthcare', 'taxes'].includes(c.id.toLowerCase())).map(c => c.name).join(', ')}
+
+Return JSON format matching this schema:
+{
+  "status": "on_track" | "off_track",
+  "buddyMessage": "string containing your friendly advice",
+  "suggestedActions": [
+    "action string 1",
+    "action string 2"
+  ]
+}`;
+
+        const response = await fetchGeminiWithRetry(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 400 },
+            }),
+          }
+        );
+
+        if (response.ok) {
+          const json = await response.json() as any;
+          const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (text) {
+            const parsed = JSON.parse(text);
+            if (parsed && parsed.buddyMessage) {
+              return parsed;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Goal Buddy AI failed, using fallback:', err);
+      }
+    }
+
+    let buddyMessage = '';
+    const suggestedActions = [];
+
+    if (isOffTrack) {
+      const deficit = requiredMonthlySavings - avgSurplus;
+      buddyMessage = `Hey! I looked over your "${goal.name}" goal. Currently, you need to save $${requiredMonthlySavings.toFixed(0)}/mo, but your average surplus is $${avgSurplus.toFixed(0)}/mo. We're a bit behind, but we can totally fix this together!`;
+      
+      const extendedMonths = Math.ceil(remainingAmount / Math.max(10, avgSurplus));
+      const extendedDate = new Date();
+      extendedDate.setMonth(extendedDate.getMonth() + extendedMonths);
+      const extendedDateStr = extendedDate.toISOString().split('T')[0];
+
+      suggestedActions.push(`Extend the target date gently to ${extendedDateStr} to align with your current savings pace ($${avgSurplus.toFixed(0)}/mo).`);
+      suggestedActions.push(`Try to trim discretionary spending (e.g., dining out or shopping) by ~$${deficit.toFixed(0)}/mo to stay on the current timeline.`);
+    } else {
+      buddyMessage = `Amazing job! You're saving $${avgSurplus.toFixed(0)}/mo on average, which easily covers the $${requiredMonthlySavings.toFixed(0)}/mo needed for your "${goal.name}" goal. You're fully on track to crush this!`;
+      suggestedActions.push('Consider setting up an automated recurring transfer to your savings account on payday.');
+      suggestedActions.push('If you feel comfortable, you could even pull the target date forward to finish early!');
+    }
+
+    return {
+      status: isOffTrack ? 'off_track' : 'on_track',
+      buddyMessage,
+      suggestedActions
+    };
   }
 
   // ── Bank Imports (future feature) ─────────────────────────────────────────

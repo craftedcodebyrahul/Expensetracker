@@ -500,6 +500,10 @@ Chart.register(...registerables);
       .summary-grid { grid-template-columns: 1fr 1fr; }
       .month-divider { display: none; }
     }
+    @media (max-width: 480px) {
+      .summary-grid { grid-template-columns: 1fr; }
+      .month-bar { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+    }
   `]
 })
 export class DashboardComponent implements OnInit, AfterViewInit {

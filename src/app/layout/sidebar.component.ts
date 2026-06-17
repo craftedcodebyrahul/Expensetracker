@@ -37,7 +37,7 @@ interface NavItem { path: string; label: string; icon: string; }
       </div>
 
       <!-- DB status -->
-      @if (!layout.collapsed()) {
+      @if (!layout.collapsed() || layout.mobileMenuOpen()) {
         <div class="sync-status" [class.connected]="syncConnected()">
           <span class="sync-dot"></span>
           <span class="sync-label">{{ syncConnected() ? 'DB Connected' : 'Connecting...' }}</span>
@@ -54,7 +54,7 @@ interface NavItem { path: string; label: string; icon: string; }
              [title]="item.label"
              (click)="closeOnMobile()">
             <span class="nav-icon" aria-hidden="true">{{ item.icon }}</span>
-            @if (!layout.collapsed()) {
+            @if (!layout.collapsed() || layout.mobileMenuOpen()) {
               <span class="nav-label">{{ item.label }}</span>
             }
           </a>
@@ -65,7 +65,7 @@ interface NavItem { path: string; label: string; icon: string; }
       <div class="sidebar-bottom">
         <a routerLink="/settings" routerLinkActive="active" class="nav-item" title="Settings" (click)="closeOnMobile()">
           <span class="nav-icon" aria-hidden="true">⚙️</span>
-          @if (!layout.collapsed()) { <span class="nav-label">Settings</span> }
+          @if (!layout.collapsed() || layout.mobileMenuOpen()) { <span class="nav-label">Settings</span> }
         </a>
 
         @if (auth.user()) {
@@ -74,7 +74,7 @@ interface NavItem { path: string; label: string; icon: string; }
                  [alt]="auth.user()!.name"
                  class="user-avatar"
                  (error)="onAvatarError($event)">
-            @if (!layout.collapsed()) {
+            @if (!layout.collapsed() || layout.mobileMenuOpen()) {
               <div class="user-info">
                 <span class="user-name">{{ auth.user()!.name }}</span>
                 <span class="user-email">{{ auth.user()!.email }}</span>
@@ -90,7 +90,7 @@ interface NavItem { path: string; label: string; icon: string; }
     /* ── Desktop sidebar ──────────────────────────────────────────── */
     .sidebar {
       width: 240px;
-      min-height: 100vh;
+      height: 100vh;
       background: var(--bg-secondary);
       border-right: 1px solid var(--border);
       display: flex;
@@ -133,13 +133,12 @@ interface NavItem { path: string; label: string; icon: string; }
         position: fixed;
         top: 0;
         left: 0;
-        height: 100%;
+        height: 100vh;
         width: 260px;
         transform: translateX(-100%);
         transition: transform 0.3s ease;
         box-shadow: var(--shadow-lg);
         z-index: 400;
-        min-height: 100vh;
       }
       .sidebar.mobile-open {
         transform: translateX(0);

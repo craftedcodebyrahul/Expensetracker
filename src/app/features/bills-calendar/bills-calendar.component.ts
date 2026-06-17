@@ -69,10 +69,19 @@ interface CalendarCell {
           <span class="month-label font-bold">{{ monthName() }} {{ currentYear() }}</span>
           <button class="btn btn-ghost btn-sm" (click)="nextMonth()">›</button>
         </div>
-        <div class="legend">
-          <span class="legend-item"><span class="dot income"></span> Income</span>
-          <span class="legend-item"><span class="dot expense"></span> Expense</span>
-          <span class="legend-item"><span class="dot transfer"></span> Transfer</span>
+        <div class="legend" style="display: flex; gap: 0.5rem; align-items: center;">
+          <button class="legend-item-btn" [class.active]="filterIncome()" (click)="filterIncome.set(!filterIncome())">
+            <span class="dot income" [style.opacity]="filterIncome() ? 1 : 0.3"></span>
+            <span [style.opacity]="filterIncome() ? 1 : 0.6">Income</span>
+          </button>
+          <button class="legend-item-btn" [class.active]="filterExpense()" (click)="filterExpense.set(!filterExpense())">
+            <span class="dot expense" [style.opacity]="filterExpense() ? 1 : 0.3"></span>
+            <span [style.opacity]="filterExpense() ? 1 : 0.6">Expense</span>
+          </button>
+          <button class="legend-item-btn" [class.active]="filterTransfer()" (click)="filterTransfer.set(!filterTransfer())">
+            <span class="dot transfer" [style.opacity]="filterTransfer() ? 1 : 0.3"></span>
+            <span [style.opacity]="filterTransfer() ? 1 : 0.6">Transfer</span>
+          </button>
         </div>
       </div>
 
@@ -216,6 +225,34 @@ interface CalendarCell {
     .dot.expense { background: var(--accent-red); }
     .dot.transfer { background: var(--accent-blue-light); }
 
+    .legend-item-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-size: 0.8125rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 0.375rem 0.75rem;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: inherit;
+    }
+    .legend-item-btn:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-light);
+      color: var(--text-primary);
+    }
+    .legend-item-btn.active {
+      background: rgba(92, 107, 192, 0.12);
+      border-color: var(--accent-blue-light);
+      color: var(--text-primary);
+    }
+    .legend-item-btn.active:hover {
+      background: rgba(92, 107, 192, 0.2);
+    }
+
     /* Calendar Card Grid */
     .calendar-card { padding: 0.5rem; display: flex; flex-direction: column; }
     .weekday-header { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; border-bottom: 1px solid var(--border); padding: 0.5rem 0; }
@@ -340,6 +377,10 @@ export class BillsCalendarComponent implements OnInit {
   submitting = signal(false);
   showDetectorDetails = signal(false);
  
+  filterIncome = signal(true);
+  filterExpense = signal(true);
+  filterTransfer = signal(true);
+
   currentYear = signal<number>(new Date().getFullYear());
   currentMonth = signal<number>(new Date().getMonth()); // 0-indexed
   calendarCells = signal<CalendarCell[]>([]);
@@ -457,6 +498,10 @@ export class BillsCalendarComponent implements OnInit {
     const cellTime = d.getTime();
     
     return this.recurringService.schedules().filter(s => {
+      if (s.type === 'income' && !this.filterIncome()) return false;
+      if (s.type === 'expense' && !this.filterExpense()) return false;
+      if (s.type === 'transfer' && !this.filterTransfer()) return false;
+
       const start = new Date(s.startDate + 'T00:00:00');
       const startTime = start.getTime();
       

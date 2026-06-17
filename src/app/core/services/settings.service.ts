@@ -23,6 +23,7 @@ export class SettingsService {
   load() {
     return this.api.getSettings().pipe(
       tap(res => {
+        console.log('Settings loaded', res);
         if (res.success && res.data) {
           this.currency.set(res.data.currency ?? 'USD');
           this.currencySymbol.set(res.data.currencySymbol ?? '$');

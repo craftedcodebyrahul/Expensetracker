@@ -113,8 +113,8 @@ export class ApiService {
     return this.http.get<ApiResponse<any>>(`${this.baseUrl}/reports/yearly`, { params });
   }
 
-  getExecutiveReport(startDate: string, endDate: string, accountId?: string): Observable<ApiResponse<any>> {
-    let params = new HttpParams().set('startDate', startDate).set('endDate', endDate);
+  getExecutiveReport(startDate: string, endDate: string, accountId?: string, useAi = false): Observable<ApiResponse<any>> {
+    let params = new HttpParams().set('startDate', startDate).set('endDate', endDate).set('useAi', useAi.toString());
     if (accountId) params = params.set('accountId', accountId);
     return this.http.get<ApiResponse<any>>(`${this.baseUrl}/reports/executive`, { params });
   }
@@ -125,17 +125,41 @@ export class ApiService {
     });
   }
 
-  getAiAdvice(startDate: string, endDate: string, prevStartDate: string, prevEndDate: string): Observable<ApiResponse<{ summary: string; advice: any[] }>> {
+  getAiAdvice(startDate: string, endDate: string, prevStartDate: string, prevEndDate: string, useAi = false): Observable<ApiResponse<{ summary: string; advice: any[]; isAiGenerated?: boolean }>> {
     const params = new HttpParams()
       .set('startDate', startDate)
       .set('endDate', endDate)
       .set('prevStartDate', prevStartDate)
-      .set('prevEndDate', prevEndDate);
-    return this.http.get<ApiResponse<{ summary: string; advice: any[] }>>(`${this.baseUrl}/reports/ai-advice`, { params });
+      .set('prevEndDate', prevEndDate)
+      .set('useAi', useAi.toString());
+    return this.http.get<ApiResponse<{ summary: string; advice: any[]; isAiGenerated?: boolean }>>(`${this.baseUrl}/reports/ai-advice`, { params });
   }
 
-  sendAiChatMessage(messages: ChatMessage[]): Observable<ApiResponse<{ response: string }>> {
-    return this.http.post<ApiResponse<{ response: string }>>(`${this.baseUrl}/reports/ai-chat`, { messages });
+  // ── Phase 3 AI & Batch Import Service Calls ────────────────────────────────
+
+  parseNaturalLanguage(sentence: string): Observable<ApiResponse<any>> {
+    const clientDate = new Date().toISOString().split('T')[0];
+    return this.http.post<ApiResponse<any>>(`${this.baseUrl}/ai/parse-log`, { sentence, clientDate });
+  }
+
+  saveBulkTransactions(transactions: any[]): Observable<ApiResponse<Transaction[]>> {
+    return this.http.post<ApiResponse<Transaction[]>>(`${this.baseUrl}/transactions/bulk`, { transactions });
+  }
+
+  importHeuristics(descriptions: string[]): Observable<ApiResponse<Record<string, string | null>>> {
+    return this.http.post<ApiResponse<Record<string, string | null>>>(`${this.baseUrl}/transactions/import-heuristics`, { descriptions });
+  }
+
+  predictCategoriesBatch(items: Array<{ description: string; type: string }>): Observable<ApiResponse<Array<{ description: string; categoryId: string | null }>>> {
+    return this.http.post<ApiResponse<Array<{ description: string; categoryId: string | null }>>>(`${this.baseUrl}/ai/predict-batch`, { items });
+  }
+
+  optimizeBudgets(): Observable<ApiResponse<any>> {
+    return this.http.post<ApiResponse<any>>(`${this.baseUrl}/ai/optimize-budgets`, {});
+  }
+
+  goalBuddyAdvisor(goalId: string): Observable<ApiResponse<any>> {
+    return this.http.post<ApiResponse<any>>(`${this.baseUrl}/ai/goal-buddy`, { goalId });
   }
 
   // ── Accounts ──────────────────────────────────────────────────────────────

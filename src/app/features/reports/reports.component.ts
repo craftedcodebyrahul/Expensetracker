@@ -187,6 +187,14 @@ Chart.register(...registerables);
               </div>
             </div>
           } @else if (aiSummary()) {
+            <!-- Trigger banner for AI Generation -->
+            @if (!isAiGenerated() && !aiLoading()) {
+              <div class="ai-trigger-banner" style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem; padding: 1.25rem; border: 1px dashed var(--border-light); border-radius: var(--radius-md); background: rgba(255, 255, 255, 0.02); text-align: center; margin-bottom: 1rem; z-index: 1;">
+                <p style="font-size: 0.8125rem; margin: 0; color: var(--text-secondary);">Currently viewing local cashflow heuristics. Generate deeper AI Executive Insights with Gemini.</p>
+                <button class="btn btn-primary btn-sm" (click)="generateAiInsights()">🔮 Generate AI Executive Insights</button>
+              </div>
+            }
+
             <!-- Executive Summary Text -->
             <div class="ai-summary-box">
               <p>"{{ aiSummary() }}"</p>
@@ -781,6 +789,9 @@ Chart.register(...registerables);
         grid-template-columns: 1fr;
       }
     }
+    @media (max-width: 480px) {
+      .kpi-grid { grid-template-columns: 1fr; }
+    }
   `]
 })
 export class ReportsComponent implements OnInit, AfterViewInit {
@@ -812,6 +823,9 @@ export class ReportsComponent implements OnInit, AfterViewInit {
   aiError = signal('');
   isAiGenerated = signal(false);
 
+  // Local AI cache to prevent duplicate Gemini hits in the same session
+  private aiCache = new Map<string, any>();
+
   // Category Exploration signals
   selectedCategoryId = signal<string | null>(null);
   categoryTxns = signal<any[] | null>(null);
@@ -838,6 +852,16 @@ export class ReportsComponent implements OnInit, AfterViewInit {
       .sort((a, b) => b.amount - a.amount);
   }
 
+  private getCacheKey(): string {
+    const type = this.reportType();
+    const accountFilter = this.accountId();
+    const year = this.selectedYear();
+    const month = this.selectedMonth();
+    const start = this.customStartDate();
+    const end = this.customEndDate();
+    return `${type}-${accountFilter}-${year}-${month}-${start}-${end}`;
+  }
+
   ngOnInit() {
     this.categoryService.loadCategories().subscribe();
     this.accountService.loadAccounts().subscribe();
@@ -850,6 +874,90 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     this.reportType.set(type);
     this.closeCategoryExploration();
     this.loadReport();
+  }
+
+  generateAiInsights() {
+    this.aiLoading.set(true);
+    this.aiError.set('');
+    
+    const type = this.reportType();
+    const accountFilter = this.accountId();
+    const accParam = accountFilter !== 'all' ? accountFilter : undefined;
+    const key = this.getCacheKey();
+
+    if (type === 'custom') {
+      const start = this.customStartDate();
+      const end = this.customEndDate();
+      this.api.getExecutiveReport(start, end, accParam, true).subscribe({
+        next: res => {
+          this.aiLoading.set(false);
+          if (res.success && res.data) {
+            this.aiSummary.set(res.data.healthOverview);
+            this.aiCategoryAudit.set(res.data.categoryAudit);
+            this.aiRunwayOutlook.set(res.data.runwayOutlook);
+            this.isAiGenerated.set(res.data.isAiGenerated);
+            
+            const adviceCards = (res.data.recommendations || []).map((text: string, idx: number) => ({
+              icon: idx === 0 ? '🔍' : idx === 1 ? '💡' : '⚡',
+              title: `Action Item ${idx + 1}`,
+              text,
+              type: 'info'
+            }));
+            this.aiAdvice.set(adviceCards);
+            this.aiCache.set(key, { ...res.data, isAiGenerated: res.data.isAiGenerated });
+          } else {
+            this.aiError.set(res.error ?? 'Failed to generate AI executive report.');
+          }
+        },
+        error: () => {
+          this.aiLoading.set(false);
+          this.aiError.set('Error connecting to the AI Executive service.');
+        }
+      });
+    } else {
+      const year = this.selectedYear();
+      const month = this.selectedMonth();
+      
+      let startDate = '';
+      let endDate = '';
+      let prevStartDate = '';
+      let prevEndDate = '';
+
+      if (type === 'monthly') {
+        startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+        const py = month === 1 ? year - 1 : year;
+        const pm = month === 1 ? 12 : month - 1;
+        prevStartDate = `${py}-${String(pm).padStart(2, '0')}-01`;
+        const prevLastDay = new Date(py, pm, 0).getDate();
+        prevEndDate = `${py}-${String(pm).padStart(2, '0')}-${String(prevLastDay).padStart(2, '0')}`;
+      } else {
+        startDate = `${year}-01-01`;
+        endDate = `${year}-12-31`;
+        prevStartDate = `${year - 1}-01-01`;
+        prevEndDate = `${year - 1}-12-31`;
+      }
+
+      this.api.getAiAdvice(startDate, endDate, prevStartDate, prevEndDate, true).subscribe({
+        next: aiRes => {
+          this.aiLoading.set(false);
+          if (aiRes.success && aiRes.data) {
+            this.aiSummary.set(aiRes.data.summary);
+            this.aiAdvice.set(aiRes.data.advice);
+            this.isAiGenerated.set(true);
+            this.aiCache.set(key, { ...aiRes.data, isAiGenerated: true });
+          } else {
+            this.aiError.set(aiRes.error ?? 'Failed to retrieve AI advice.');
+          }
+        },
+        error: () => {
+          this.aiLoading.set(false);
+          this.aiError.set('Error connecting to AI advice service.');
+        }
+      });
+    }
   }
 
   loadReport() {
@@ -867,11 +975,61 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     const accountFilter = this.accountId();
     const accParam = accountFilter !== 'all' ? accountFilter : undefined;
 
+    const key = this.getCacheKey();
+    const cached = this.aiCache.get(key);
+
+    if (cached) {
+      if (type === 'custom') {
+        const start = this.customStartDate();
+        const end = this.customEndDate();
+        this.api.getTransactions({ dateFrom: start, dateTo: end }).subscribe(res => {
+          this.loading.set(false);
+          if (res.success && res.data) {
+            const clientRollup = this.buildClientReport(res.data, accParam);
+            this.reportData.set(clientRollup);
+            setTimeout(() => this.renderCharts(), 100);
+          }
+        });
+
+        this.aiLoading.set(false);
+        this.aiSummary.set(cached.healthOverview || cached.summary || '');
+        this.aiCategoryAudit.set(cached.categoryAudit || '');
+        this.aiRunwayOutlook.set(cached.runwayOutlook || '');
+        this.isAiGenerated.set(cached.isAiGenerated ?? true);
+        const adviceCards = (cached.recommendations || []).map((text: string, idx: number) => ({
+          icon: idx === 0 ? '🔍' : idx === 1 ? '💡' : '⚡',
+          title: `Action Item ${idx + 1}`,
+          text,
+          type: 'info'
+        }));
+        this.aiAdvice.set(adviceCards.length > 0 ? adviceCards : (cached.advice || []));
+      } else {
+        const year = this.selectedYear();
+        const month = this.selectedMonth();
+        const obs = type === 'monthly'
+          ? this.api.getMonthlyReport(year, month, accParam)
+          : this.api.getYearlyReport(year, accParam);
+
+        obs.subscribe(res => {
+          this.loading.set(false);
+          if (res.success) {
+            this.reportData.set(res.data);
+            setTimeout(() => this.renderCharts(), 100);
+          }
+        });
+
+        this.aiLoading.set(false);
+        this.aiSummary.set(cached.summary || '');
+        this.aiAdvice.set(cached.advice || []);
+        this.isAiGenerated.set(cached.isAiGenerated ?? true);
+      }
+      return;
+    }
+
     if (type === 'custom') {
       const start = this.customStartDate();
       const end = this.customEndDate();
 
-      // 1. Fetch transactions client-side rollup for Custom Range
       this.api.getTransactions({ dateFrom: start, dateTo: end }).subscribe({
         next: res => {
           this.loading.set(false);
@@ -880,7 +1038,6 @@ export class ReportsComponent implements OnInit, AfterViewInit {
             this.reportData.set(clientRollup);
             setTimeout(() => this.renderCharts(), 100);
           } else {
-            this.loading.set(false);
             this.reportData.set(null);
           }
         },
@@ -890,15 +1047,14 @@ export class ReportsComponent implements OnInit, AfterViewInit {
         }
       });
 
-      // 2. Fetch Executive AI Report
-      this.api.getExecutiveReport(start, end, accountFilter).subscribe({
+      this.api.getExecutiveReport(start, end, accountFilter, false).subscribe({
         next: res => {
           this.aiLoading.set(false);
           if (res.success && res.data) {
             this.aiSummary.set(res.data.healthOverview);
             this.aiCategoryAudit.set(res.data.categoryAudit);
             this.aiRunwayOutlook.set(res.data.runwayOutlook);
-            this.isAiGenerated.set(res.data.isAiGenerated);
+            this.isAiGenerated.set(res.data.isAiGenerated ?? false);
             
             const adviceCards = (res.data.recommendations || []).map((text: string, idx: number) => ({
               icon: idx === 0 ? '🔍' : idx === 1 ? '💡' : '⚡',
@@ -932,7 +1088,6 @@ export class ReportsComponent implements OnInit, AfterViewInit {
             this.reportData.set(res.data);
             setTimeout(() => this.renderCharts(), 100);
 
-            // Calculate Date range boundaries for AI Advice
             let startDate = '';
             let endDate = '';
             let prevStartDate = '';
@@ -955,13 +1110,13 @@ export class ReportsComponent implements OnInit, AfterViewInit {
               prevEndDate = `${year - 1}-12-31`;
             }
 
-            this.api.getAiAdvice(startDate, endDate, prevStartDate, prevEndDate).subscribe({
+            this.api.getAiAdvice(startDate, endDate, prevStartDate, prevEndDate, false).subscribe({
               next: aiRes => {
                 this.aiLoading.set(false);
                 if (aiRes.success && aiRes.data) {
                   this.aiSummary.set(aiRes.data.summary);
                   this.aiAdvice.set(aiRes.data.advice);
-                  this.isAiGenerated.set(true);
+                  this.isAiGenerated.set(aiRes.data.isAiGenerated ?? false);
                 } else {
                   this.aiError.set(aiRes.error ?? 'Failed to retrieve AI advice.');
                 }

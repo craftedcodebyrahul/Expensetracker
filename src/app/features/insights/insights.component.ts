@@ -79,12 +79,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
   selectedQuarter = signal<number>(Math.floor(new Date().getMonth() / 3) + 1);
   selectedHalf = signal<number>(new Date().getMonth() < 6 ? 1 : 2);
 
-  // AI Chat Copilot Dialog Signals
-  showAiAdviceDialog = signal(false);
-  chatMessages = signal<ChatMessage[]>([]);
-  chatInput = signal('');
-  chatLoading = signal(false);
-  chatError = signal('');
+
 
   goalAmount = 10000;
   goalMonthly = 500;
@@ -361,58 +356,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
     return opps.slice(0, 3);
   });
 
-  // AI Advice dialog query
-  askAiAdvisor() {
-    this.showAiAdviceDialog.set(true);
-    
-    // Initialize chat with a welcome message if empty
-    if (this.chatMessages().length === 0) {
-      this.chatMessages.set([
-        {
-          role: 'model',
-          text: 'Hello! I am your TCFlow Copilot. I can analyze your transactions, accounts, and budgets to help you answer questions or optimize your spending. What would you like to discuss today?',
-          timestamp: new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
-    }
-  }
 
-  sendChatMessage() {
-    const text = this.chatInput().trim();
-    if (!text || this.chatLoading()) return;
-
-    const timestamp = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    const userMsg: ChatMessage = { role: 'user', text, timestamp };
-    
-    this.chatMessages.update(msgs => [...msgs, userMsg]);
-    this.chatInput.set('');
-    this.chatLoading.set(true);
-    this.chatError.set('');
-
-    this.api.sendAiChatMessage(this.chatMessages()).subscribe({
-      next: res => {
-        this.chatLoading.set(false);
-        if (res.success && res.data?.response) {
-          const modelMsg: ChatMessage = {
-            role: 'model',
-            text: res.data.response,
-            timestamp: new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-          };
-          this.chatMessages.update(msgs => [...msgs, modelMsg]);
-        } else {
-          this.chatError.set(res.error || 'Failed to get a response from the AI Copilot.');
-        }
-      },
-      error: () => {
-        this.chatLoading.set(false);
-        this.chatError.set('Connection error: could not reach TCFlow Copilot.');
-      }
-    });
-  }
-
-  closeAiAdvice() {
-    this.showAiAdviceDialog.set(false);
-  }
 
   // Goal Simulator
   goalMonths = signal(0);

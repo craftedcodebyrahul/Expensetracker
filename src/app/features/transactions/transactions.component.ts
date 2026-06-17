@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
 import { AccountService } from '../../core/services/account.service';
@@ -14,10 +15,11 @@ import { advanceDateByFrequency } from '../../shared/utils/date.utils';
 @Component({
   selector: 'app-transactions',
   standalone: true,
-  imports: [CommonModule, FormsModule, HeaderComponent, CurrencyFormatPipe, TransactionFormComponent],
+  imports: [CommonModule, FormsModule, RouterLink, HeaderComponent, CurrencyFormatPipe, TransactionFormComponent],
   template: `
     <app-header title="Transactions" subtitle="Track every penny in and out">
       <button class="btn btn-ghost btn-sm" (click)="txnService.exportToCsv()">⬇ Export CSV</button>
+      <button class="btn btn-ghost btn-sm" routerLink="/transactions/import">📤 Import CSV</button>
       <button class="btn btn-primary btn-sm" (click)="openForm()">+ Add Transaction</button>
     </app-header>
 

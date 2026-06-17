@@ -91,6 +91,8 @@ export class QuickLogComponent implements OnInit {
   lastSavedAmount = signal('');
   aiCategorizing = signal(false);
   aiSuggested = signal(false);
+  nlInput = '';
+  nlParsing = signal(false);
   private debounceTimeout: any;
 
   form = {
@@ -105,6 +107,48 @@ export class QuickLogComponent implements OnInit {
   };
 
   recentLogs = this.txnService.recentTransactions;
+
+  parseNlInput() {
+    if (!this.nlInput.trim()) return;
+    this.nlParsing.set(true);
+    this.api.parseNaturalLanguage(this.nlInput).subscribe({
+      next: res => {
+        this.nlParsing.set(false);
+        if (res.success && res.data) {
+          const d = res.data;
+          if (d.type) this.form.type = d.type;
+          if (d.amount != null) this.form.amount = d.amount;
+          if (d.description) this.form.description = d.description;
+          if (d.date) this.form.date = d.date;
+          if (d.categoryId) {
+            const categories = this.form.type === 'income'
+              ? this.categoryService.incomeCategories()
+              : this.categoryService.expenseCategories();
+            const exists = categories.some(c => c.id === d.categoryId);
+            if (exists) {
+              this.form.category = d.categoryId;
+              this.aiSuggested.set(true);
+            } else {
+              this.form.category = '';
+              this.aiSuggested.set(false);
+            }
+          } else {
+            if (d.description) {
+              this.onDescriptionChange(d.description);
+            }
+          }
+          this.toast.success('Successfully extracted details into form!');
+          this.nlInput = '';
+        } else {
+          this.toast.error(res.error ?? 'Could not parse text');
+        }
+      },
+      error: () => {
+        this.nlParsing.set(false);
+        this.toast.error('Failed to parse text. Please try again.');
+      }
+    });
+  }
 
   ngOnInit() {
     this.categoryService.loadCategories().subscribe();

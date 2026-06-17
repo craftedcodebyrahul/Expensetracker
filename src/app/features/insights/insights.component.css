@@ -201,21 +201,56 @@
 .gs-value { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); }
 .gs-sub { font-size: 0.75rem; color: var(--text-muted); }
 
+/* Period-over-Period Comparison styling */
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+}
+.cmp-item {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+.cmp-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cmp-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .kpi-row { grid-template-columns: repeat(3, 1fr); }
   .charts-2col { grid-template-columns: 1fr; }
+  .charts-3col { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 900px) {
   .kpi-row { grid-template-columns: repeat(2, 1fr); }
   .projection-row { grid-template-columns: repeat(2, 1fr); }
   .goal-result { grid-template-columns: 1fr; }
+  .charts-3col { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
   .insights-page { padding: 1rem; }
   .kpi-row { grid-template-columns: 1fr 1fr; }
   .ct-left { width: 140px; }
   .goal-inputs { grid-template-columns: 1fr; }
+  .comparison-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .kpi-row { grid-template-columns: 1fr; }
+  .sunburst-legend { grid-template-columns: 1fr; gap: 1rem; }
 }
 
 /* Savings Opportunities Card */
