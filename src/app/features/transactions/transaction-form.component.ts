@@ -6,6 +6,7 @@ import { CategoryService } from '../../core/services/category.service';
 import { TransactionService } from '../../core/services/transaction.service';
 import { AccountService } from '../../core/services/account.service';
 import { ToastService } from '../../core/services/toast.service';
+import { ApiService } from '../../core/services/api.service';
 
 @Component({
   selector: 'app-transaction-form',
@@ -20,6 +21,26 @@ import { ToastService } from '../../core/services/toast.service';
         </div>
 
         <div class="modal-body">
+          <!-- Natural Language Auto-Fill -->
+          <div class="nl-log-container" style="border: 1px dashed var(--border-light); border-radius: var(--radius-md); padding: 0.875rem; display: flex; flex-direction: column; gap: 0.625rem; background: rgba(255, 255, 255, 0.01); margin-bottom: 1.25rem;">
+            <label style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.375rem;">
+              <span>⚡</span> Natural Language Auto-Fill
+            </label>
+            <div style="display: flex; gap: 0.5rem; width: 100%;">
+              <textarea class="form-control" style="flex: 1; resize: vertical; min-height: 44px; font-size: 0.8125rem; padding: 0.5rem 0.75rem;" 
+                        placeholder='Try: "Salary of $2500 received today" or "Paid rent of $1200 on 1st June" or "Walmart groceries $45 yesterday"'
+                        [(ngModel)]="nlInput" (keydown.enter)="$event.preventDefault(); parseNlInput()"></textarea>
+              <button class="btn btn-primary" type="button" style="padding: 0 1rem; font-size: 0.8125rem; display: flex; align-items: center; gap: 0.375rem;" 
+                      [disabled]="nlParsing() || !nlInput.trim()" (click)="parseNlInput()">
+                @if (nlParsing()) {
+                  <span class="btn-spinner-sm" style="width: 14px; height: 14px;"></span>
+                } @else {
+                  <span>✨ Fill</span>
+                }
+              </button>
+            </div>
+          </div>
+
           <!-- Type Toggle -->
           <div class="type-toggle">
             <button class="type-btn" [class.active-income]="form.type === 'income'"
@@ -240,6 +261,14 @@ import { ToastService } from '../../core/services/toast.service';
       opacity: 0.85;
     }
     .mt-2 { margin-top: 0.5rem; }
+    .btn-spinner-sm {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
   `]
 })
 export class TransactionFormComponent implements OnInit {
@@ -247,6 +276,7 @@ export class TransactionFormComponent implements OnInit {
   @Output() close = new EventEmitter<void>();
   @Output() saved = new EventEmitter<Transaction>();
 
+  private api = inject(ApiService);
   private categoryService = inject(CategoryService);
   private txnService = inject(TransactionService);
   accountService = inject(AccountService);
@@ -255,6 +285,8 @@ export class TransactionFormComponent implements OnInit {
   submitting = signal(false);
   availableCategories = signal(this.categoryService.expenseCategories());
   tagInput = '';
+  nlInput = '';
+  nlParsing = signal(false);
 
   form = {
     type: 'expense' as 'income' | 'expense' | 'transfer',
@@ -376,6 +408,43 @@ export class TransactionFormComponent implements OnInit {
         this.close.emit();
       } else {
         this.toast.error('Failed to save transaction');
+      }
+    });
+  }
+
+  parseNlInput() {
+    if (!this.nlInput.trim()) return;
+    this.nlParsing.set(true);
+    this.api.parseNaturalLanguage(this.nlInput).subscribe({
+      next: res => {
+        this.nlParsing.set(false);
+        if (res.success && res.data) {
+          const d = res.data;
+          if (d.type) {
+            this.form.type = d.type;
+            this.updateCategories();
+          }
+          if (d.amount != null) this.form.amount = d.amount;
+          if (d.description) this.form.description = d.description;
+          if (d.date) this.form.date = d.date;
+          if (d.categoryId) {
+            const categories = this.availableCategories();
+            const exists = categories.some(c => c.id === d.categoryId);
+            if (exists) {
+              this.form.category = d.categoryId;
+            } else {
+              this.form.category = '';
+            }
+          }
+          this.toast.success('Successfully extracted details into form!');
+          this.nlInput = '';
+        } else {
+          this.toast.error(res.error ?? 'Could not parse text');
+        }
+      },
+      error: () => {
+        this.nlParsing.set(false);
+        this.toast.error('Failed to parse text. Please try again.');
       }
     });
   }

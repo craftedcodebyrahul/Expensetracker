@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Transaction, TransactionFilter, Category, Budget, Account, Goal, RecurringSchedule, ChatMessage, DetectedBill } from '../models';
+import { Transaction, TransactionFilter, Category, Budget, Account, StockHolding, Goal, RecurringSchedule, ChatMessage, DetectedBill } from '../models';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -180,7 +180,23 @@ export class ApiService {
     return this.http.delete<ApiResponse<void>>(`${this.baseUrl}/accounts/${id}`);
   }
 
-  // ── Settings ──────────────────────────────────────────────────────────────
+  addHolding(accountId: string, ticker: string, shares: number): Observable<ApiResponse<StockHolding>> {
+    return this.http.post<ApiResponse<StockHolding>>(`${this.baseUrl}/accounts/${accountId}/holdings`, { ticker, shares });
+  }
+
+  updateHolding(accountId: string, holdingId: string, shares: number): Observable<ApiResponse<StockHolding>> {
+    return this.http.put<ApiResponse<StockHolding>>(`${this.baseUrl}/accounts/${accountId}/holdings/${holdingId}`, { shares });
+  }
+
+  deleteHolding(accountId: string, holdingId: string): Observable<ApiResponse<void>> {
+    return this.http.delete<ApiResponse<void>>(`${this.baseUrl}/accounts/${accountId}/holdings/${holdingId}`);
+  }
+
+  refreshStockPrices(): Observable<ApiResponse<Account[]>> {
+    return this.http.post<ApiResponse<Account[]>>(`${this.baseUrl}/accounts/refresh-prices`, {});
+  }
+
+
 
   getSettings(): Observable<ApiResponse<any>> {
     return this.http.get<ApiResponse<any>>(`${this.baseUrl}/settings`);

@@ -7,7 +7,7 @@ import { CategoryService } from '../../core/services/category.service';
 import { ToastService } from '../../core/services/toast.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
-import { Account, Transaction } from '../../core/models';
+import { Account, StockHolding, Transaction } from '../../core/models';
 
 @Component({
   selector: 'app-accounts',
@@ -15,7 +15,15 @@ import { Account, Transaction } from '../../core/models';
   imports: [CommonModule, FormsModule, HeaderComponent, CurrencyFormatPipe],
   template: `
     <app-header title="Accounts" subtitle="Manage your asset accounts, liabilities, and view current balances">
-      <button class="btn btn-primary btn-sm" (click)="openForm()">+ Add Account</button>
+      <div style="display:flex;gap:0.5rem;align-items:center;">
+        <button class="btn btn-outline btn-sm"
+                [disabled]="accountService.refreshingPrices()"
+                (click)="refreshPrices()"
+                title="Refresh live stock prices">
+          {{ accountService.refreshingPrices() ? '⏳ Refreshing…' : '🔄 Refresh Prices' }}
+        </button>
+        <button class="btn btn-primary btn-sm" (click)="openForm()">+ Add Account</button>
+      </div>
     </app-header>
 
     <div class="accounts-page">
@@ -41,6 +49,9 @@ import { Account, Transaction } from '../../core/models';
         <button class="tab-btn" [class.active]="activeTab() === 'liability'" (click)="activeTab.set('liability')">
           Liabilities ({{ accountService.liabilityAccounts().length }})
         </button>
+        <button class="tab-btn" [class.active]="activeTab() === 'investment'" (click)="activeTab.set('investment')">
+          📈 Investment ({{ accountService.investmentAccounts().length }})
+        </button>
       </div>
 
       <!-- Accounts Grid -->
@@ -49,21 +60,29 @@ import { Account, Transaction } from '../../core/models';
           @let balance = getAccountBalance(acc.id);
           <div class="account-card"
                [class.liability-card]="acc.type === 'liability'"
+               [class.investment-card]="acc.isInvestment"
                [class.active-card]="selectedAccount()?.id === acc.id"
                (click)="selectAccount(acc)"
                role="button"
                tabindex="0"
                (keydown.enter)="selectAccount(acc)"
                aria-label="View transactions for {{ acc.name }}">
-            <div class="ac-icon" [class.asset-icon]="acc.type === 'asset'" [class.liability-icon]="acc.type === 'liability'">
-              <span>{{ acc.type === 'asset' ? '🏦' : '💳' }}</span>
+            <div class="ac-icon" [class.asset-icon]="acc.type === 'asset' && !acc.isInvestment"
+                 [class.liability-icon]="acc.type === 'liability'"
+                 [class.investment-icon]="acc.isInvestment">
+              <span>{{ acc.isInvestment ? '📈' : acc.type === 'asset' ? '🏦' : '💳' }}</span>
             </div>
             <div class="ac-info">
               <span class="ac-name">{{ acc.name }}</span>
-              <span class="ac-type badge" [class.badge-income]="acc.type === 'asset'"
-                    [class.badge-expense]="acc.type === 'liability'">
-                {{ acc.type === 'asset' ? 'Asset' : 'Liability' }}
-              </span>
+              <div style="display:flex;gap:0.35rem;flex-wrap:wrap;align-items:center;">
+                <span class="ac-type badge" [class.badge-income]="acc.type === 'asset'"
+                      [class.badge-expense]="acc.type === 'liability'">
+                  {{ acc.type === 'asset' ? 'Asset' : 'Liability' }}
+                </span>
+                @if (acc.isInvestment) {
+                  <span class="badge badge-invest">📈 Investment</span>
+                }
+              </div>
             </div>
             <div class="ac-balance">
               <span class="balance-label">{{ acc.type === 'asset' ? 'Balance' : 'Owed' }}</span>
@@ -72,6 +91,9 @@ import { Account, Transaction } from '../../core/models';
                     [class.text-expense]="acc.type === 'liability' || balance < 0">
                 {{ acc.type === 'asset' && balance < 0 ? '-' : '' }}{{ balance | currencyFormat }}
               </span>
+              @if (acc.isInvestment && acc.stockHoldings?.length) {
+                <span class="balance-sub">{{ acc.stockHoldings!.length }} holding{{ acc.stockHoldings!.length !== 1 ? 's' : '' }}</span>
+              }
             </div>
             <div class="ac-actions" (click)="$event.stopPropagation()">
               <button class="btn btn-ghost btn-icon btn-sm" (click)="editAccount(acc)" aria-label="Edit">✏️</button>
@@ -87,7 +109,7 @@ import { Account, Transaction } from '../../core/models';
         </button>
       </div>
 
-      <!-- ── Account Drilldown Panel ─────────────────────────────────────── -->
+      <!-- ── Account Drilldown Panel ──────────────────────────────────────── -->
       @if (selectedAccount()) {
         @let acc = selectedAccount()!;
         @let balance = getAccountBalance(acc.id);
@@ -99,10 +121,10 @@ import { Account, Transaction } from '../../core/models';
           <!-- Panel Header -->
           <div class="dd-header">
             <div class="dd-title">
-              <span class="dd-icon">{{ acc.type === 'asset' ? '🏦' : '💳' }}</span>
+              <span class="dd-icon">{{ acc.isInvestment ? '📈' : acc.type === 'asset' ? '🏦' : '💳' }}</span>
               <div>
                 <h3>{{ acc.name }}</h3>
-                <span class="dd-subtitle">{{ acc.type === 'asset' ? 'Asset account' : 'Liability account' }} · {{ txns.length }} transactions</span>
+                <span class="dd-subtitle">{{ acc.type === 'asset' ? 'Asset account' : 'Liability account' }}{{ acc.isInvestment ? ' · Investment' : '' }} · {{ txns.length }} transactions</span>
               </div>
             </div>
             <div class="dd-header-right">
@@ -155,76 +177,168 @@ import { Account, Transaction } from '../../core/models';
             </div>
           </div>
 
-          <!-- Transaction Table -->
-          @if (txns.length === 0) {
-            <div class="dd-empty">
-              <span>🪙</span>
-              <p>No transactions in this period</p>
-            </div>
-          } @else {
-            <!-- Type filter tabs -->
-            <div class="dd-type-tabs">
-              <button class="dd-tab" [class.active]="drilldownType() === 'all'" (click)="drilldownType.set('all')">
-                All ({{ txns.length }})
+          <!-- ── Panel Sub-tabs ── -->
+          <div class="dd-main-tabs">
+            <button class="dd-main-tab" [class.active]="ddMainTab() === 'transactions'" (click)="ddMainTab.set('transactions')">
+              📋 Transactions
+            </button>
+            @if (acc.isInvestment) {
+              <button class="dd-main-tab" [class.active]="ddMainTab() === 'portfolio'" (click)="ddMainTab.set('portfolio')">
+                📊 Portfolio
               </button>
-              <button class="dd-tab" [class.active]="drilldownType() === 'income'" (click)="drilldownType.set('income')">
-                <span class="text-income">Income ({{ stats.incomeCount }})</span>
-              </button>
-              <button class="dd-tab" [class.active]="drilldownType() === 'expense'" (click)="drilldownType.set('expense')">
-                <span class="text-expense">Expenses ({{ stats.expenseCount }})</span>
-              </button>
-              <button class="dd-tab" [class.active]="drilldownType() === 'transfer'" (click)="drilldownType.set('transfer')">
-                Transfers ({{ stats.transferCount }})
-              </button>
-            </div>
+            }
+          </div>
 
-            <div class="table-wrapper">
-              <table class="dd-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Description</th>
-                    <th>Category</th>
-                    <th>Type</th>
-                    <th class="text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (t of txns; track t.id) {
+          <!-- Transaction Table -->
+          @if (ddMainTab() === 'transactions') {
+            @if (txns.length === 0) {
+              <div class="dd-empty">
+                <span>🪙</span>
+                <p>No transactions in this period</p>
+              </div>
+            } @else {
+              <!-- Type filter tabs -->
+              <div class="dd-type-tabs">
+                <button class="dd-tab" [class.active]="drilldownType() === 'all'" (click)="drilldownType.set('all')">
+                  All ({{ txns.length }})
+                </button>
+                <button class="dd-tab" [class.active]="drilldownType() === 'income'" (click)="drilldownType.set('income')">
+                  <span class="text-income">Income ({{ stats.incomeCount }})</span>
+                </button>
+                <button class="dd-tab" [class.active]="drilldownType() === 'expense'" (click)="drilldownType.set('expense')">
+                  <span class="text-expense">Expenses ({{ stats.expenseCount }})</span>
+                </button>
+                <button class="dd-tab" [class.active]="drilldownType() === 'transfer'" (click)="drilldownType.set('transfer')">
+                  Transfers ({{ stats.transferCount }})
+                </button>
+              </div>
+
+              <div class="table-wrapper">
+                <table class="dd-table">
+                  <thead>
                     <tr>
-                      <td class="dd-date">{{ t.date }}</td>
-                      <td class="dd-desc">
-                        <span>{{ t.description }}</span>
-                        @if (t.isRecurring) { <span class="recurring-pill">🔄</span> }
-                      </td>
-                      <td class="dd-cat">
-                        @if (t.type === 'transfer') {
-                          <span class="transfer-label">
-                            {{ t.accountId === acc.id ? '→ ' + getAccountName(t.toAccountId || '') : '← ' + getAccountName(t.accountId) }}
-                          </span>
-                        } @else {
-                          <span class="cat-badge">
-                            {{ getCategoryIcon(t.category) }} {{ getCategoryName(t.category) }}
-                          </span>
-                        }
-                      </td>
-                      <td>
-                        <span class="type-chip"
-                              [class.chip-income]="t.type === 'income'"
-                              [class.chip-expense]="t.type === 'expense'"
-                              [class.chip-transfer]="t.type === 'transfer'">
-                          {{ t.type }}
-                        </span>
-                      </td>
-                      <td class="text-right dd-amount"
-                          [class.text-income]="t.type === 'income' || (t.type === 'transfer' && t.toAccountId === acc.id)"
-                          [class.text-expense]="t.type === 'expense' || (t.type === 'transfer' && t.accountId === acc.id)">
-                        {{ (t.type === 'income' || (t.type === 'transfer' && t.toAccountId === acc.id)) ? '+' : '-' }}{{ t.amount | currencyFormat }}
-                      </td>
+                      <th>Date</th>
+                      <th>Description</th>
+                      <th>Category</th>
+                      <th>Type</th>
+                      <th class="text-right">Amount</th>
                     </tr>
-                  }
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    @for (t of txns; track t.id) {
+                      <tr>
+                        <td class="dd-date">{{ t.date }}</td>
+                        <td class="dd-desc">
+                          <span>{{ t.description }}</span>
+                          @if (t.isRecurring) { <span class="recurring-pill">🔄</span> }
+                        </td>
+                        <td class="dd-cat">
+                          @if (t.type === 'transfer') {
+                            <span class="transfer-label">
+                              {{ t.accountId === acc.id ? '→ ' + getAccountName(t.toAccountId || '') : '← ' + getAccountName(t.accountId) }}
+                            </span>
+                          } @else {
+                            <span class="cat-badge">
+                              {{ getCategoryIcon(t.category) }} {{ getCategoryName(t.category) }}
+                            </span>
+                          }
+                        </td>
+                        <td>
+                          <span class="type-chip"
+                                [class.chip-income]="t.type === 'income'"
+                                [class.chip-expense]="t.type === 'expense'"
+                                [class.chip-transfer]="t.type === 'transfer'">
+                            {{ t.type }}
+                          </span>
+                        </td>
+                        <td class="text-right dd-amount"
+                            [class.text-income]="t.type === 'income' || (t.type === 'transfer' && t.toAccountId === acc.id)"
+                            [class.text-expense]="t.type === 'expense' || (t.type === 'transfer' && t.accountId === acc.id)">
+                          {{ (t.type === 'income' || (t.type === 'transfer' && t.toAccountId === acc.id)) ? '+' : '-' }}{{ t.amount | currencyFormat }}
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          }
+
+          <!-- ── Portfolio Tab ── -->
+          @if (ddMainTab() === 'portfolio' && acc.isInvestment) {
+            <div class="portfolio-section">
+              <div class="portfolio-header">
+                <div>
+                  <span class="portfolio-label">Total Market Value</span>
+                  <span class="portfolio-total text-income">{{ getInvestmentValue(acc) | currencyFormat }}</span>
+                </div>
+                <button class="btn btn-primary btn-sm" (click)="openAddHolding(acc)">+ Add Holding</button>
+              </div>
+
+              @if (!acc.stockHoldings?.length) {
+                <div class="dd-empty">
+                  <span>📊</span>
+                  <p>No holdings yet. Click "Add Holding" to track a stock or ETF.</p>
+                </div>
+              } @else {
+                <div class="table-wrapper">
+                  <table class="dd-table">
+                    <thead>
+                      <tr>
+                        <th>Ticker</th>
+                        <th class="text-right">Shares</th>
+                        <th class="text-right">Price</th>
+                        <th class="text-right">Market Value</th>
+                        <th class="text-right">Weight</th>
+                        <th>Last Updated</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (h of acc.stockHoldings!; track h.id) {
+                        <tr>
+                          <td><span class="ticker-badge">{{ h.ticker }}</span></td>
+                          <td class="text-right">{{ h.shares }}</td>
+                          <td class="text-right"><span>&#36;</span>{{ h.price | number:'1.2-2' }}</td>
+                          <td class="text-right text-income">{{ (h.shares * h.price) | currencyFormat }}</td>
+                          <td class="text-right text-muted">
+                            {{ getInvestmentValue(acc) > 0 ? ((h.shares * h.price / getInvestmentValue(acc)) * 100 | number:'1.1-1') + '%' : '—' }}
+                          </td>
+                          <td class="dd-date">{{ h.updatedAt | date:'MMM d, y, h:mm a' }}</td>
+                          <td>
+                            <div style="display:flex;gap:0.25rem;justify-content:flex-end;">
+                              <button class="btn btn-ghost btn-icon btn-sm" (click)="openEditHolding(acc, h)" title="Edit shares">✏️</button>
+                              <button class="btn btn-ghost btn-icon btn-sm" (click)="deleteHolding(acc, h)" title="Remove holding">🗑️</button>
+                            </div>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Allocation bar -->
+                <div class="alloc-bar-section">
+                  <span class="alloc-label">Allocation</span>
+                  <div class="alloc-bar">
+                    @for (h of acc.stockHoldings!; track h.id; let i = $index) {
+                      <div class="alloc-segment"
+                           [style.width]="getInvestmentValue(acc) > 0 ? ((h.shares * h.price / getInvestmentValue(acc)) * 100) + '%' : '0'"
+                           [style.background]="allocColors[i % allocColors.length]"
+                           [title]="h.ticker + ': ' + (getInvestmentValue(acc) > 0 ? ((h.shares * h.price / getInvestmentValue(acc)) * 100 | number:'1.1-1') : '0') + '%'">
+                      </div>
+                    }
+                  </div>
+                  <div class="alloc-legend">
+                    @for (h of acc.stockHoldings!; track h.id; let i = $index) {
+                      <span class="alloc-item">
+                        <span class="alloc-dot" [style.background]="allocColors[i % allocColors.length]"></span>
+                        {{ h.ticker }}
+                      </span>
+                    }
+                  </div>
+                </div>
+              }
             </div>
           }
         </div>
@@ -265,6 +379,19 @@ import { Account, Transaction } from '../../core/models';
                 <span class="field-help text-xs text-muted" style="display: block; margin-top: 0.25rem;">💡 **Tip:** If you plan to import or log past transactions for this account, set the initial balance to what it was *before* those transactions took place. Otherwise, leave it as 0.</span>
               }
             </div>
+
+            <!-- Investment toggle -->
+            <div class="form-group">
+              <label class="form-label invest-toggle-label">
+                <input type="checkbox" [(ngModel)]="form.isInvestment" class="invest-checkbox">
+                <span class="invest-toggle-text">📈 Investment Account (holds stocks / ETFs)</span>
+              </label>
+              @if (form.isInvestment) {
+                <p class="field-help text-xs text-muted" style="margin-top:0.4rem;">
+                  Investment accounts let you track share positions. The total balance will include both deposited cash and the live market value of your holdings.
+                </p>
+              }
+            </div>
           </div>
           <div class="modal-footer">
             <button class="btn btn-ghost" (click)="closeForm()">Cancel</button>
@@ -293,6 +420,52 @@ import { Account, Transaction } from '../../core/models';
         </div>
       </div>
     }
+
+    <!-- Add / Edit Holding Modal -->
+    @if (showHoldingForm()) {
+      <div class="modal-overlay" (click)="onHoldingOverlayClick($event)">
+        <div class="modal" style="max-width: 420px;" role="dialog" aria-modal="true">
+          <div class="modal-header">
+            <h3>{{ editingHolding() ? 'Edit Holding' : 'Add Holding' }}</h3>
+            <button class="btn btn-ghost btn-icon" (click)="closeHoldingForm()">✕</button>
+          </div>
+          <div class="modal-body">
+            @if (!editingHolding()) {
+              <div class="form-group">
+                <label class="form-label">Ticker Symbol *</label>
+                <input type="text" class="form-control" [(ngModel)]="holdingForm.ticker"
+                       placeholder="e.g. AAPL, VFV.TO, XEQT.TO"
+                       style="text-transform:uppercase;">
+                <span class="field-help text-xs text-muted" style="display:block;margin-top:0.3rem;">
+                  Enter the Yahoo Finance ticker. Live price will be fetched automatically.
+                </span>
+              </div>
+            } @else {
+              <div class="form-group">
+                <label class="form-label">Ticker</label>
+                <input type="text" class="form-control" [value]="editingHolding()!.ticker" disabled>
+              </div>
+            }
+            <div class="form-group">
+              <label class="form-label">Number of Shares *</label>
+              <input type="number" class="form-control" [(ngModel)]="holdingForm.shares"
+                     placeholder="e.g. 12.5" step="0.0001" min="0">
+            </div>
+            @if (!editingHolding()) {
+              <p class="field-help text-muted text-xs">
+                ⚡ A live price lookup will happen when you save. This may take a moment.
+              </p>
+            }
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" (click)="closeHoldingForm()">Cancel</button>
+            <button class="btn btn-primary" (click)="saveHolding()" [disabled]="savingHolding() || !holdingForm.shares">
+              {{ savingHolding() ? 'Saving…' : editingHolding() ? 'Update Holding' : 'Add Holding' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
   `,
   styles: [`
     .accounts-page { padding: 1.5rem 2rem; display: flex; flex-direction: column; gap: 1.5rem; }
@@ -316,7 +489,7 @@ import { Account, Transaction } from '../../core/models';
     .nw-sub { font-size: 0.75rem; }
 
     /* ── Type Tabs ────────────────────────────────────────────────── */
-    .type-tabs { display: flex; gap: 0.5rem; }
+    .type-tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; }
     .tab-btn {
       padding: 0.5rem 1.25rem;
       border: 1px solid var(--border);
@@ -359,7 +532,8 @@ import { Account, Transaction } from '../../core/models';
       transform: translateY(-2px);
     }
     .account-card.liability-card { border-left: 3px solid var(--accent-red); }
-    .account-card:not(.liability-card) { border-left: 3px solid var(--accent-green); }
+    .account-card.investment-card { border-left: 3px solid #f59e0b !important; }
+    .account-card:not(.liability-card):not(.investment-card) { border-left: 3px solid var(--accent-green); }
 
     .ac-icon {
       width: 44px; height: 44px;
@@ -371,14 +545,17 @@ import { Account, Transaction } from '../../core/models';
     }
     .ac-icon.asset-icon { background: rgba(76,175,80,0.15); border-color: rgba(76,175,80,0.3); }
     .ac-icon.liability-icon { background: rgba(239,83,80,0.15); border-color: rgba(239,83,80,0.3); }
+    .ac-icon.investment-icon { background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.35); }
 
     .ac-info { display: flex; flex-direction: column; gap: 0.25rem; width: 70%; }
     .ac-name { font-size: 1rem; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ac-type { font-size: 0.7rem; align-self: flex-start; }
+    .badge-invest { background: rgba(245,158,11,0.18); color: #f59e0b; font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 100px; font-weight: 600; }
 
     .ac-balance { display: flex; flex-direction: column; gap: 0.125rem; margin-top: 0.5rem; }
     .balance-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.02em; }
     .balance-value { font-size: 1.375rem; font-weight: 800; color: var(--text-primary); }
+    .balance-sub { font-size: 0.7rem; color: var(--text-muted); }
 
     .ac-actions { display: flex; gap: 0.25rem; justify-content: flex-end; border-top: 1px solid var(--border); padding-top: 0.75rem; margin-top: 0.25rem; }
 
@@ -450,6 +627,23 @@ import { Account, Transaction } from '../../core/models';
     }
     .dd-stat-label { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
     .dd-stat-val { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+
+    /* Main Sub-tabs */
+    .dd-main-tabs { display: flex; gap: 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    .dd-main-tab {
+      padding: 0.45rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: inherit;
+    }
+    .dd-main-tab:hover { background: var(--bg-card); }
+    .dd-main-tab.active { background: rgba(92,107,192,0.18); border-color: var(--accent-blue); color: var(--accent-blue-light); }
 
     /* Type tabs */
     .dd-type-tabs { display: flex; gap: 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; flex-wrap: wrap; }
@@ -525,6 +719,45 @@ import { Account, Transaction } from '../../core/models';
     }
     .dd-empty span { font-size: 2rem; }
 
+    /* ── Portfolio ── */
+    .portfolio-section { display: flex; flex-direction: column; gap: 1rem; }
+    .portfolio-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.75rem 1rem;
+      background: rgba(245,158,11,0.07);
+      border: 1px solid rgba(245,158,11,0.22);
+      border-radius: var(--radius-sm);
+    }
+    .portfolio-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 0.15rem; }
+    .portfolio-total { font-size: 1.375rem; font-weight: 800; }
+
+    .ticker-badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      background: rgba(92,107,192,0.15);
+      color: var(--accent-blue-light);
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      font-family: monospace;
+    }
+
+    /* Allocation bar */
+    .alloc-bar-section { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.25rem; }
+    .alloc-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.04em; }
+    .alloc-bar {
+      height: 10px;
+      border-radius: 100px;
+      display: flex;
+      overflow: hidden;
+      background: var(--border);
+    }
+    .alloc-segment { height: 100%; transition: width 0.4s ease; }
+    .alloc-legend { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .alloc-item { display: flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: var(--text-secondary); }
+    .alloc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
     /* ── Form helpers ─────────────────────────────────────────────── */
     .input-prefix { position: relative; }
     .prefix {
@@ -533,6 +766,25 @@ import { Account, Transaction } from '../../core/models';
       color: var(--text-muted); font-weight: 600;
     }
     .input-prefix .form-control { padding-left: 1.75rem; }
+
+    .invest-toggle-label { display: flex; align-items: center; gap: 0.625rem; cursor: pointer; font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+    .invest-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: #f59e0b; }
+    .invest-toggle-text { user-select: none; }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border-light);
+      color: var(--text-secondary);
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: inherit;
+    }
+    .btn-outline:hover:not(:disabled) { border-color: var(--accent-blue); color: var(--accent-blue-light); }
+    .btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
 
     @media (max-width: 1024px) { .dd-stats { grid-template-columns: repeat(3, 1fr); } }
     @media (max-width: 768px)  {
@@ -550,8 +802,13 @@ export class AccountsComponent implements OnInit {
   private catService  = inject(CategoryService);
   private toast       = inject(ToastService);
 
+  readonly allocColors = [
+    '#5c6bc0','#26a69a','#f59e0b','#ef5350','#ab47bc',
+    '#42a5f5','#66bb6a','#ff7043','#ec407a','#29b6f6'
+  ];
+
   // ── UI state ──────────────────────────────────────────────────────
-  activeTab       = signal<'all' | 'asset' | 'liability'>('all');
+  activeTab       = signal<'all' | 'asset' | 'liability' | 'investment'>('all');
   showForm        = signal(false);
   editingAccount  = signal<Account | undefined>(undefined);
   deletingAccount = signal<Account | undefined>(undefined);
@@ -560,6 +817,7 @@ export class AccountsComponent implements OnInit {
   // ── Drilldown state ───────────────────────────────────────────────
   selectedAccount = signal<Account | undefined>(undefined);
   drilldownType   = signal<'all' | 'income' | 'expense' | 'transfer'>('all');
+  ddMainTab       = signal<'transactions' | 'portfolio'>('transactions');
 
   // Default date range: start of current year → today
   private today = new Date().toLocaleDateString('en-CA');
@@ -567,7 +825,14 @@ export class AccountsComponent implements OnInit {
   drilldownFrom = signal(this.yearStart);
   drilldownTo   = signal(this.today);
 
-  form = { name: '', type: 'asset' as 'asset' | 'liability', initialBalance: null as number | null };
+  form = { name: '', type: 'asset' as 'asset' | 'liability', initialBalance: null as number | null, isInvestment: false };
+
+  // ── Holding modal state ──────────────────────────────────────────
+  showHoldingForm  = signal(false);
+  holdingAccountId = signal<string>('');
+  editingHolding   = signal<StockHolding | undefined>(undefined);
+  holdingForm      = { ticker: '', shares: null as number | null };
+  savingHolding    = signal(false);
 
   // ── Computed: transactions for selected account within date range ──
   drilldownTxns = computed<Transaction[]>(() => {
@@ -639,13 +904,19 @@ export class AccountsComponent implements OnInit {
   // ── Helpers ───────────────────────────────────────────────────────
   filteredAccounts() {
     const tab = this.activeTab();
-    if (tab === 'asset')     return this.accountService.assetAccounts();
-    if (tab === 'liability') return this.accountService.liabilityAccounts();
+    if (tab === 'asset')      return this.accountService.assetAccounts();
+    if (tab === 'liability')  return this.accountService.liabilityAccounts();
+    if (tab === 'investment') return this.accountService.investmentAccounts();
     return this.accountService.accounts();
   }
 
   getAccountBalance(id: string): number {
     return this.accountService.accountBalances()[id] ?? 0;
+  }
+
+  getInvestmentValue(acc: Account): number {
+    if (!acc.stockHoldings?.length) return 0;
+    return acc.stockHoldings.reduce((s, h) => s + h.shares * h.price, 0);
   }
 
   getAccountName(id: string): string {
@@ -674,6 +945,7 @@ export class AccountsComponent implements OnInit {
     } else {
       this.selectedAccount.set(acc);
       this.drilldownType.set('all');
+      this.ddMainTab.set(acc.isInvestment ? 'portfolio' : 'transactions');
     }
   }
 
@@ -683,7 +955,7 @@ export class AccountsComponent implements OnInit {
 
   // ── Account CRUD ──────────────────────────────────────────────────
   openForm() {
-    this.form = { name: '', type: 'asset', initialBalance: null };
+    this.form = { name: '', type: 'asset', initialBalance: null, isInvestment: false };
     this.editingAccount.set(undefined);
     this.showForm.set(true);
   }
@@ -692,7 +964,8 @@ export class AccountsComponent implements OnInit {
     this.form = {
       name: acc.name,
       type: acc.type,
-      initialBalance: acc.initialBalance != null ? Math.abs(acc.initialBalance) : null
+      initialBalance: acc.initialBalance != null ? Math.abs(acc.initialBalance) : null,
+      isInvestment: !!acc.isInvestment,
     };
     this.editingAccount.set(acc);
     this.showForm.set(true);
@@ -708,7 +981,7 @@ export class AccountsComponent implements OnInit {
     this.submitting.set(true);
 
     const isEdit = !!this.editingAccount();
-    let payload: any = { name: this.form.name, type: this.form.type };
+    let payload: any = { name: this.form.name, type: this.form.type, isInvestment: this.form.isInvestment };
     
     if (!isEdit) {
       let initial = this.form.initialBalance != null ? Number(this.form.initialBalance) : 0;
@@ -743,5 +1016,69 @@ export class AccountsComponent implements OnInit {
 
   onOverlayClick(e: MouseEvent) {
     if ((e.target as HTMLElement).classList.contains('modal-overlay')) this.closeForm();
+  }
+
+  // ── Stock Price Refresh ───────────────────────────────────────────
+  refreshPrices() {
+    this.accountService.refreshStockPrices().subscribe(() => {
+      this.toast.success('Stock prices updated!');
+      // Sync selectedAccount signal if it's an investment account
+      const sel = this.selectedAccount();
+      if (sel?.isInvestment) {
+        const fresh = this.accountService.getAccountById(sel.id);
+        if (fresh) this.selectedAccount.set(fresh);
+      }
+    });
+  }
+
+  // ── Holdings CRUD ─────────────────────────────────────────────────
+  openAddHolding(acc: Account) {
+    this.holdingAccountId.set(acc.id);
+    this.editingHolding.set(undefined);
+    this.holdingForm = { ticker: '', shares: null };
+    this.showHoldingForm.set(true);
+  }
+
+  openEditHolding(acc: Account, h: StockHolding) {
+    this.holdingAccountId.set(acc.id);
+    this.editingHolding.set(h);
+    this.holdingForm = { ticker: h.ticker, shares: h.shares };
+    this.showHoldingForm.set(true);
+  }
+
+  closeHoldingForm() {
+    this.showHoldingForm.set(false);
+    this.editingHolding.set(undefined);
+  }
+
+  saveHolding() {
+    if (!this.holdingForm.shares) return;
+    const accId = this.holdingAccountId();
+    this.savingHolding.set(true);
+
+    const obs = this.editingHolding()
+      ? this.accountService.updateHolding(accId, this.editingHolding()!.id, this.holdingForm.shares)
+      : this.accountService.addHolding(accId, this.holdingForm.ticker, this.holdingForm.shares);
+
+    obs.subscribe(() => {
+      this.savingHolding.set(false);
+      this.closeHoldingForm();
+      // Sync selectedAccount
+      const fresh = this.accountService.getAccountById(accId);
+      if (fresh) this.selectedAccount.set(fresh);
+      this.toast.success(this.editingHolding() ? 'Holding updated!' : 'Holding added with live price!');
+    });
+  }
+
+  deleteHolding(acc: Account, h: StockHolding) {
+    this.accountService.deleteHolding(acc.id, h.id).subscribe(() => {
+      const fresh = this.accountService.getAccountById(acc.id);
+      if (fresh) this.selectedAccount.set(fresh);
+      this.toast.success('Holding removed');
+    });
+  }
+
+  onHoldingOverlayClick(e: MouseEvent) {
+    if ((e.target as HTMLElement).classList.contains('modal-overlay')) this.closeHoldingForm();
   }
 }

@@ -429,11 +429,12 @@ ${audit.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n
 
   router.post('/accounts', async (req: Request, res: Response): Promise<void> => {
     try {
-      const { name, type, initialBalance } = req.body;
+      const { name, type, initialBalance, isInvestment } = req.body;
       if (!name || !type) { fail(res, 'Missing required fields: name, type', 400); return; }
       ok(res, await dbService.createAccount(getUserId(req), {
         name, type,
         initialBalance: initialBalance != null ? parseFloat(initialBalance) : 0,
+        isInvestment: !!isInvestment,
       }), 'Account created');
     } catch (e) { fail(res, e); }
   });
@@ -452,6 +453,43 @@ ${audit.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n
         fail(res, 'Account not found', 404); return;
       }
       ok(res, null, 'Account deleted');
+    } catch (e) { fail(res, e); }
+  });
+
+  // ── Stock Holdings ────────────────────────────────────────────────────────
+
+  router.post('/accounts/:id/holdings', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { ticker, shares } = req.body;
+      if (!ticker || shares == null) { fail(res, 'Missing ticker or shares', 400); return; }
+      const holding = await dbService.addStockHolding(getUserId(req), pid(req), ticker, parseFloat(shares));
+      if (!holding) { fail(res, 'Account not found', 404); return; }
+      ok(res, holding, 'Holding added');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.put('/accounts/:id/holdings/:holdingId', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { shares } = req.body;
+      if (shares == null) { fail(res, 'Missing shares', 400); return; }
+      const holding = await dbService.updateStockHolding(getUserId(req), req.params['holdingId'] as string, parseFloat(shares));
+      if (!holding) { fail(res, 'Holding not found', 404); return; }
+      ok(res, holding, 'Holding updated');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.delete('/accounts/:id/holdings/:holdingId', async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!await dbService.deleteStockHolding(getUserId(req), req.params['holdingId'] as string)) {
+        fail(res, 'Holding not found', 404); return;
+      }
+      ok(res, null, 'Holding deleted');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/accounts/refresh-prices', async (req: Request, res: Response): Promise<void> => {
+    try {
+      ok(res, await dbService.updateStockPrices(getUserId(req)), 'Prices refreshed');
     } catch (e) { fail(res, e); }
   });
 

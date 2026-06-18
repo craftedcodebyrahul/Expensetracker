@@ -29,7 +29,12 @@ interface PrismaCategoryRow {
 }
 interface PrismaAccountRow {
   id: string; userId: string; name: string; type: string;
-  initialBalance: number; createdAt: string;
+  currency: string; initialBalance: number; isInvestment: number; createdAt: string;
+  stockHoldings?: PrismaStockHoldingRow[];
+}
+interface PrismaStockHoldingRow {
+  id: string; accountId: string; ticker: string;
+  shares: number; price: number; updatedAt: string;
 }
 interface PrismaBudgetRow {
   id: string; userId: string; categoryId: string; categoryName: string;
@@ -77,12 +82,23 @@ export interface Category {
   createdAt: string;
 }
 
+export interface StockHolding {
+  id: string;
+  accountId: string;
+  ticker: string;
+  shares: number;
+  price: number;
+  updatedAt: string;
+}
+
 export interface Account {
   id: string;
   name: string;
   type: 'asset' | 'liability';
   currency?: string;
   initialBalance?: number;
+  isInvestment?: boolean;
+  stockHoldings?: StockHolding[];
   createdAt?: string;
 }
 
@@ -448,6 +464,75 @@ export class DbService {
     if (!existing) return null;
 
     const now = new Date().toISOString();
+
+    const isRecurring = data.isRecurring !== undefined ? data.isRecurring : (existing.isRecurring === 1);
+    let recurringId = existing.recurringId ?? undefined;
+
+    if (isRecurring) {
+      if (!recurringId) {
+        recurringId = uuidv4();
+      }
+
+      // Upsert or create schedule entry
+      const existingSchedule = await prisma.recurringSchedule.findFirst({
+        where: { userId, id: recurringId },
+      });
+
+      const freq = data.recurringFrequency !== undefined
+        ? data.recurringFrequency
+        : (existing.recurringFrequency ?? 'monthly');
+
+      if (!existingSchedule) {
+        await prisma.recurringSchedule.create({
+          data: {
+            id: recurringId,
+            userId,
+            type: data.type !== undefined ? data.type : existing.type,
+            amount: data.amount !== undefined ? data.amount : existing.amount,
+            category: data.category !== undefined ? data.category : (existing.category ?? null),
+            description: data.description !== undefined ? data.description : existing.description,
+            frequency: freq as any,
+            startDate: data.date !== undefined ? data.date : existing.date,
+            nextDueDate: advanceDateByFrequency(
+              data.date !== undefined ? data.date : existing.date,
+              freq
+            ),
+            accountId: data.accountId !== undefined ? data.accountId : existing.accountId,
+            toAccountId: data.toAccountId !== undefined ? data.toAccountId : (existing.toAccountId ?? null),
+            isActive: 1,
+            createdAt: now,
+          },
+        });
+      } else {
+        await prisma.recurringSchedule.update({
+          where: { id: recurringId },
+          data: {
+            type: data.type !== undefined ? data.type : existing.type,
+            amount: data.amount !== undefined ? data.amount : existing.amount,
+            category: data.category !== undefined ? data.category : (existing.category ?? null),
+            description: data.description !== undefined ? data.description : existing.description,
+            frequency: freq as any,
+            accountId: data.accountId !== undefined ? data.accountId : existing.accountId,
+            toAccountId: data.toAccountId !== undefined ? data.toAccountId : (existing.toAccountId ?? null),
+            ...((data.date !== undefined || data.recurringFrequency !== undefined) && {
+              startDate: data.date !== undefined ? data.date : existing.date,
+              nextDueDate: advanceDateByFrequency(
+                data.date !== undefined ? data.date : existing.date,
+                freq
+              ),
+            }),
+          },
+        });
+      }
+    } else if (existing.recurringId) {
+      // If it was recurring and now is not, deactivate the schedule
+      await prisma.recurringSchedule.updateMany({
+        where: { userId, id: existing.recurringId },
+        data: { isActive: 0 },
+      });
+      recurringId = undefined; // clear it for this transaction
+    }
+
     const updated = await prisma.transaction.update({
       where: { id },
       data: {
@@ -457,8 +542,11 @@ export class DbService {
         ...(data.description !== undefined && { description: data.description }),
         ...(data.date        !== undefined && { date: data.date }),
         ...(data.tags        !== undefined && { tags: serializeTags(data.tags) }),
-        ...(data.isRecurring !== undefined && { isRecurring: data.isRecurring ? 1 : 0 }),
-        ...(data.recurringFrequency !== undefined && { recurringFrequency: data.recurringFrequency }),
+        isRecurring: isRecurring ? 1 : 0,
+        recurringFrequency: isRecurring
+          ? (data.recurringFrequency !== undefined ? data.recurringFrequency : (existing.recurringFrequency ?? 'monthly'))
+          : null,
+        recurringId: recurringId ?? null,
         ...(data.paymentMethod      !== undefined && { paymentMethod: data.paymentMethod }),
         ...(data.notes       !== undefined && { notes: data.notes }),
         ...(data.accountId   !== undefined && { accountId: data.accountId }),
@@ -772,6 +860,7 @@ export class DbService {
     const rows = await prisma.account.findMany({
       where: { userId },
       orderBy: { createdAt: 'asc' },
+      include: { stockHoldings: true },
     });
     return rows.map((r: any) => ({
       id: r.id,
@@ -779,8 +868,95 @@ export class DbService {
       type: r.type as Account['type'],
       currency: r.currency || 'USD',
       initialBalance: r.initialBalance,
+      isInvestment: r.isInvestment === 1,
+      stockHoldings: (r.stockHoldings ?? []).map((h: PrismaStockHoldingRow) => ({
+        id: h.id,
+        accountId: h.accountId,
+        ticker: h.ticker,
+        shares: h.shares,
+        price: h.price,
+        updatedAt: h.updatedAt,
+      })),
       createdAt: r.createdAt,
     }));
+  }
+
+  /** Fetch live market price for a ticker from Yahoo Finance. Returns null if not found. */
+  private async fetchStockPrice(ticker: string): Promise<number | null> {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}`;
+      const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (!res.ok) return null;
+      const json = await res.json() as any;
+      const price = json.chart?.result?.[0]?.meta?.regularMarketPrice;
+      return typeof price === 'number' ? price : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Refresh market prices for all holdings in every investment account owned by userId. */
+  async updateStockPrices(userId: string): Promise<Account[]> {
+    const accounts = await this.getAccounts(userId);
+    const now = new Date().toISOString();
+    for (const acc of accounts) {
+      if (!acc.isInvestment || !acc.stockHoldings?.length) continue;
+      for (const holding of acc.stockHoldings) {
+        const price = await this.fetchStockPrice(holding.ticker);
+        if (price !== null) {
+          await prisma.stockHolding.update({
+            where: { id: holding.id },
+            data: { price, updatedAt: now },
+          });
+        }
+      }
+    }
+    return this.getAccounts(userId);
+  }
+
+  /** Add a stock holding to an investment account. */
+  async addStockHolding(
+    userId: string,
+    accountId: string,
+    ticker: string,
+    shares: number
+  ): Promise<StockHolding | null> {
+    const acc = await prisma.account.findFirst({ where: { id: accountId, userId } });
+    if (!acc) return null;
+    const now = new Date().toISOString();
+    const price = (await this.fetchStockPrice(ticker)) ?? 0;
+    const row = await prisma.stockHolding.create({
+      data: { id: uuidv4(), accountId, ticker: ticker.toUpperCase().trim(), shares, price, updatedAt: now },
+    });
+    return { id: row.id, accountId: row.accountId, ticker: row.ticker, shares: row.shares, price: row.price, updatedAt: row.updatedAt };
+  }
+
+  /** Update shares for an existing holding. */
+  async updateStockHolding(
+    userId: string,
+    holdingId: string,
+    shares: number
+  ): Promise<StockHolding | null> {
+    const row = await prisma.stockHolding.findFirst({
+      where: { id: holdingId, account: { userId } },
+    });
+    if (!row) return null;
+    const price = (await this.fetchStockPrice(row.ticker)) ?? row.price;
+    const updated = await prisma.stockHolding.update({
+      where: { id: holdingId },
+      data: { shares, price, updatedAt: new Date().toISOString() },
+    });
+    return { id: updated.id, accountId: updated.accountId, ticker: updated.ticker, shares: updated.shares, price: updated.price, updatedAt: updated.updatedAt };
+  }
+
+  /** Remove a holding from an investment account. */
+  async deleteStockHolding(userId: string, holdingId: string): Promise<boolean> {
+    const row = await prisma.stockHolding.findFirst({
+      where: { id: holdingId, account: { userId } },
+    });
+    if (!row) return false;
+    await prisma.stockHolding.delete({ where: { id: holdingId } });
+    return true;
   }
 
   async createAccount(
@@ -795,10 +971,11 @@ export class DbService {
         type: data.type,
         currency: data.currency ?? 'USD',
         initialBalance: data.initialBalance ?? 0,
+        isInvestment: data.isInvestment ? 1 : 0,
         createdAt: now,
       },
     });
-    return { ...row, type: row.type as Account['type'], currency: row.currency };
+    return { id: row.id, name: row.name, type: row.type as Account['type'], currency: row.currency, initialBalance: row.initialBalance, isInvestment: row.isInvestment === 1, stockHoldings: [], createdAt: row.createdAt };
   }
 
   async updateAccount(
@@ -814,9 +991,17 @@ export class DbService {
         ...(data.name           !== undefined && { name: data.name }),
         ...(data.type           !== undefined && { type: data.type }),
         ...(data.currency       !== undefined && { currency: data.currency }),
+        ...(data.isInvestment   !== undefined && { isInvestment: data.isInvestment ? 1 : 0 }),
       },
     });
-    return { ...updated, type: updated.type as Account['type'], currency: updated.currency };
+    const holdings = await prisma.stockHolding.findMany({ where: { accountId: id } });
+    return {
+      id: updated.id, name: updated.name, type: updated.type as Account['type'],
+      currency: updated.currency, initialBalance: updated.initialBalance,
+      isInvestment: updated.isInvestment === 1,
+      stockHoldings: holdings.map((h: PrismaStockHoldingRow) => ({ id: h.id, accountId: h.accountId, ticker: h.ticker, shares: h.shares, price: h.price, updatedAt: h.updatedAt })),
+      createdAt: updated.createdAt,
+    };
   }
 
   async deleteAccount(userId: string, id: string): Promise<boolean> {
@@ -1322,7 +1507,7 @@ Return ONLY valid JSON. No Markdown formatting, no code block backticks, no othe
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 200 },
+          generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 2000 },
         }),
       }
     );
@@ -1730,7 +1915,7 @@ Return JSON format matching this schema:
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 400 },
+              generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 2000 },
             }),
           }
         );
@@ -1981,7 +2166,7 @@ Respond with ONLY the exact category ID (e.g. food) from the list. If unsure, re
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { maxOutputTokens: 20 },
+              generationConfig: { maxOutputTokens: 1000 },
             }),
           }
         );

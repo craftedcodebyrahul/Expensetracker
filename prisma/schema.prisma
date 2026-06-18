@@ -39,22 +39,38 @@ model User {
 // ── ACCOUNTS ───────────────────────────────────────────────────────────────────
 
 model Account {
-  id             String  @id           // UUID generated in JS
-  userId         String  @map("user_id")
+  id             String         @id           // UUID generated in JS
+  userId         String         @map("user_id")
   name           String
   type           String                // 'asset' | 'liability'
-  currency       String  @default("USD")
-  initialBalance Float   @default(0) @map("initial_balance")
-  createdAt      String  @map("created_at")
+  currency       String         @default("USD")
+  initialBalance Float          @default(0) @map("initial_balance")
+  isInvestment   Int            @default(0) @map("is_investment")
+  createdAt      String         @map("created_at")
 
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions       Transaction[]       @relation("AccountFrom")
   toTransactions     Transaction[]       @relation("AccountTo")
   schedules          RecurringSchedule[] @relation("ScheduleFrom")
   toSchedules        RecurringSchedule[] @relation("ScheduleTo")
+  stockHoldings      StockHolding[]
 
   @@index([userId])
   @@map("accounts")
+}
+
+model StockHolding {
+  id        String @id
+  accountId String @map("account_id")
+  ticker    String
+  shares    Float
+  price     Float  @default(0)
+  updatedAt String @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("stock_holdings")
 }
 
 // ── CATEGORIES ─────────────────────────────────────────────────────────────────
