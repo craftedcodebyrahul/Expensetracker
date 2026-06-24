@@ -305,6 +305,7 @@ export class SidebarComponent {
     { path: '/insights',       label: 'Insights',       icon: '🔮' },
     { path: '/budgets',        label: 'Budgets',        icon: '🎯' },
     { path: '/goals',          label: 'Goals',          icon: '🏆' },
+    { path: '/savings-simulator', label: 'Savings Simulator', icon: '⚖️' },
     { path: '/bills-calendar', label: 'Upcoming Bills', icon: '📅' },
     { path: '/categories',     label: 'Categories',     icon: '🏷️' },
     { path: '/reports',        label: 'Reports',        icon: '📈' },

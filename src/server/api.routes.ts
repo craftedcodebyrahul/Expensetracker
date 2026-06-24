@@ -320,6 +320,12 @@ export function createApiRouter(): Router {
     } catch (e) { fail(res, e); }
   });
 
+  router.post('/ai/audit-comprehensive', async (req: Request, res: Response): Promise<void> => {
+    try {
+      ok(res, await dbService.auditComprehensive(getUserId(req)));
+    } catch (e) { fail(res, e); }
+  });
+
   // ── Goals ──────────────────────────────────────────────────────────────────
 
   router.get('/goals', async (req: Request, res: Response): Promise<void> => {

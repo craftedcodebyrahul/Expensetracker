@@ -69,6 +69,12 @@ export const routes: Routes = [
     title: 'Goals — TCFlow'
   },
   {
+    path: 'savings-simulator',
+    loadComponent: () => import('./features/savings-simulator/savings-simulator.component').then(m => m.SavingsSimulatorComponent),
+    canActivate: [authGuard],
+    title: 'Savings Simulator — TCFlow'
+  },
+  {
     path: 'bills-calendar',
     loadComponent: () => import('./features/bills-calendar/bills-calendar.component').then(m => m.BillsCalendarComponent),
     canActivate: [authGuard],

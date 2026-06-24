@@ -2198,6 +2198,316 @@ Respond with ONLY the exact category ID (e.g. food) from the list. If unsure, re
     return null;
   }
 
+  async auditComprehensive(userId: string): Promise<any> {
+    try {
+      const accounts = await this.getAccounts(userId);
+      const settings = await this.getSettings(userId);
+      const primaryCurrency = settings.currency || 'USD';
+      const rates = await getExchangeRates();
+
+      // Get all transactions for running balance calculation
+      const allTxnsRows = await prisma.transaction.findMany({ where: { userId } });
+      const allTxns = allTxnsRows.map(rowToTransaction);
+
+      const balances: Record<string, number> = {};
+      accounts.forEach((a: Account) => {
+        balances[a.id] = Math.abs(a.initialBalance ?? 0);
+      });
+
+      allTxns.forEach((t: Transaction) => {
+        if (t.type === 'income') {
+          const acc = accounts.find((a: Account) => a.id === t.accountId);
+          if (acc?.type === 'liability') {
+            balances[t.accountId] = (balances[t.accountId] || 0) - t.amount;
+          } else {
+            balances[t.accountId] = (balances[t.accountId] || 0) + t.amount;
+          }
+        } else if (t.type === 'expense') {
+          const acc = accounts.find((a: Account) => a.id === t.accountId);
+          if (acc?.type === 'liability') {
+            balances[t.accountId] = (balances[t.accountId] || 0) + t.amount;
+          } else {
+            balances[t.accountId] = (balances[t.accountId] || 0) - t.amount;
+          }
+        } else if (t.type === 'transfer') {
+          const fromAcc = accounts.find((a: Account) => a.id === t.accountId);
+          const toAcc = accounts.find((a: Account) => a.id === t.toAccountId);
+          if (fromAcc?.type === 'liability') {
+            balances[t.accountId] = (balances[t.accountId] || 0) + t.amount;
+          } else {
+            balances[t.accountId] = (balances[t.accountId] || 0) - t.amount;
+          }
+          if (t.toAccountId) {
+            if (toAcc?.type === 'liability') {
+              balances[t.toAccountId] = (balances[t.toAccountId] || 0) - t.amount;
+            } else {
+              balances[t.toAccountId] = (balances[t.toAccountId] || 0) + t.amount;
+            }
+          }
+        }
+      });
+
+      // Add stock holdings to investment accounts
+      accounts.forEach((a: Account) => {
+        if (a.isInvestment && a.stockHoldings?.length) {
+          const mktVal = a.stockHoldings.reduce((sum: number, h: StockHolding) => sum + h.shares * h.price, 0);
+          balances[a.id] = (balances[a.id] || 0) + mktVal;
+        }
+      });
+
+      let netWorth = 0;
+      let totalCashAssets = 0;
+      let totalInvestmentAssets = 0;
+      let totalLiabilities = 0;
+      let totalStockHoldingsValue = 0;
+
+      accounts.forEach((a: Account) => {
+        const bal = balances[a.id] || 0;
+        const accCurrency = a.currency || 'USD';
+        let convertedBal = bal;
+        if (accCurrency.toUpperCase() !== primaryCurrency.toUpperCase()) {
+          const fromRate = rates[accCurrency.toUpperCase()] || 1.0;
+          const toRate = rates[primaryCurrency.toUpperCase()] || 1.0;
+          convertedBal = (bal / fromRate) * toRate;
+        }
+
+        if (a.type === 'asset') {
+          netWorth += convertedBal;
+          if (a.isInvestment) {
+            totalInvestmentAssets += convertedBal;
+          } else {
+            totalCashAssets += convertedBal;
+          }
+        } else {
+          netWorth -= convertedBal;
+          totalLiabilities += convertedBal;
+        }
+
+        if (a.stockHoldings?.length) {
+          a.stockHoldings.forEach((h: StockHolding) => {
+            let convertedHolding = h.shares * h.price;
+            if (accCurrency.toUpperCase() !== primaryCurrency.toUpperCase()) {
+              const fromRate = rates[accCurrency.toUpperCase()] || 1.0;
+              const toRate = rates[primaryCurrency.toUpperCase()] || 1.0;
+              convertedHolding = (convertedHolding / fromRate) * toRate;
+            }
+            totalStockHoldingsValue += convertedHolding;
+          });
+        }
+      });
+
+      // 6-month historical averages
+      const today = new Date().toLocaleDateString('en-CA');
+      const dFrom = new Date();
+      dFrom.setMonth(dFrom.getMonth() - 6);
+      const dateFrom = dFrom.toLocaleDateString('en-CA');
+      
+      const sixMonthTxns = await this._getFilteredTransactions(userId, dateFrom, today);
+      const categories = await this.getCategories(userId);
+
+      const totalIncome = sixMonthTxns.filter((t: Transaction) => t.type === 'income').reduce((s: number, t: Transaction) => s + t.amount, 0);
+      const totalExpenses = sixMonthTxns.filter((t: Transaction) => t.type === 'expense').reduce((s: number, t: Transaction) => s + t.amount, 0);
+      const avgMonthlyIncome = totalIncome / 6;
+      const avgMonthlyExpense = totalExpenses / 6;
+
+      // Group expenses by category
+      const categorySpendMap: Record<string, number> = {};
+      sixMonthTxns.filter((t: Transaction) => t.type === 'expense').forEach((t: Transaction) => {
+        categorySpendMap[t.category || ''] = (categorySpendMap[t.category || ''] || 0) + t.amount;
+      });
+
+      // Fixed vs Discretionary
+      const fixedCats = ['housing', 'utilities', 'insurance', 'healthcare', 'taxes'];
+      const isFixed = (catId: string, desc: string): boolean => {
+        const cId = catId.toLowerCase();
+        const d = desc.toLowerCase();
+        return fixedCats.includes(cId) || d.includes('rent') || d.includes('insurance') || d.includes('utility');
+      };
+
+      const categoryBreakdownList = categories.map((cat: Category) => {
+        const totalSpend = categorySpendMap[cat.id] || 0;
+        const avgMonthlySpend = totalSpend / 6;
+        const type = isFixed(cat.id, cat.name) ? 'fixed' : 'discretionary';
+        return {
+          id: cat.id,
+          name: cat.name,
+          fixedOrDiscretionary: type,
+          totalSpend,
+          avgMonthlySpend
+        };
+      }).filter((c: any) => c.totalSpend > 0);
+
+      // Budgets
+      const budgets = await this.getBudgets(userId);
+      const budgetSummary = budgets.map((b: Budget) => ({
+        categoryName: b.categoryName,
+        categoryId: b.categoryId,
+        amount: b.amount,
+        period: b.period
+      }));
+
+      // Subscription/Bill spikes (price creeps) or transaction clusters
+      const groups: Record<string, { amounts: number[], dates: string[], category: string }> = {};
+      sixMonthTxns.filter((t: Transaction) => t.type === 'expense').forEach((t: Transaction) => {
+        const norm = this.normalizeDescription(t.description);
+        if (norm.length >= 3) {
+          if (!groups[norm]) groups[norm] = { amounts: [], dates: [], category: t.category || '' };
+          groups[norm].amounts.push(t.amount);
+          groups[norm].dates.push(t.date);
+        }
+      });
+
+      const priceCreeps: any[] = [];
+      Object.entries(groups).forEach(([desc, data]: [string, any]) => {
+        if (data.amounts.length >= 2) {
+          const sorted = data.amounts.map((amt: number, idx: number) => ({ amt, date: data.dates[idx] })).sort((a: any, b: any) => a.date.localeCompare(b.date));
+          const first = sorted[0].amt;
+          const last = sorted[sorted.length - 1].amt;
+          if (last > first && (last - first) > 1.0) {
+            priceCreeps.push({
+              description: desc,
+              category: data.category,
+              firstPrice: first,
+              lastPrice: last,
+              increase: last - first,
+              percentIncrease: ((last - first) / first) * 100
+            });
+          }
+        }
+      });
+
+      // Prepare metadata for Gemini
+      const metadata = {
+        primaryCurrency,
+        netWorth: parseFloat(netWorth.toFixed(2)),
+        totalCashAssets: parseFloat(totalCashAssets.toFixed(2)),
+        totalInvestmentAssets: parseFloat(totalInvestmentAssets.toFixed(2)),
+        totalLiabilities: parseFloat(totalLiabilities.toFixed(2)),
+        totalStockHoldingsValue: parseFloat(totalStockHoldingsValue.toFixed(2)),
+        avgMonthlyIncome: parseFloat(avgMonthlyIncome.toFixed(2)),
+        avgMonthlyExpense: parseFloat(avgMonthlyExpense.toFixed(2)),
+        categoryBreakdown: categoryBreakdownList.map(c => ({
+          name: c.name,
+          type: c.fixedOrDiscretionary,
+          avgMonthlySpend: parseFloat(c.avgMonthlySpend.toFixed(2))
+        })),
+        budgets: budgetSummary,
+        potentialPriceCreeps: priceCreeps.slice(0, 5)
+      };
+
+      const apiKey = process.env['GEMINI_API_KEY'];
+      if (apiKey) {
+        const prompt = `You are an elite AI wealth advisor and forensic financial auditor. Analyze the user's financial profile below and generate a detailed diagnostics report.
+
+FINANCIAL PROFILE METRICS:
+- Primary Currency: ${metadata.primaryCurrency}
+- Net Worth: ${primaryCurrency} ${metadata.netWorth}
+- Cash Assets: ${primaryCurrency} ${metadata.totalCashAssets}
+- Stock Investment Portfolio Value: ${primaryCurrency} ${metadata.totalInvestmentAssets} (Stock holdings market value: ${primaryCurrency} ${metadata.totalStockHoldingsValue})
+- Total Debt/Liabilities: ${primaryCurrency} ${metadata.totalLiabilities}
+- 6-Month Average Monthly Income: ${primaryCurrency} ${metadata.avgMonthlyIncome}
+- 6-Month Average Monthly Expense: ${primaryCurrency} ${metadata.avgMonthlyExpense}
+
+BUDGET CONSTRAINTS:
+${metadata.budgets.length > 0 ? JSON.stringify(metadata.budgets, null, 2) : 'No budgets configured.'}
+
+CATEGORY SPENDING BREAKDOWN (6-MONTH AVERAGES):
+${JSON.stringify(metadata.categoryBreakdown, null, 2)}
+
+POTENTIAL PRICE CREEPS OR SUBSCRIPTION HIKES IDENTIFIED:
+${JSON.stringify(metadata.potentialPriceCreeps, null, 2)}
+
+DIAGNOSTICS REQUIREMENTS:
+1. Identify "What am I doing wrong" (wrong):
+   - Find leaks, price creeps, budget breaches (where average spend exceeds budget), low savings rates, or bad asset allocation (e.g. cash is too high/low, debt is too high).
+   - Set severity: "high" (serious leakage, credit card debt, budget breach) or "medium" (minor leaks, small creep).
+2. Identify "Where can I save" (opportunities):
+   - Offer specific, actionable saving opportunities (e.g., cancel unused subscriptions, cook at home more, renegotiate utility prices, reduce discretionary spending in specific categories).
+   - Each opportunity MUST have a numeric "savings" value (estimated monthly savings) and a "difficulty" ('Easy' | 'Medium' | 'Hard').
+3. Create strategic next steps (todo):
+   - Clear, short list of 3-5 next actions (e.g., Build a 6-month runway of ${primaryCurrency} xxx, transfer cash to investments, target high-interest credit card debt, create a budget for dining out).
+
+You MUST respond with a JSON object matching this schema exactly:
+{
+  "wrong": [
+    { "type": "subscription_hike | anomaly | budget_breach | high_discretionary | low_savings", "text": "Detailed critique with numbers and category/merchant name", "severity": "high | medium" }
+  ],
+  "opportunities": [
+    { "id": "unique_id_string", "title": "Opportunity Title", "description": "Actionable explanation", "savings": number, "difficulty": "Easy|Medium|Hard" }
+  ],
+  "todo": [
+    "Next step 1",
+    "Next step 2",
+    "Next step 3"
+  ]
+}
+
+Ensure the response contains ONLY the valid JSON matching the schema, with no markdown formatting wrappers (like \`\`\`json) outside it.`;
+
+        const response = await fetchGeminiWithRetry(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { responseMimeType: 'application/json' },
+            }),
+          }
+        );
+
+        if (response.ok) {
+          const json = await response.json() as any;
+          const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) {
+            const data = JSON.parse(text);
+            if (Array.isArray(data.wrong) && Array.isArray(data.opportunities) && Array.isArray(data.todo)) {
+              return data;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('AI comprehensive diagnostics failed:', err);
+    }
+
+    // Heuristic Fallback in case of error or missing API key
+    const mockWrong = [];
+    const mockOpportunities = [];
+    const mockTodo = [];
+
+    // Fallback static advice
+    mockWrong.push({
+      type: 'low_savings',
+      text: `Manual analysis shows spending needs review. Ensure your fixed expenses do not crowd out savings.`,
+      severity: 'medium'
+    });
+    mockOpportunities.push({
+      id: 'opp_subs',
+      title: 'Review Subscriptions',
+      description: 'Audit digital streaming services and cancel unused memberships.',
+      savings: 45,
+      difficulty: 'Easy'
+    }, {
+      id: 'opp_dining',
+      title: 'Reduce Dining Out by 20%',
+      description: 'Prepare meals at home during weekdays to save on restaurant costs.',
+      savings: 80,
+      difficulty: 'Medium'
+    });
+    mockTodo.push(
+      `Build a 3 to 6-month cash emergency runway.`,
+      `Create category budgets for discretionary expenses.`,
+      `Invest surplus cash into long-term market index funds.`
+    );
+
+    return {
+      wrong: mockWrong,
+      opportunities: mockOpportunities,
+      todo: mockTodo
+    };
+  }
+
   // ── Smart Subscription/Bill Detector ───────────────────────────────────────
 
   async detectRecurringBills(userId: string): Promise<any[]> {

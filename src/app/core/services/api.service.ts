@@ -162,6 +162,10 @@ export class ApiService {
     return this.http.post<ApiResponse<any>>(`${this.baseUrl}/ai/goal-buddy`, { goalId });
   }
 
+  auditComprehensive(): Observable<ApiResponse<any>> {
+    return this.http.post<ApiResponse<any>>(`${this.baseUrl}/ai/audit-comprehensive`, {});
+  }
+
   // ── Accounts ──────────────────────────────────────────────────────────────
 
   getAccounts(): Observable<ApiResponse<Account[]>> {

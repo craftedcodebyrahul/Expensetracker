@@ -1,0 +1,230 @@
+<div class="simulator-container">
+  <!-- Header -->
+  <div class="sim-header print-hide">
+    <div class="header-titles">
+      <button class="back-btn" (click)="backToGoals()">← Back to Goals</button>
+      <h2>🔮 Savings Simulator & AI Diagnostics</h2>
+      <p class="subtitle">Next-Level Wealth Builder & Forensic Financial Auditor</p>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="printReport()">📄 Print PDF Plan</button>
+    </div>
+  </div>
+
+  <!-- KPI / Stats Summary Panel -->
+  <div class="stats-panel card">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <span class="label">Net Worth</span>
+        <span class="value">${{ netWorth() | number:'1.0-0' }}</span>
+        <span class="sub-label">Cash: ${{ cashAssets() | number:'1.0-0' }} | Stocks: ${{ stockAssets() | number:'1.0-0' }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">Average Monthly Savings</span>
+        <span class="value text-income">+${{ simulatedSavings() | number:'1.0-0' }}/mo</span>
+        <span class="sub-label">Base: ${{ (avgIncome() - avgExpense()) | number:'1.0-0' }}/mo</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">Projected Net Worth (End)</span>
+        <span class="value text-accent">${{ simulatedNetWorth() | number:'1.0-0' }}</span>
+        <span class="sub-label">In {{ timelineMonths() }} months</span>
+      </div>
+      <div class="stat-card">
+        <span class="label">Remaining Debt</span>
+        <span class="value" [class.text-expense]="simulatedDebt() > 0" [class.text-income]="simulatedDebt() === 0">
+          ${{ simulatedDebt() | number:'1.0-0' }}
+        </span>
+        <span class="sub-label">Current Debt: ${{ liabilities() | number:'1.0-0' }}</span>
+      </div>
+    </div>
+
+    <!-- Radial F-Score Gauge -->
+    <div class="fscore-container">
+      <div class="radial-gauge">
+        <svg viewBox="0 0 120 120" class="dial-svg">
+          <circle cx="60" cy="60" r="50" class="ring-bg"></circle>
+          <circle cx="60" cy="60" r="50" class="ring-fill" 
+                  [style.strokeDashoffset]="strokeDashoffset()" 
+                  [style.stroke]="dialColor()"></circle>
+        </svg>
+        <div class="gauge-content">
+          <span class="score-num">{{ fScore() }}</span>
+          <span class="score-label">F-SCORE</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Print View Header (only shown during print) -->
+  <div class="print-show print-header" style="display: none;">
+    <h2>TCFlow AI Wealth Diagnostics Report</h2>
+    <p>Score: {{ fScore() }}/100 | Projected Wealth: ${{ simulatedNetWorth() | number:'1.0-0' }} in {{ timelineMonths() }} months</p>
+    <hr>
+  </div>
+
+  <!-- Two Column Workspace -->
+  <div class="workspace-grid">
+    <!-- Left Column: Controls (Sliders) -->
+    <div class="controls-column card print-hide">
+      <h3>⚙️ Wealth Simulator Controls</h3>
+      <p class="section-desc">Adjust sliders to see the compounding impact of reallocation and budget discipline.</p>
+
+      <div class="control-group">
+        <div class="control-header">
+          <label>Lump Sum Cash to Stocks</label>
+          <span class="control-val">${{ simAssetReallocateStocks() | number:'1.0-0' }}</span>
+        </div>
+        <input type="range" 
+               [min]="0" 
+               [max]="maxReallocate()" 
+               [step]="100" 
+               [(ngModel)]="simAssetReallocateStocks" 
+               (input)="onSliderChange()"
+               class="slider">
+        <span class="slider-hint">Move idle cash into interest-bearing stocks</span>
+      </div>
+
+      <div class="control-group" *ngIf="liabilities() > 0">
+        <div class="control-header">
+          <label>Lump Sum Cash to Debt Payoff</label>
+          <span class="control-val">${{ simAssetReallocateDebt() | number:'1.0-0' }}</span>
+        </div>
+        <input type="range" 
+               [min]="0" 
+               [max]="maxReallocate()" 
+               [step]="100" 
+               [(ngModel)]="simAssetReallocateDebt" 
+               (input)="onSliderChange()"
+               class="slider">
+        <span class="slider-hint">Eliminate high-interest debt instantly</span>
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <label>Discretionary Budget Cuts</label>
+          <span class="control-val">{{ simBudgetCutPct() }}%</span>
+        </div>
+        <input type="range" 
+               [min]="0" 
+               [max]="100" 
+               [step]="5" 
+               [(ngModel)]="simBudgetCutPct" 
+               (input)="recalcAll()"
+               class="slider">
+        <span class="slider-hint">Reduce non-essential category spends (Discretionary: ${{ avgDiscretionary() | number:'1.0-0' }}/mo)</span>
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <label>Expected Annual Return Yield</label>
+          <span class="control-val">{{ simExpectedYield() }}%</span>
+        </div>
+        <input type="range" 
+               [min]="0" 
+               [max]="15" 
+               [step]="0.5" 
+               [(ngModel)]="simExpectedYield" 
+               (input)="recalcAll()"
+               class="slider">
+        <span class="slider-hint">Estimated market yield rate for stock holdings</span>
+      </div>
+    </div>
+
+    <!-- Right Column: Visualization & AI Advice -->
+    <div class="visuals-column">
+      <!-- Tabs / Projections Chart -->
+      <div class="chart-panel card">
+        <div class="chart-header">
+          <h3>📈 Wealth Trajectory Projection</h3>
+          <div class="timeline-tabs print-hide">
+            <button class="tab-btn" [class.active]="timelineMonths() === 12" (click)="onTimelineChange(12)">1 Year</button>
+            <button class="tab-btn" [class.active]="timelineMonths() === 36" (click)="onTimelineChange(36)">3 Years</button>
+            <button class="tab-btn" [class.active]="timelineMonths() === 60" (click)="onTimelineChange(60)">5 Years</button>
+            <button class="tab-btn" [class.active]="timelineMonths() === 120" (click)="onTimelineChange(120)">10 Years</button>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas #projectionChart></canvas>
+        </div>
+      </div>
+
+      <!-- AI Audit Diagnostics Board -->
+      <div class="diagnostics-panel card">
+        <div class="panel-header print-hide">
+          <h3>🩺 AI Diagnostics Board</h3>
+          <button class="btn btn-primary btn-sm" [disabled]="loadingAi()" (click)="runAiDiagnostics()">
+            <span *ngIf="loadingAi()" class="spinner-inline"></span>
+            {{ aiLoaded() ? '🔮 Refresh Diagnostics' : '🔮 Run AI Diagnostics' }}
+          </button>
+        </div>
+
+        <!-- Loading State -->
+        <div *ngIf="loadingAi()" class="loading-state">
+          <div class="pulse-container">
+            <div class="pulse-ring"></div>
+            <div class="pulse-dot"></div>
+          </div>
+          <p>Running comprehensive diagnostic audit across 6 months of ledger entries...</p>
+        </div>
+
+        <!-- Diagnostics Output -->
+        <div *ngIf="aiLoaded() && !loadingAi()" class="diagnostics-content">
+          <!-- 3-Part Advisor Critique -->
+          <div class="critique-section">
+            <h4 class="section-title text-expense">⚠️ What am I doing wrong?</h4>
+            <ul class="wrong-list">
+              <li *ngFor="let item of aiDiagnosticsObj()?.wrong" class="wrong-item" [class.high-severity]="item.severity === 'high'">
+                <span class="severity-badge">{{ item.severity | uppercase }}</span>
+                <span class="wrong-text">{{ item.text }}</span>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Checked Saving Pipeline -->
+          <div class="critique-section">
+            <h4 class="section-title text-income">💡 Opportunity Pipeline (Where can I save?)</h4>
+            <p class="section-hint print-hide">Check items to apply them instantly to the simulation projection above.</p>
+            <div class="opportunities-grid">
+              <div *ngFor="let opp of aiDiagnosticsObj()?.opportunities" class="opp-card" [class.checked]="checkedOppIds().has(opp.id)">
+                <div class="opp-checkbox">
+                  <input type="checkbox" 
+                         [id]="opp.id" 
+                         [checked]="checkedOppIds().has(opp.id)" 
+                         (change)="onOppCheck(opp.id, $event)">
+                </div>
+                <label [for]="opp.id" class="opp-details">
+                  <div class="opp-title-row">
+                    <span class="opp-title">{{ opp.title }}</span>
+                    <span class="opp-savings">+${{ opp.savings }}/mo</span>
+                  </div>
+                  <p class="opp-desc">{{ opp.description }}</p>
+                  <span class="difficulty-badge" [class.easy]="opp.difficulty === 'Easy'" [class.medium]="opp.difficulty === 'Medium'" [class.hard]="opp.difficulty === 'Hard'">
+                    {{ opp.difficulty }}
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Next Steps recommendations -->
+          <div class="critique-section">
+            <h4 class="section-title text-accent">🎯 Strategic Next Steps (What to do?)</h4>
+            <ol class="todo-list">
+              <li *ngFor="let step of aiDiagnosticsObj()?.todo" class="todo-item">
+                {{ step }}
+              </li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- Initial State Hint -->
+        <div *ngIf="!aiLoaded() && !loadingAi()" class="initial-hint print-hide">
+          <span class="hint-icon">🔮</span>
+          <h4>Unlock AI Financial Diagnostics</h4>
+          <p>Tap run to launch Gemini. It scans past category spending, budgets, and subscriptions to isolate leakages and pinpoint high-yield savings adjustments.</p>
+          <button class="btn btn-primary" (click)="runAiDiagnostics()">Run AI Diagnostics</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

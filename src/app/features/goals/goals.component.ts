@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { GoalService } from '../../core/services/goal.service';
 import { AccountService } from '../../core/services/account.service';
 import { TransactionService } from '../../core/services/transaction.service';
@@ -16,7 +17,10 @@ import { Goal } from '../../core/models';
   imports: [CommonModule, FormsModule, HeaderComponent, CurrencyFormatPipe],
   template: `
     <app-header title="Financial Goals" subtitle="Track your savings targets and milestones">
-      <button class="btn btn-primary btn-sm" (click)="openForm()">🏆 Add Goal</button>
+      <div style="display: flex; gap: 0.5rem;">
+        <button class="btn btn-secondary btn-sm" (click)="goToSimulator()">🔮 Savings Simulator</button>
+        <button class="btn btn-primary btn-sm" (click)="openForm()">🏆 Add Goal</button>
+      </div>
     </app-header>
 
     <div class="goals-page">
@@ -86,6 +90,7 @@ import { Goal } from '../../core/models';
                     <span class="gc-name">{{ goal.name }}</span>
                     <div class="gc-actions">
                       <button class="btn btn-ghost btn-icon btn-sm" (click)="getBuddyAdvice(goal)" title="Goal Buddy Advisor" style="padding: 0.25rem;">💬</button>
+                      <button class="btn btn-ghost btn-icon btn-sm" (click)="goToSimulator(goal.id)" title="Savings Simulator" style="padding: 0.25rem;">🔮</button>
                       <button class="btn btn-ghost btn-icon btn-sm" (click)="openContribute(goal)" title="Add Savings" style="padding: 0.25rem;">💰</button>
                       <button class="btn btn-ghost btn-icon btn-sm" (click)="editGoal(goal)" title="Edit Goal" style="padding: 0.25rem;">✏️</button>
                       <button class="btn btn-ghost btn-icon btn-sm" (click)="confirmDelete(goal)" title="Delete Goal" style="padding: 0.25rem;">🗑️</button>
@@ -456,11 +461,20 @@ export class GoalsComponent implements OnInit {
   txnService = inject(TransactionService);
   private toast = inject(ToastService);
   private api = inject(ApiService);
+  private router = inject(Router);
 
   showBuddyModal = signal(false);
   loadingBuddy = signal(false);
   buddyAdviceObj = signal<any | null>(null);
   buddyGoalName = signal<string>('');
+
+  goToSimulator(goalId?: string) {
+    if (goalId) {
+      this.router.navigate(['/savings-simulator'], { queryParams: { goalId } });
+    } else {
+      this.router.navigate(['/savings-simulator']);
+    }
+  }
 
   protected Math = Math;
   showForm = signal(false);
