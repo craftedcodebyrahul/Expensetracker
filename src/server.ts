@@ -113,6 +113,11 @@ if (isMainModule(import.meta.url) || process.env['pm_id']) {
     console.log(`\n🚀 FinTrack Pro running at http://localhost:${port}`);
     console.log(`   Google OAuth: ${process.env['GOOGLE_CLIENT_ID'] ? '✅ configured' : '⚠️  not configured'}`);
     console.log(`   Environment:  ${process.env['NODE_ENV'] ?? 'development'}`);
+
+    // Boot up the report scheduler task worker
+    import('./server/report-scheduler.js')
+      .then(m => m.startReportScheduler())
+      .catch(err => console.error('⚠️ Failed to load report scheduler:', err));
   });
 }
 

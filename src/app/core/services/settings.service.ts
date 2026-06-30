@@ -7,6 +7,7 @@ export interface AppSettings {
   currency: string;
   currencySymbol: string;
   dateFormat: string;
+  monthlyReportEnabled: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -18,6 +19,7 @@ export class SettingsService {
   readonly currency = signal('USD');
   readonly currencySymbol = signal('$');
   readonly dateFormat = signal('MM/dd/yyyy');
+  readonly monthlyReportEnabled = signal(true);
   readonly loaded = signal(false);
 
   load() {
@@ -28,6 +30,7 @@ export class SettingsService {
           this.currency.set(res.data.currency ?? 'USD');
           this.currencySymbol.set(res.data.currencySymbol ?? '$');
           this.dateFormat.set(res.data.dateFormat ?? 'MM/dd/yyyy');
+          this.monthlyReportEnabled.set(res.data.monthlyReportEnabled !== false);
         }
         this.loaded.set(true);
       }),
@@ -45,6 +48,7 @@ export class SettingsService {
           this.currency.set(settings.currency);
           this.currencySymbol.set(settings.currencySymbol);
           this.dateFormat.set(settings.dateFormat);
+          this.monthlyReportEnabled.set(settings.monthlyReportEnabled);
           this.toast.success('Preferences saved!');
         } else {
           this.toast.error(res.error ?? 'Failed to save preferences');

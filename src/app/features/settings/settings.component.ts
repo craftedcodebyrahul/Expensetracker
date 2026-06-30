@@ -110,6 +110,30 @@ import { HeaderComponent } from '../../layout/header.component';
         </div>
       </div>
 
+      <!-- Email Reports -->
+      <div class="card settings-section">
+        <h3 class="section-title">✉️ Monthly Email Reports</h3>
+        <p class="section-desc">
+          Receive a beautiful, full-fledged monthly financial audit report sent directly to your registered email address on the 1st of every month.
+        </p>
+
+        <div style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; padding: 0.5rem 0; margin-bottom: 1.25rem;">
+          <input type="checkbox" id="emailReports" [(ngModel)]="settings.monthlyReportEnabled" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-blue);">
+          <label for="emailReports" style="cursor: pointer; font-size: 0.9375rem; font-weight: 500; user-select: none;">
+            Enable Monthly Email Reports
+          </label>
+        </div>
+
+        <div class="form-actions" style="display: flex; gap: 0.75rem;">
+          <button class="btn btn-primary" (click)="saveSettings()" [disabled]="saving()">
+            {{ saving() ? 'Saving...' : 'Save Preferences' }}
+          </button>
+          <button class="btn btn-ghost" (click)="sendTestReport()" [disabled]="sendingTestReport() || !settings.monthlyReportEnabled">
+            {{ sendingTestReport() ? 'Sending...' : '✉️ Send Test Report' }}
+          </button>
+        </div>
+      </div>
+
       <!-- Data Management -->
       <div class="card settings-section">
         <h3 class="section-title">🗂️ Data Management</h3>
@@ -298,7 +322,8 @@ export class SettingsComponent implements OnInit {
 
   syncStatus = signal<any>(null);
   saving = signal(false);
-  settings = { currency: 'USD', currencySymbol: '$', dateFormat: 'MM/dd/yyyy' };
+  sendingTestReport = signal(false);
+  settings = { currency: 'USD', currencySymbol: '$', dateFormat: 'MM/dd/yyyy', monthlyReportEnabled: true };
 
   currencies = [
     { code: 'USD', symbol: '$', name: 'US Dollar' },
@@ -319,6 +344,7 @@ export class SettingsComponent implements OnInit {
       this.settings.currency = this.settingsService.currency();
       this.settings.currencySymbol = this.settingsService.currencySymbol();
       this.settings.dateFormat = this.settingsService.dateFormat();
+      this.settings.monthlyReportEnabled = this.settingsService.monthlyReportEnabled();
     });
   }
 
@@ -339,6 +365,24 @@ export class SettingsComponent implements OnInit {
     this.saving.set(true);
     this.settingsService.save(this.settings).subscribe(() => {
       this.saving.set(false);
+    });
+  }
+
+  sendTestReport() {
+    this.sendingTestReport.set(true);
+    this.api.sendTestReport().subscribe({
+      next: (res) => {
+        this.sendingTestReport.set(false);
+        if (res.success) {
+          this.toast.success('Test email report sent! Please check your inbox.');
+        } else {
+          this.toast.error(res.error || 'Failed to send test email.');
+        }
+      },
+      error: (err) => {
+        this.sendingTestReport.set(false);
+        this.toast.error(err?.error?.error || err?.message || 'SMTP server connection error.');
+      }
     });
   }
 

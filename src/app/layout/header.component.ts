@@ -364,6 +364,19 @@ import { NotificationService } from '../core/services/notification.service';
     @media (max-width: 640px) {
       .app-header {
         padding: 0.75rem 1rem;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+      .header-left {
+        flex: 1;
+        min-width: 200px;
+      }
+      .header-right {
+        width: 100%;
+        margin-top: 0.25rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: flex-start;
       }
       .btn-hamburger { display: block; }
       .mobile-hidden { display: none; }

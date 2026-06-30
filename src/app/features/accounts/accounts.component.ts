@@ -793,7 +793,20 @@ import { Account, StockHolding, Transaction } from '../../core/models';
       .dd-header { flex-direction: column; }
       .dd-header-right { width: 100%; justify-content: space-between; }
     }
-    @media (max-width: 480px) { .dd-stats { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 600px) {
+      .type-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 0.5rem;
+        width: 100%;
+      }
+      .tab-btn { flex-shrink: 0; }
+    }
+    @media (max-width: 480px) { 
+      .dd-stats { grid-template-columns: 1fr 1fr; } 
+      .accounts-grid { grid-template-columns: 1fr; }
+    }
   `]
 })
 export class AccountsComponent implements OnInit {

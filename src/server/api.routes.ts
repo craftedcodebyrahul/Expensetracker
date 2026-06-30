@@ -558,6 +558,16 @@ ${audit.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n
     } catch (e) { fail(res, e); }
   });
 
+  router.post('/settings/test-report', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { reportService } = await import('./report.service.js');
+      await reportService.sendMonthlyReport(getUserId(req));
+      ok(res, null, 'Test report sent successfully');
+    } catch (e: any) {
+      fail(res, e.message || e);
+    }
+  });
+
   // ── Bank Imports (future feature) ─────────────────────────────────────────
 
   router.get('/bank-imports', async (req: Request, res: Response): Promise<void> => {

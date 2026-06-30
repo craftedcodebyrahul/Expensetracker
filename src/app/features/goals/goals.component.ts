@@ -428,7 +428,32 @@ import { SettingsService } from '../../core/services/settings.service';
     .input-prefix .form-control { padding-left: 1.75rem; }
 
     @media (max-width: 900px) { .goals-grid { grid-template-columns: 1fr; } }
-    @media (max-width: 640px) { .goals-page { padding: 1rem; } .overview-bar { flex-direction: column; align-items: flex-start; padding: 1rem; } .overview-divider { display: none; } }
+    @media (max-width: 640px) { .goals-page { padding: 1rem; } }
+    @media (max-width: 600px) {
+      .overview-bar {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        padding: 1rem;
+        text-align: center;
+        justify-content: center;
+      }
+      .overview-stat { align-items: center; }
+      .overview-divider { display: none; }
+    }
+    @media (max-width: 500px) {
+      .gc-main {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 1rem;
+      }
+      .gc-details { width: 100%; align-items: center; }
+      .gc-title-row { width: 100%; flex-direction: column; gap: 0.5rem; align-items: center; }
+      .gc-actions { justify-content: center; }
+      .gc-amounts { justify-content: center; }
+      .gc-target-date { width: 100%; justify-content: space-around; }
+    }
 
     .spinner {
       width: 32px;

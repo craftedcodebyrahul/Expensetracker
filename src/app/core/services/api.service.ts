@@ -210,6 +210,10 @@ export class ApiService {
     return this.http.put<ApiResponse<any>>(`${this.baseUrl}/settings`, settings);
   }
 
+  sendTestReport(): Observable<ApiResponse<void>> {
+    return this.http.post<ApiResponse<void>>(`${this.baseUrl}/settings/test-report`, {});
+  }
+
   syncStatus(): Observable<ApiResponse<{ connected: boolean; provider: string; lastSync: string }>> {
     return this.http.get<ApiResponse<any>>(`${this.baseUrl}/sync/status`);
   }

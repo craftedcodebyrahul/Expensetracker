@@ -113,16 +113,20 @@ import { advanceDateByFrequency } from '../../shared/utils/date.utils';
             </select>
 
             <!-- Date From -->
-            <input type="date" class="form-control filter-select"
-                   [ngModel]="txnService.filter().dateFrom"
-                   (ngModelChange)="txnService.updateFilter({ dateFrom: $event || undefined })"
-                   placeholder="From date">
+            <div class="date-filter-group">
+              <span class="filter-label">From:</span>
+              <input type="date" class="form-control filter-select"
+                     [ngModel]="txnService.filter().dateFrom"
+                     (ngModelChange)="txnService.updateFilter({ dateFrom: $event || undefined })">
+            </div>
 
             <!-- Date To -->
-            <input type="date" class="form-control filter-select"
-                   [ngModel]="txnService.filter().dateTo"
-                   (ngModelChange)="txnService.updateFilter({ dateTo: $event || undefined })"
-                   placeholder="To date">
+            <div class="date-filter-group">
+              <span class="filter-label">To:</span>
+              <input type="date" class="form-control filter-select"
+                     [ngModel]="txnService.filter().dateTo"
+                     (ngModelChange)="txnService.updateFilter({ dateTo: $event || undefined })">
+            </div>
 
             <button class="btn btn-ghost btn-sm" (click)="clearFilters()">Clear</button>
           </div>
@@ -427,7 +431,7 @@ import { advanceDateByFrequency } from '../../shared/utils/date.utils';
     .txn-page { padding: 1.5rem 2rem; display: flex; flex-direction: column; gap: 1rem; }
 
     /* Tabs */
-    .type-tabs { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .type-tabs { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
     .tab-btn {
       padding: 0.5rem 1.25rem;
       border: 1px solid var(--border);
@@ -463,6 +467,8 @@ import { advanceDateByFrequency } from '../../shared/utils/date.utils';
     .search-icon { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); font-size: 0.875rem; }
     .search-box .form-control { padding-left: 2.25rem; }
     .filter-select { width: auto; min-width: 140px; }
+    .date-filter-group { display: flex; align-items: center; gap: 0.5rem; }
+    .filter-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; white-space: nowrap; }
 
     .loading-state { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 3rem; }
     .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent-blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -535,8 +541,11 @@ import { advanceDateByFrequency } from '../../shared/utils/date.utils';
     @media (max-width: 768px) {
       .txn-page { padding: 1rem; }
       .summary-bar { flex-wrap: wrap; }
-      .filters-row { flex-direction: column; }
-      .filter-select { width: 100%; }
+      .filters-row { flex-direction: column; align-items: stretch; width: 100%; }
+      .search-box { width: 100%; min-width: 0; }
+      .filter-select { width: 100%; min-width: 0; }
+      .date-filter-group { width: 100%; }
+      .date-filter-group .filter-select { flex: 1; }
     }
   `]
 })

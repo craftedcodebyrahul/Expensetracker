@@ -104,7 +104,8 @@ interface CalendarCell {
               <span class="day-number">{{ cell.day }}</span>
               <div class="cell-events">
                 @for (item of items; track item.id) {
-                  <div class="cell-event" [class]="item.type" [title]="item.description + ' - ' + (item.amount | currencyFormat)">
+                  <div class="cell-event" [class]="item.type" [title]="item.description + ' - ' + (item.amount | currencyFormat)"
+                       (click)="openEventDetails(item, $event)" style="cursor: pointer;">
                     <span class="event-icon">{{ item.type === 'transfer' ? '🔄' : getCategoryIcon(item.category) }}</span>
                     <span class="event-desc">{{ item.description }}</span>
                     <span class="event-amount">{{ item.amount | currencyFormat }}</span>
@@ -203,6 +204,64 @@ interface CalendarCell {
                     [disabled]="submitting() || !form.description || !form.amount || !form.accountId || (form.type !== 'transfer' && !form.category) || (form.type === 'transfer' && !form.toAccountId) || !form.startDate || !form.nextDueDate">
               {{ submitting() ? 'Saving...' : 'Create Schedule' }}
             </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Detail Modal -->
+    @if (selectedEvent()) {
+      <div class="modal-overlay" (click)="onEventOverlayClick($event)">
+        <div class="modal" role="dialog" aria-modal="true">
+          <div class="modal-header">
+            <h3>Scheduled {{ selectedEvent()!.type | titlecase }}</h3>
+            <button class="btn btn-ghost btn-icon" (click)="closeEventDetails()">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="event-details-grid">
+              <div class="detail-row">
+                <span class="detail-label">Description:</span>
+                <span class="detail-value font-bold">{{ selectedEvent()!.description }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Amount:</span>
+                <span class="detail-value font-bold text-lg"
+                      [class.text-income]="selectedEvent()!.type === 'income'"
+                      [class.text-expense]="selectedEvent()!.type === 'expense'">
+                  {{ selectedEvent()!.amount | currencyFormat }}
+                </span>
+              </div>
+              <div class="detail-row" *ngIf="selectedEvent()!.type !== 'transfer'">
+                <span class="detail-label">Category:</span>
+                <span class="detail-value">{{ getCategoryName(selectedEvent()!.category) }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Account:</span>
+                <span class="detail-value">{{ getAccountName(selectedEvent()!.accountId) }}</span>
+              </div>
+              <div class="detail-row" *ngIf="selectedEvent()!.type === 'transfer'">
+                <span class="detail-label">To Account:</span>
+                <span class="detail-value">{{ getAccountName(selectedEvent()!.toAccountId || '') }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Frequency:</span>
+                <span class="detail-value" style="text-transform: capitalize;">{{ selectedEvent()!.frequency }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Start Date:</span>
+                <span class="detail-value">{{ selectedEvent()!.startDate }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Next Due Date:</span>
+                <span class="detail-value">{{ selectedEvent()!.nextDueDate }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer" style="justify-content: space-between;">
+            <button class="btn btn-danger btn-sm" (click)="deleteSelectedSchedule()" [disabled]="deletingSchedule()">
+              {{ deletingSchedule() ? 'Deleting...' : '🗑️ Delete Schedule' }}
+            </button>
+            <button class="btn btn-ghost btn-sm" (click)="closeEventDetails()">Close</button>
           </div>
         </div>
       </div>
@@ -352,6 +411,10 @@ interface CalendarCell {
       align-items: center;
       gap: 0.375rem;
     }
+    .event-details-grid { display: flex; flex-direction: column; gap: 0.75rem; }
+    .detail-row { display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    .detail-label { color: var(--text-muted); font-size: 0.875rem; }
+    .detail-value { color: var(--text-primary); font-size: 0.875rem; }
  
     @media (max-width: 768px) {
       .calendar-page { padding: 1rem; }
@@ -398,6 +461,45 @@ export class BillsCalendarComponent implements OnInit {
     startDate: new Date().toISOString().split('T')[0],
     nextDueDate: new Date().toISOString().split('T')[0]
   };
+
+  selectedEvent = signal<RecurringSchedule | undefined>(undefined);
+  deletingSchedule = signal(false);
+
+  openEventDetails(item: RecurringSchedule, event: MouseEvent) {
+    event.stopPropagation();
+    this.selectedEvent.set(item);
+  }
+
+  closeEventDetails() {
+    this.selectedEvent.set(undefined);
+  }
+
+  onEventOverlayClick(e: MouseEvent) {
+    if ((e.target as HTMLElement).classList.contains('modal-overlay')) {
+      this.closeEventDetails();
+    }
+  }
+
+  getAccountName(id: string) {
+    return this.accountService.getAccountById(id)?.name ?? id;
+  }
+
+  deleteSelectedSchedule() {
+    const item = this.selectedEvent();
+    if (!item) return;
+    this.deletingSchedule.set(true);
+    this.recurringService.deleteSchedule(item.id).subscribe({
+      next: () => {
+        this.deletingSchedule.set(false);
+        this.closeEventDetails();
+        this.toast.success('Recurring schedule deleted');
+      },
+      error: () => {
+        this.deletingSchedule.set(false);
+        this.toast.error('Failed to delete schedule');
+      }
+    });
+  }
  
   monthName() {
     return this.monthsList[this.currentMonth()];

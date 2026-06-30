@@ -355,6 +355,24 @@ import { Budget } from '../../core/models';
 
     @media (max-width: 1024px) { .budgets-grid { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 640px) { .budgets-page { padding: 1rem; } .budgets-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 600px) {
+      .period-selector {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        padding: 0.75rem;
+      }
+      .period-controls { justify-content: center; }
+      .period-summary {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.5rem;
+        width: 100%;
+        text-align: center;
+      }
+      .ps-divider { display: none; }
+      .ps-item { align-items: center; }
+    }
   `]
 })
 export class BudgetsComponent implements OnInit {

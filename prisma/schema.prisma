@@ -180,12 +180,13 @@ model Budget {
 // One row per user (1-to-1). Created automatically on first login.
 
 model Settings {
-  userId         String @id @map("user_id")
-  currency       String @default("USD")
-  currencySymbol String @default("$") @map("currency_symbol")
-  dateFormat     String @default("MM/dd/yyyy") @map("date_format")
-  theme          String @default("dark")
-  updatedAt      String @map("updated_at")
+  userId               String @id @map("user_id")
+  currency             String @default("USD")
+  currencySymbol       String @default("$") @map("currency_symbol")
+  dateFormat           String @default("MM/dd/yyyy") @map("date_format")
+  theme                String @default("dark")
+  monthlyReportEnabled Int    @default(1) @map("monthly_report_enabled")
+  updatedAt            String @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

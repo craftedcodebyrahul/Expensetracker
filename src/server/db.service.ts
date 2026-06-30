@@ -148,6 +148,7 @@ export interface AppSettings {
   dateFormat: string;
   theme: string;
   lastSync: string;
+  monthlyReportEnabled?: boolean;
 }
 
 export interface BankImport {
@@ -1140,6 +1141,7 @@ export class DbService {
       dateFormat: row.dateFormat,
       theme: row.theme,
       lastSync: new Date().toISOString(),
+      monthlyReportEnabled: row.monthlyReportEnabled === 1,
     };
   }
 
@@ -1152,9 +1154,14 @@ export class DbService {
         ...(data.currencySymbol !== undefined && { currencySymbol: data.currencySymbol }),
         ...(data.dateFormat     !== undefined && { dateFormat: data.dateFormat }),
         ...(data.theme          !== undefined && { theme: data.theme }),
+        ...(data.monthlyReportEnabled !== undefined && { monthlyReportEnabled: data.monthlyReportEnabled ? 1 : 0 }),
         updatedAt: now,
       },
-      create: { userId, updatedAt: now },
+      create: { 
+        userId, 
+        updatedAt: now,
+        monthlyReportEnabled: data.monthlyReportEnabled ? 1 : 0
+      },
     });
     return {
       currency: row.currency,
@@ -1162,6 +1169,7 @@ export class DbService {
       dateFormat: row.dateFormat,
       theme: row.theme,
       lastSync: now,
+      monthlyReportEnabled: row.monthlyReportEnabled === 1,
     };
   }
 
@@ -2599,12 +2607,16 @@ Ensure the response contains ONLY the valid JSON matching the schema, with no ma
       orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
     });
 
-    if (transactions.length < 2) return [];
+    if (transactions.length < 1) return [];
 
     const existingSchedules = await this.getRecurringSchedules(userId);
     const existingNormalized = new Set(
       existingSchedules.map(s => this.normalizeDescription(s.description))
     );
+
+    const categories = await this.getCategories(userId);
+    const categoryMap = new Map<string, string>();
+    categories.forEach(c => categoryMap.set(c.id, c.name.toLowerCase()));
 
     const groups: Record<string, any[]> = {};
     transactions.forEach((t: any) => {
@@ -2623,89 +2635,137 @@ Ensure the response contains ONLY the valid JSON matching the schema, with no ma
       return d.toISOString().split('T')[0];
     };
 
+    const recurringKeywords = [
+      'insurance', 'rent', 'netflix', 'spotify', 'gym', 'internet', 'phone', 'mobile', 
+      'electricity', 'hydro', 'utility', 'utilities', 'bill', 'subscription', 'prime', 
+      'youtube', 'google', 'icloud', 'adobe', 'microsoft', 'zoom', 'disney', 'apple', 
+      'mortgage', 'automative loan', 'car payment'
+    ];
+
+    const matchesKeyword = (desc: string): boolean => {
+      const lower = desc.toLowerCase();
+      return recurringKeywords.some(kw => lower.includes(kw));
+    };
+
+    const matchesCategory = (catId: string, catName?: string): boolean => {
+      const idLower = catId.toLowerCase();
+      if (idLower === 'subscriptions' || idLower === 'utilities' || idLower === 'bills' || idLower === 'housing') return true;
+      if (catName) {
+        const nameLower = catName.toLowerCase();
+        return nameLower.includes('subscription') || nameLower.includes('utility') || nameLower.includes('bill') || nameLower.includes('rent') || nameLower.includes('housing');
+      }
+      return false;
+    };
+
     for (const [normDesc, txns] of Object.entries(groups)) {
-      if (txns.length < 2) continue;
       if (existingNormalized.has(normDesc)) continue;
 
-      const intervals: number[] = [];
-      for (let i = 1; i < txns.length; i++) {
-        const d1 = new Date(txns[i - 1].date + 'T00:00:00').getTime();
-        const d2 = new Date(txns[i].date + 'T00:00:00').getTime();
-        const diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
-        intervals.push(diffDays);
-      }
+      let suggestionAdded = false;
 
-      const avgInterval = intervals.reduce((s, x) => s + x, 0) / intervals.length;
-      
-      let consistent = true;
-      if (intervals.length >= 2) {
-        for (const interval of intervals) {
-          if (Math.abs(interval - avgInterval) > 4) {
-            consistent = false;
-            break;
+      // 1. Statistical check for groups with at least 2 transactions
+      if (txns.length >= 2) {
+        const intervals: number[] = [];
+        for (let i = 1; i < txns.length; i++) {
+          const d1 = new Date(txns[i - 1].date + 'T00:00:00').getTime();
+          const d2 = new Date(txns[i].date + 'T00:00:00').getTime();
+          const diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+          intervals.push(diffDays);
+        }
+
+        const avgInterval = intervals.reduce((s, x) => s + x, 0) / intervals.length;
+        
+        let consistent = true;
+        if (intervals.length >= 2) {
+          for (const interval of intervals) {
+            if (Math.abs(interval - avgInterval) > 4) {
+              consistent = false;
+              break;
+            }
+          }
+        }
+
+        if (consistent) {
+          let frequency: 'weekly' | 'monthly' | 'yearly' | null = null;
+          let targetInterval = 30;
+
+          if (avgInterval >= 5 && avgInterval <= 9) {
+            frequency = 'weekly';
+            targetInterval = 7;
+          } else if (avgInterval >= 11 && avgInterval <= 16) {
+            frequency = 'weekly';
+            targetInterval = 14;
+          } else if (avgInterval >= 25 && avgInterval <= 34) {
+            frequency = 'monthly';
+            targetInterval = 30;
+          } else if (avgInterval >= 340 && avgInterval <= 380) {
+            frequency = 'yearly';
+            targetInterval = 365;
+          }
+
+          if (frequency) {
+            const amounts = txns.map(t => t.amount);
+            const minAmount = Math.min(...amounts);
+            const maxAmount = Math.max(...amounts);
+            const avgAmount = amounts.reduce((s, x) => s + x, 0) / amounts.length;
+
+            const amtDiff = maxAmount - minAmount;
+            const amtDiffPct = maxAmount > 0 ? (amtDiff / maxAmount) * 100 : 0;
+            
+            if (amtDiff <= 5 || amtDiffPct <= 12) {
+              const categoriesCount: Record<string, number> = {};
+              const accountsCount: Record<string, number> = {};
+              txns.forEach(t => {
+                categoriesCount[t.category] = (categoriesCount[t.category] || 0) + 1;
+                accountsCount[t.accountId] = (accountsCount[t.accountId] || 0) + 1;
+              });
+
+              const mostCommonCategory = Object.entries(categoriesCount).sort((a, b) => b[1] - a[1])[0][0];
+              const mostCommonAccount = Object.entries(accountsCount).sort((a, b) => b[1] - a[1])[0][0];
+
+              const latestTxn = txns[txns.length - 1];
+              const nextDue = addDays(latestTxn.date, targetInterval);
+
+              suggestions.push({
+                description: latestTxn.description,
+                type: latestTxn.type,
+                amount: Math.round(avgAmount * 100) / 100,
+                category: mostCommonCategory,
+                accountId: mostCommonAccount,
+                frequency,
+                startDate: latestTxn.date,
+                nextDueDate: nextDue,
+                matchCount: txns.length,
+              });
+              suggestionAdded = true;
+            }
           }
         }
       }
 
-      if (!consistent) continue;
-
-      let frequency: 'weekly' | 'monthly' | 'yearly' | null = null;
-      let targetInterval = 30;
-
-      if (avgInterval >= 5 && avgInterval <= 9) {
-        frequency = 'weekly';
-        targetInterval = 7;
-      } else if (avgInterval >= 11 && avgInterval <= 16) {
-        frequency = 'weekly';
-        targetInterval = 14;
-      } else if (avgInterval >= 25 && avgInterval <= 34) {
-        frequency = 'monthly';
-        targetInterval = 30;
-      } else if (avgInterval >= 340 && avgInterval <= 380) {
-        frequency = 'yearly';
-        targetInterval = 365;
+      // 2. Keyword/category fallback check if not suggested statistically
+      if (!suggestionAdded && txns.length >= 1) {
+        const latestTxn = txns[txns.length - 1];
+        const catName = categoryMap.get(latestTxn.category);
+        if (matchesKeyword(latestTxn.description) || matchesCategory(latestTxn.category, catName)) {
+          const nextDue = addDays(latestTxn.date, 30);
+          suggestions.push({
+            description: latestTxn.description,
+            type: latestTxn.type,
+            amount: latestTxn.amount,
+            category: latestTxn.category,
+            accountId: latestTxn.accountId,
+            frequency: 'monthly',
+            startDate: latestTxn.date,
+            nextDueDate: nextDue,
+            matchCount: txns.length,
+          });
+        }
       }
-
-      if (!frequency) continue;
-
-      const amounts = txns.map(t => t.amount);
-      const minAmount = Math.min(...amounts);
-      const maxAmount = Math.max(...amounts);
-      const avgAmount = amounts.reduce((s, x) => s + x, 0) / amounts.length;
-
-      const amtDiff = maxAmount - minAmount;
-      const amtDiffPct = maxAmount > 0 ? (amtDiff / maxAmount) * 100 : 0;
-      
-      if (amtDiff > 5 && amtDiffPct > 12) continue;
-
-      const categoriesCount: Record<string, number> = {};
-      const accountsCount: Record<string, number> = {};
-      txns.forEach(t => {
-        categoriesCount[t.category] = (categoriesCount[t.category] || 0) + 1;
-        accountsCount[t.accountId] = (accountsCount[t.accountId] || 0) + 1;
-      });
-
-      const mostCommonCategory = Object.entries(categoriesCount).sort((a, b) => b[1] - a[1])[0][0];
-      const mostCommonAccount = Object.entries(accountsCount).sort((a, b) => b[1] - a[1])[0][0];
-
-      const latestTxn = txns[txns.length - 1];
-      const nextDue = addDays(latestTxn.date, targetInterval);
-
-      suggestions.push({
-        description: latestTxn.description,
-        type: latestTxn.type,
-        amount: Math.round(avgAmount * 100) / 100,
-        category: mostCommonCategory,
-        accountId: mostCommonAccount,
-        frequency,
-        startDate: latestTxn.date,
-        nextDueDate: nextDue,
-        matchCount: txns.length,
-      });
     }
 
     return suggestions;
   }
+
 
   normalizeDescription(desc: string): string {
     if (!desc) return '';
