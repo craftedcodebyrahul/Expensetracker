@@ -11,6 +11,7 @@ import { GoalService } from '../../core/services/goal.service';
 import { RecurringService } from '../../core/services/recurring.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
+import { AnomalyDetectorComponent } from '../../shared/components/anomaly-detector.component';
 import { Chart, registerables } from 'chart.js';
 import { Goal } from '../../core/models';
 
@@ -19,7 +20,7 @@ Chart.register(...registerables);
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, HeaderComponent, CurrencyFormatPipe],
+  imports: [CommonModule, RouterLink, HeaderComponent, CurrencyFormatPipe, AnomalyDetectorComponent],
   template: `
     <app-header title="Dashboard" subtitle="Your financial overview at a glance">
       <button class="btn btn-primary btn-sm" routerLink="/quick-log">⚡ Quick Log</button>
@@ -65,6 +66,9 @@ Chart.register(...registerables);
           </div>
         </div>
       </div>
+
+      <!-- System Alerts & Auditing -->
+      <app-anomaly-detector></app-anomaly-detector>
 
       <!-- Summary Cards -->
       <div class="summary-grid">
@@ -532,7 +536,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   // ── Current month summary — always current month regardless of any filter ──
 
   currentMonthSummary = computed(() => {
-    const txns = this.txnService.postedTransactions();
+    const txns = this.txnService.postedNormalizedTransactions();
     const y = new Date().getFullYear();
     const m = new Date().getMonth();
     const monthTxns = txns.filter(t => {
@@ -548,7 +552,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   });
 
   recentTransactions = computed(() => {
-    const txns = this.txnService.postedTransactions();
+    const txns = this.txnService.postedNormalizedTransactions();
     const now = new Date();
     const y = now.getFullYear();
     const m = now.getMonth();
@@ -572,13 +576,13 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   private get thisYear() { return new Date().getFullYear(); }
 
   thisMonthIncome = computed(() =>
-    this.txnService.postedTransactions()
+    this.txnService.postedNormalizedTransactions()
       .filter(t => { const d = parseLocalDate(t.date); return t.type === 'income' && d.getMonth() === this.thisMonth && d.getFullYear() === this.thisYear; })
       .reduce((s, t) => s + t.amount, 0)
   );
 
   thisMonthExpenses = computed(() =>
-    this.txnService.postedTransactions()
+    this.txnService.postedNormalizedTransactions()
       .filter(t => { const d = parseLocalDate(t.date); return t.type === 'expense' && d.getMonth() === this.thisMonth && d.getFullYear() === this.thisYear; })
       .reduce((s, t) => s + t.amount, 0)
   );
@@ -586,7 +590,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   lastMonthIncome = computed(() => {
     const lm = this.thisMonth === 0 ? 11 : this.thisMonth - 1;
     const ly = this.thisMonth === 0 ? this.thisYear - 1 : this.thisYear;
-    return this.txnService.postedTransactions()
+    return this.txnService.postedNormalizedTransactions()
       .filter(t => { const d = parseLocalDate(t.date); return t.type === 'income' && d.getMonth() === lm && d.getFullYear() === ly; })
       .reduce((s, t) => s + t.amount, 0);
   });
@@ -594,7 +598,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   lastMonthExpenses = computed(() => {
     const lm = this.thisMonth === 0 ? 11 : this.thisMonth - 1;
     const ly = this.thisMonth === 0 ? this.thisYear - 1 : this.thisYear;
-    return this.txnService.postedTransactions()
+    return this.txnService.postedNormalizedTransactions()
       .filter(t => { const d = parseLocalDate(t.date); return t.type === 'expense' && d.getMonth() === lm && d.getFullYear() === ly; })
       .reduce((s, t) => s + t.amount, 0);
   });
@@ -733,8 +737,8 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   private getMonthlyData() {
     const incomeData = Array(12).fill(0);
     const expenseData = Array(12).fill(0);
-    // Use postedTransactions to exclude future-dated recurring entries from the bar chart
-    this.txnService.postedTransactions().forEach(t => {
+    // Use postedNormalizedTransactions to exclude future-dated recurring entries from the bar chart and ensure correct currencies
+    this.txnService.postedNormalizedTransactions().forEach(t => {
       const m = parseLocalDate(t.date).getMonth();
       if (t.type === 'income') {
         incomeData[m] += t.amount;
@@ -769,8 +773,8 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     const now = new Date();
     const y = now.getFullYear();
     const m = now.getMonth();
-    // Use postedTransactions so future-dated recurring expenses don't appear in the current month pie chart
-    this.txnService.postedTransactions()
+    // Use postedNormalizedTransactions so future-dated recurring expenses don't appear in the current month pie chart
+    this.txnService.postedNormalizedTransactions()
       .filter(t => {
         const d = parseLocalDate(t.date);
         return t.type === 'expense' && d.getFullYear() === y && d.getMonth() === m;

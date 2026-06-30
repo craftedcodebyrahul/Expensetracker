@@ -1165,6 +1165,89 @@ export class DbService {
     };
   }
 
+  async scanForAnomalies(userId: string): Promise<any[]> {
+    const today = new Date();
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(today.getDate() - 90);
+    const dateLimit = ninetyDaysAgo.toISOString().split('T')[0];
+
+    const txns = await prisma.transaction.findMany({
+      where: {
+        userId,
+        date: { gte: dateLimit },
+        type: 'expense',
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const anomalies: any[] = [];
+
+    // 1. Detect Duplicates: same date, description, amount, accountId
+    const seen = new Map<string, any[]>();
+    txns.forEach((t: any) => {
+      const key = `${t.date}__${t.amount}__${t.description.trim().toLowerCase()}__${t.accountId}`;
+      if (!seen.has(key)) {
+        seen.set(key, []);
+      }
+      seen.get(key)!.push(t);
+    });
+
+    seen.forEach((group: any[], key: string) => {
+      if (group.length > 1) {
+        anomalies.push({
+          type: 'duplicate',
+          severity: 'warning',
+          title: `Potential Duplicate Charge`,
+          message: `Identical charge of $${group[0].amount.toFixed(2)} for "${group[0].description}" logged ${group.length} times on ${group[0].date}.`,
+          transactions: group.map((g: any) => ({ id: g.id, date: g.date, description: g.description, amount: g.amount })),
+        });
+      }
+    });
+
+    // 2. Detect Spend Spikes: transaction is > 200% of category average in past 90 days
+    const byCategory: Record<string, number[]> = {};
+    txns.forEach((t: any) => {
+      if (t.category) {
+        if (!byCategory[t.category]) {
+          byCategory[t.category] = [];
+        }
+        byCategory[t.category].push(t.amount);
+      }
+    });
+
+    const categoryAverages: Record<string, number> = {};
+    Object.entries(byCategory).forEach(([cat, amounts]) => {
+      const sum = amounts.reduce((s, a) => s + a, 0);
+      categoryAverages[cat] = sum / amounts.length;
+    });
+
+    // We check recent transactions (last 30 days) for spikes
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    const dateLimit30 = thirtyDaysAgo.toISOString().split('T')[0];
+    const recentTxns = txns.filter((t: any) => t.date >= dateLimit30);
+
+    const categories = await prisma.category.findMany({ where: { userId } });
+
+    recentTxns.forEach((t: any) => {
+      if (t.category && categoryAverages[t.category]) {
+        const avg = categoryAverages[t.category];
+        if (t.amount > avg * 2.0 && t.amount >= 50) {
+          const catName = categories.find((c: any) => c.id === t.category)?.name ?? t.category;
+          anomalies.push({
+            type: 'spike',
+            severity: 'info',
+            title: `Unusual Spending Spike`,
+            message: `Spent $${t.amount.toFixed(2)} on "${t.description}" (${catName}) which is 2x higher than your average charge of $${avg.toFixed(2)} in this category.`,
+            transactions: [{ id: t.id, date: t.date, description: t.description, amount: t.amount }],
+          });
+        }
+      }
+    });
+
+    return anomalies;
+  }
+
   // ── Reports ───────────────────────────────────────────────────────────────
 
   private async _getFilteredTransactions(

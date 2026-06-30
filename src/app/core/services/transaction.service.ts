@@ -1,11 +1,14 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, inject, signal, computed, Injector } from '@angular/core';
 import { ApiService } from './api.service';
 import { Transaction, TransactionFilter, TransactionSummary } from '../models';
 import { tap, catchError, of } from 'rxjs';
+import { SettingsService } from './settings.service';
+import { AccountService } from './account.service';
 
 @Injectable({ providedIn: 'root' })
 export class TransactionService {
   private api = inject(ApiService);
+  private injector = inject(Injector);
 
   // State signals
   readonly transactions = signal<Transaction[]>([]);
@@ -16,6 +19,32 @@ export class TransactionService {
   readonly postedTransactions = computed(() => {
     const todayStr = new Date().toLocaleDateString('en-CA');
     return this.transactions().filter(t => t.date <= todayStr);
+  });
+
+  readonly normalizedTransactions = computed(() => {
+    const txns = this.transactions();
+    const settingsService = this.injector.get(SettingsService);
+    const accountService = this.injector.get(AccountService);
+    const primaryCurrency = settingsService.currency();
+    const rates = accountService.exchangeRates();
+    const accounts = accountService.accounts();
+
+    return txns.map(t => {
+      const acc = accounts.find(a => a.id === t.accountId);
+      const accCurrency = acc?.currency || 'USD';
+      if (accCurrency.toUpperCase() !== primaryCurrency.toUpperCase() && Object.keys(rates).length > 0) {
+        const fromRate = rates[accCurrency.toUpperCase()] || 1.0;
+        const toRate = rates[primaryCurrency.toUpperCase()] || 1.0;
+        const convertedAmount = (t.amount / fromRate) * toRate;
+        return { ...t, amount: parseFloat(convertedAmount.toFixed(2)) };
+      }
+      return t;
+    });
+  });
+
+  readonly postedNormalizedTransactions = computed(() => {
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    return this.normalizedTransactions().filter(t => t.date <= todayStr);
   });
 
   readonly filteredTransactions = computed(() => {
@@ -50,21 +79,39 @@ export class TransactionService {
 
   readonly summary = computed<TransactionSummary>(() => {
     const txns = this.filteredTransactions();
-    const income   = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const expenses = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const settingsService = this.injector.get(SettingsService);
+    const accountService = this.injector.get(AccountService);
+    const primaryCurrency = settingsService.currency();
+    const rates = accountService.exchangeRates();
+    const accounts = accountService.accounts();
+
+    const normalizedTxns = txns.map(t => {
+      const acc = accounts.find(a => a.id === t.accountId);
+      const accCurrency = acc?.currency || 'USD';
+      if (accCurrency.toUpperCase() !== primaryCurrency.toUpperCase() && Object.keys(rates).length > 0) {
+        const fromRate = rates[accCurrency.toUpperCase()] || 1.0;
+        const toRate = rates[primaryCurrency.toUpperCase()] || 1.0;
+        const convertedAmount = (t.amount / fromRate) * toRate;
+        return { ...t, amount: parseFloat(convertedAmount.toFixed(2)) };
+      }
+      return t;
+    });
+
+    const income   = normalizedTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expenses = normalizedTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     // topCategory: only count expense transactions for a meaningful spending breakdown
     const categoryCount: Record<string, number> = {};
-    txns.filter(t => t.type === 'expense').forEach(t => { categoryCount[t.category] = (categoryCount[t.category] || 0) + t.amount; });
+    normalizedTxns.filter(t => t.type === 'expense').forEach(t => { categoryCount[t.category] = (categoryCount[t.category] || 0) + t.amount; });
     const topCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
     // avgTransaction: exclude transfers since they are not real income/expense events
-    const incomeExpenseTxns = txns.filter(t => t.type !== 'transfer');
+    const incomeExpenseTxns = normalizedTxns.filter(t => t.type !== 'transfer');
     const avgTransaction = incomeExpenseTxns.length ? incomeExpenseTxns.reduce((s, t) => s + t.amount, 0) / incomeExpenseTxns.length : 0;
 
     return {
       totalIncome: income,
       totalExpenses: expenses,
       netBalance: income - expenses,
-      transactionCount: txns.length,
+      transactionCount: normalizedTxns.length,
       avgTransaction,
       topCategory
     };
@@ -194,9 +241,9 @@ export class TransactionService {
     const txns = this.filteredTransactions();
     const headers = ['Date', 'Type', 'Category', 'Description', 'Amount', 'Account', 'Transfer To', 'Tags', 'Notes', 'Recurring', 'Frequency'];
     const rows = txns.map(t => [
-      t.date, t.type, t.category, t.description,
+      t.date, t.type, t.category || '', t.description,
       t.amount.toString(), t.accountId, t.toAccountId || '',
-      t.tags.join(';'), t.notes || '',
+      (t.tags || []).join(';'), t.notes || '',
       t.isRecurring ? 'Yes' : 'No', t.recurringFrequency || ''
     ]);
     const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');

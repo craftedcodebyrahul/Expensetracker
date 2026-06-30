@@ -274,4 +274,14 @@ export class ApiService {
   detectRecurringBills(): Observable<ApiResponse<DetectedBill[]>> {
     return this.http.get<ApiResponse<DetectedBill[]>>(`${this.baseUrl}/recurring/detect`);
   }
+
+  // ── AI Coach & Audits ──────────────────────────────────────────────────────
+
+  postAiCoach(message: string, history: any[]): Observable<ApiResponse<{ reply: string }>> {
+    return this.http.post<ApiResponse<{ reply: string }>>(`${this.baseUrl}/ai/coach`, { message, history });
+  }
+
+  getAnomalies(): Observable<ApiResponse<any[]>> {
+    return this.http.get<ApiResponse<any[]>>(`${this.baseUrl}/anomalies`);
+  }
 }

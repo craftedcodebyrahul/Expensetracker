@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
 import { CategoryService } from '../../core/services/category.service';
 import { AccountService } from '../../core/services/account.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { toLocalDateString } from '../../shared/utils/date.utils';
@@ -798,6 +799,7 @@ export class ReportsComponent implements OnInit, AfterViewInit {
   private api = inject(ApiService);
   categoryService = inject(CategoryService);
   accountService = inject(AccountService);
+  settingsService = inject(SettingsService);
 
   @ViewChild('categoryChart') categoryChartRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('trendChart') trendChartRef!: ElementRef<HTMLCanvasElement>;
@@ -1215,14 +1217,35 @@ export class ReportsComponent implements OnInit, AfterViewInit {
           if (accParam) {
             txns = txns.filter(t => t.accountId === accParam || t.toAccountId === accParam);
           }
-          this.categoryTxns.set(txns);
+          
+          // Filter to expenses only, matching reports page breakdown
+          txns = txns.filter(t => t.type === 'expense');
 
-          if (txns.length > 0) {
-            const total = txns.reduce((sum, t) => sum + t.amount, 0);
-            const count = txns.length;
+          // Normalize currency to primary currency
+          const primaryCurrency = this.settingsService.currency();
+          const rates = this.accountService.exchangeRates();
+          const accounts = this.accountService.accounts();
+
+          const normalizedTxns = txns.map((t: any) => {
+            const acc = accounts.find(a => a.id === t.accountId);
+            const accCurrency = acc?.currency || 'USD';
+            if (accCurrency.toUpperCase() !== primaryCurrency.toUpperCase() && Object.keys(rates).length > 0) {
+              const fromRate = rates[accCurrency.toUpperCase()] || 1.0;
+              const toRate = rates[primaryCurrency.toUpperCase()] || 1.0;
+              const convertedAmount = (t.amount / fromRate) * toRate;
+              return { ...t, amount: parseFloat(convertedAmount.toFixed(2)) };
+            }
+            return t;
+          });
+
+          this.categoryTxns.set(normalizedTxns);
+
+          if (normalizedTxns.length > 0) {
+            const total = normalizedTxns.reduce((sum, t) => sum + t.amount, 0);
+            const count = normalizedTxns.length;
             const avg = total / count;
-            const peak = Math.max(...txns.map(t => t.amount));
-            const peakTxn = txns.find(t => t.amount === peak);
+            const peak = Math.max(...normalizedTxns.map(t => t.amount));
+            const peakTxn = normalizedTxns.find(t => t.amount === peak);
 
             this.categoryStats.set({
               total,

@@ -5,6 +5,7 @@ import { filter, map } from 'rxjs/operators';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { SidebarComponent } from './layout/sidebar.component';
 import { ToastComponent } from './shared/components/toast.component';
+import { AiCoachDrawerComponent } from './shared/components/ai-coach-drawer.component';
 import { AuthService } from './core/services/auth.service';
 import { LayoutService } from './core/services/layout.service';
 
@@ -14,13 +15,11 @@ const PUBLIC_ROUTES = ['', 'login', 'privacy', 'terms'];
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, SidebarComponent, ToastComponent, CommonModule],
+  imports: [RouterOutlet, SidebarComponent, ToastComponent, AiCoachDrawerComponent, CommonModule],
   template: `
     @if (showSidebar()) {
       <div class="app-layout">
         <app-sidebar></app-sidebar>
-
-
 
         <main class="app-main">
           <router-outlet></router-outlet>
@@ -29,7 +28,14 @@ const PUBLIC_ROUTES = ['', 'login', 'privacy', 'terms'];
     } @else {
       <router-outlet></router-outlet>
     }
+    <app-ai-coach-drawer></app-ai-coach-drawer>
     <app-toast></app-toast>
+
+    @if (auth.isLoggedIn && showSidebar()) {
+      <button class="btn-floating-coach" (click)="layout.toggleAiCoach()" aria-label="Toggle AI Coach">
+        💬 AI Coach
+      </button>
+    }
   `,
   styles: [`
     .app-layout {
@@ -42,6 +48,30 @@ const PUBLIC_ROUTES = ['', 'login', 'privacy', 'terms'];
       flex: 1;
       min-width: 0;
       overflow-y: auto;
+    }
+    .btn-floating-coach {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--accent-blue);
+      color: #fff;
+      border: none;
+      border-radius: 30px;
+      padding: 0.75rem 1.25rem;
+      font-weight: 600;
+      font-size: 0.875rem;
+      box-shadow: 0 4px 16px rgba(92, 107, 192, 0.4);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      z-index: 999;
+      transition: var(--transition);
+    }
+    .btn-floating-coach:hover {
+      background: var(--accent-blue-light);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(92, 107, 192, 0.5);
     }
 
 

@@ -226,9 +226,11 @@
                     <path [attr.d]="seg.path"
                           [attr.fill]="seg.color"
                           [style.fill-opacity]="isSegmentHighlighted(seg.id) ? (hoveredSegment() ? 0.95 : 0.8) : 0.08"
+                          [style.cursor]="seg.depth === 2 ? 'pointer' : 'default'"
                           class="sunburst-segment"
                           (mouseenter)="hoveredSegment.set(seg)"
-                          (mouseleave)="hoveredSegment.set(null)">
+                          (mouseleave)="hoveredSegment.set(null)"
+                          (click)="seg.depth === 2 ? selectCategory(seg.id) : null">
                       <title>{{ seg.name }}: {{ seg.value | currencyFormat }} ({{ seg.percentage }}%)</title>
                     </path>
                   }
@@ -245,8 +247,10 @@
                             dominant-baseline="central"
                             class="sunburst-segment-icon"
                             [style.opacity]="isSegmentHighlighted(seg.id) ? 1.0 : 0.2"
+                            style="cursor: pointer;"
                             (mouseenter)="hoveredSegment.set(seg)"
-                            (mouseleave)="hoveredSegment.set(null)">
+                            (mouseleave)="hoveredSegment.set(null)"
+                            (click)="selectCategory(seg.id)">
                         {{ seg.icon }}
                       </text>
                     }
@@ -297,7 +301,8 @@
                       <div class="legend-item" 
                            [class.active]="hoveredSegment()?.id === seg.id"
                            (mouseenter)="hoveredSegment.set(seg)" 
-                           (mouseleave)="hoveredSegment.set(null)">
+                           (mouseleave)="hoveredSegment.set(null)"
+                           (click)="selectCategory(seg.id)">
                         <span class="legend-dot" [style.background-color]="seg.color"></span>
                         <span class="legend-icon">{{ seg.icon }}</span>
                         <span class="legend-name">{{ seg.name }}</span>
@@ -322,7 +327,8 @@
                       <div class="legend-item" 
                            [class.active]="hoveredSegment()?.id === seg.id"
                            (mouseenter)="hoveredSegment.set(seg)" 
-                           (mouseleave)="hoveredSegment.set(null)">
+                           (mouseleave)="hoveredSegment.set(null)"
+                           (click)="selectCategory(seg.id)">
                         <span class="legend-dot" [style.background-color]="seg.color"></span>
                         <span class="legend-icon">{{ seg.icon }}</span>
                         <span class="legend-name">{{ seg.name }}</span>
@@ -481,7 +487,7 @@
         </div>
         <div class="category-trends">
           @for (cat of categoryTrends(); track cat.id) {
-            <div class="cat-trend-item">
+            <div class="cat-trend-item" style="cursor: pointer;" (click)="selectCategory(cat.id)">
               <div class="ct-left">
                 <span class="ct-icon">{{ cat.icon }}</span>
                 <div class="ct-info">
@@ -543,6 +549,97 @@
             </div>
             <div class="chart-med" style="margin-top:1rem;"><canvas #goalChart></canvas></div>
           }
+        </div>
+      </div>
+    </div>
+
+    <!-- Predictive Cashflow Runway Chart -->
+    <app-predictive-runway></app-predictive-runway>
+  }
+
+  <!-- Category Audit Popup Modal -->
+  @if (selectedCategoryId()) {
+    @let catName = getCategoryName(selectedCategoryId()!);
+    @let catColor = getCategoryColor(selectedCategoryId()!);
+
+    <div class="modal-overlay" (click)="closeCategoryExploration()">
+      <div class="modal audit-popup-modal" role="dialog" aria-modal="true" (click)="$event.stopPropagation()" [style.border-left]="'4px solid ' + catColor">
+        <div class="modal-header">
+          <div class="drilldown-title">
+            <span style="font-size: 1.5rem; margin-right: 0.5rem;">{{ getCategoryIcon(selectedCategoryId()!) }}</span>
+            <h3 style="margin: 0; font-size: 1.25rem;">Category Audit: <span [style.color]="catColor">{{ catName }}</span></h3>
+          </div>
+          <button class="btn btn-ghost btn-icon" (click)="closeCategoryExploration()" aria-label="Close Audit">✕</button>
+        </div>
+
+        <div class="modal-body audit-popup-body">
+          @if (categoryTxnsLoading()) {
+            <div class="drilldown-loading">
+              <div class="spinner-sm"></div>
+              <span>Auditing transactions in {{ catName }}...</span>
+            </div>
+          } @else if (categoryStats()) {
+            <!-- Stats Grid -->
+            <div class="drilldown-stats-grid" style="margin-bottom: 1.5rem;">
+              <div class="dd-stat-card">
+                <span class="dd-stat-label">Total Amount</span>
+                <span class="dd-stat-val" [class.text-expense]="selectedCategoryId() !== 'other_income' && !incomeSegments().some(s => s.id === selectedCategoryId())" [class.text-income]="selectedCategoryId() === 'other_income' || incomeSegments().some(s => s.id === selectedCategoryId())">{{ categoryStats().total | currencyFormat }}</span>
+              </div>
+              <div class="dd-stat-card">
+                <span class="dd-stat-label">Total Logs</span>
+                <span class="dd-stat-val">{{ categoryStats().count }} transactions</span>
+              </div>
+              <div class="dd-stat-card">
+                <span class="dd-stat-label">Average</span>
+                <span class="dd-stat-val">{{ categoryStats().avg | currencyFormat }}</span>
+              </div>
+              <div class="dd-stat-card">
+                <span class="dd-stat-label">Peak Transaction</span>
+                <span class="dd-stat-val" [class.text-expense]="selectedCategoryId() !== 'other_income' && !incomeSegments().some(s => s.id === selectedCategoryId())" [class.text-income]="selectedCategoryId() === 'other_income' || incomeSegments().some(s => s.id === selectedCategoryId())">
+                  {{ categoryStats().peak | currencyFormat }}
+                  <span class="dd-stat-sub">on {{ categoryStats().peakDate }}</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Transactions list -->
+            @if (categoryTxns() && categoryTxns()!.length > 0) {
+              <div class="table-wrapper">
+                <table class="drilldown-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Description</th>
+                      <th>Account</th>
+                      <th class="text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (t of categoryTxns(); track t.id) {
+                      <tr>
+                        <td style="white-space: nowrap;">{{ t.date }}</td>
+                        <td class="font-semibold">{{ t.description }}</td>
+                        <td class="text-muted">
+                          @if (t.type === 'transfer') {
+                            {{ getAccountName(t.accountId) }} ➔ {{ getAccountName(t.toAccountId || '') }}
+                          } @else {
+                            {{ getAccountName(t.accountId) }}
+                          }
+                        </td>
+                        <td class="text-right font-semibold" [class.text-expense]="t.type === 'expense'" [class.text-income]="t.type === 'income'">{{ t.amount | currencyFormat }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            } @else {
+              <p class="text-muted text-center p-4">No transaction details found for this category in the selected range.</p>
+            }
+          }
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-ghost" (click)="closeCategoryExploration()">Close</button>
         </div>
       </div>
     </div>

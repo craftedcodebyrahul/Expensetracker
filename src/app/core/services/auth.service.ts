@@ -1,8 +1,10 @@
-import { Injectable, inject, signal, PLATFORM_ID } from '@angular/core';
+import { Injectable, inject, signal, PLATFORM_ID, Injector } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { tap, catchError, of } from 'rxjs';
+import { SettingsService } from './settings.service';
+import { AccountService } from './account.service';
 
 export interface AuthUser {
   userId: string;
@@ -16,6 +18,7 @@ export class AuthService {
   private http = inject(HttpClient);
   private router = inject(Router);
   private platformId = inject(PLATFORM_ID);
+  private injector = inject(Injector);
 
   readonly user = signal<AuthUser | null>(null);
   // initialized is still used by guards as a safety net
@@ -41,6 +44,11 @@ export class AuthService {
       tap(res => {
         this.user.set(res.data ?? null);
         this.initialized.set(true);
+        if (res.data) {
+          // Dynamically load settings and accounts to populate primary currency and rates
+          this.injector.get(SettingsService).load().subscribe();
+          this.injector.get(AccountService).loadAccounts().subscribe();
+        }
       }),
       catchError(() => {
         this.user.set(null);

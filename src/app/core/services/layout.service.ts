@@ -8,7 +8,12 @@ export class LayoutService {
   /** Mobile menu open state for drawer overlay */
   readonly mobileMenuOpen = signal(false);
 
+  /** AI Finance Coach drawer open state */
+  readonly aiCoachOpen = signal(false);
+
   toggle() { this.collapsed.update(v => !v); }
 
   toggleMobileMenu() { this.mobileMenuOpen.update(v => !v); }
+
+  toggleAiCoach() { this.aiCoachOpen.update(v => !v); }
 }

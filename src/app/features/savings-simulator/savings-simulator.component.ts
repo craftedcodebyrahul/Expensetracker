@@ -64,7 +64,7 @@ export class SavingsSimulatorComponent implements OnInit, OnDestroy, AfterViewIn
   avgExpense = signal<number>(0);
   avgDiscretionary = signal<number>(0);
 
-  currencySymbol = computed(() => '$');
+  currencySymbol = computed(() => this.settingsService.currencySymbol());
 
   // Baseline Assets
   cashAssets = computed(() => {

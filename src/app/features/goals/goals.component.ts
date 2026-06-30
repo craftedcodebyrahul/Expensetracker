@@ -10,6 +10,7 @@ import { ApiService } from '../../core/services/api.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { Goal } from '../../core/models';
+import { SettingsService } from '../../core/services/settings.service';
 
 @Component({
   selector: 'app-goals',
@@ -459,6 +460,7 @@ export class GoalsComponent implements OnInit {
   goalService = inject(GoalService);
   accountService = inject(AccountService);
   txnService = inject(TransactionService);
+  settingsService = inject(SettingsService);
   private toast = inject(ToastService);
   private api = inject(ApiService);
   private router = inject(Router);
@@ -485,13 +487,13 @@ export class GoalsComponent implements OnInit {
   submitting = signal(false);
   contributionAmount = 0;
 
-  currencySymbol = computed(() => this.accountService.exchangeRates() ? '$' : '$');
+  currencySymbol = computed(() => this.settingsService.currencySymbol());
 
   form = { name: '', targetAmount: null as number | null, currentAmount: 0, targetDate: '', accountId: '' };
 
   // Calculate net monthly savings based on past transactions to give custom forecasts
   monthlySavingsRate = computed(() => {
-    const txns = this.txnService.postedTransactions();
+    const txns = this.txnService.postedNormalizedTransactions();
     const now = new Date();
     const threeMonthsAgo = new Date();
     threeMonthsAgo.setMonth(now.getMonth() - 3);

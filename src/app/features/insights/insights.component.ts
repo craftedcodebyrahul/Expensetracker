@@ -9,8 +9,10 @@ import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
 import { AccountService } from '../../core/services/account.service';
 import { ApiService } from '../../core/services/api.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
+import { PredictiveRunwayComponent } from '../../shared/components/predictive-runway.component';
 import { parseLocalDate } from '../../shared/utils/date.utils';
 import { ChatMessage } from '../../core/models';
 import { Chart, registerables } from 'chart.js';
@@ -50,7 +52,7 @@ interface HeatmapDay {
 @Component({
   selector: 'app-insights',
   standalone: true,
-  imports: [CommonModule, FormsModule, HeaderComponent, CurrencyFormatPipe],
+  imports: [CommonModule, FormsModule, HeaderComponent, CurrencyFormatPipe, PredictiveRunwayComponent],
   templateUrl: './insights.component.html',
   styleUrl: './insights.component.css'
 })
@@ -59,6 +61,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
   protected catService = inject(CategoryService);
   private accountService = inject(AccountService);
   private api = inject(ApiService);
+  protected settingsService = inject(SettingsService);
   private route = inject(ActivatedRoute);
 
   protected Math = Math;
@@ -193,14 +196,14 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Filtered transactions for the current period
   currentPeriodTransactions = computed(() => {
-    const txns = this.txnService.postedTransactions();
+    const txns = this.txnService.postedNormalizedTransactions();
     const { startDate, endDate } = this.periodBoundaries();
     return txns.filter(t => t.date >= startDate && t.date <= endDate);
   });
 
   // Filtered transactions for the previous period
   previousPeriodTransactions = computed(() => {
-    const txns = this.txnService.postedTransactions();
+    const txns = this.txnService.postedNormalizedTransactions();
     const { prevStartDate, prevEndDate } = this.periodBoundaries();
     return txns.filter(t => t.date >= prevStartDate && t.date <= prevEndDate);
   });
@@ -408,7 +411,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
   getSunburstData = computed(() => {
     const txns = this.currentPeriodTransactions().filter(t => t.type !== 'transfer');
     if (txns.length === 0) {
-      return { segments: [], netBalance: 0, savingsRate: 0, totalIncome: 0, totalExpenses: 0 };
+      return { segments: [], netBalance: 0, savingsRate: 0, totalIncome: 0, totalExpenses: 0, topIncomeKeys: new Set<string>(), topExpenseKeys: new Set<string>() };
     }
 
     const totalIncome = txns.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
@@ -537,7 +540,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const V = Math.max(totalIncome, totalExpenses);
     if (V <= 0) {
-      return { segments: [], netBalance, savingsRate, totalIncome, totalExpenses };
+      return { segments: [], netBalance, savingsRate, totalIncome, totalExpenses, topIncomeKeys: new Set<string>(), topExpenseKeys: new Set<string>() };
     }
 
     const segments: SunburstSegment[] = [];
@@ -682,7 +685,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
       });
     }
 
-    return { segments, netBalance, savingsRate, totalIncome, totalExpenses };
+    return { segments, netBalance, savingsRate, totalIncome, totalExpenses, topIncomeKeys, topExpenseKeys };
   });
 
   sunburstSegments = computed(() => this.getSunburstData().segments);
@@ -1064,5 +1067,124 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
       ]},
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#9fa8da', font: { size: 11 } } }, tooltip: { callbacks: { label: (ctx: any) => ` $${ctx.parsed.y?.toLocaleString() ?? 0}` } } }, scales: { x: { ticks: { color: '#9fa8da', maxTicksLimit: 8 }, grid: { color: 'rgba(46,50,80,0.4)' } }, y: { ticks: { color: '#9fa8da', callback: (v: any) => '$' + Number(v).toLocaleString() }, grid: { color: 'rgba(46,50,80,0.4)' } } } }
     });
+  }
+
+  // Category Exploration signals
+  selectedCategoryId = signal<string | null>(null);
+  categoryTxns = signal<any[] | null>(null);
+  categoryTxnsLoading = signal(false);
+  categoryStats = signal<any | null>(null);
+
+  selectCategory(categoryId: string) {
+    let rawCategoryId = categoryId;
+    if (categoryId.startsWith('in_cat_')) {
+      rawCategoryId = categoryId.substring(7);
+    } else if (categoryId.startsWith('out_cat_')) {
+      rawCategoryId = categoryId.substring(8);
+    }
+
+    this.selectedCategoryId.set(rawCategoryId);
+    this.categoryTxnsLoading.set(true);
+    this.categoryTxns.set(null);
+    this.categoryStats.set(null);
+
+    const { startDate, endDate } = this.periodBoundaries();
+    
+    const isOtherIncome = rawCategoryId === 'other_income';
+    const isOtherExpense = rawCategoryId === 'other_expense';
+    
+    const queryParams: any = {
+      dateFrom: startDate,
+      dateTo: endDate
+    };
+    if (!isOtherIncome && !isOtherExpense) {
+      queryParams.category = rawCategoryId;
+    }
+
+    this.api.getTransactions(queryParams).subscribe({
+      next: res => {
+        this.categoryTxnsLoading.set(false);
+        if (res.success && res.data) {
+          let txns = res.data;
+          
+          const sunburst = this.getSunburstData();
+          if (isOtherIncome) {
+            txns = txns.filter(t => t.type === 'income' && !sunburst.topIncomeKeys.has(t.category));
+          } else if (isOtherExpense) {
+            txns = txns.filter(t => t.type === 'expense' && !sunburst.topExpenseKeys.has(t.category));
+          } else {
+            const isIncomeCat = categoryId.startsWith('in_cat_') || this.incomeSegments().some(s => s.id === categoryId);
+            txns = txns.filter(t => t.category === rawCategoryId && t.type === (isIncomeCat ? 'income' : 'expense'));
+          }
+
+          // Normalize currency to primary currency
+          const primaryCurrency = this.settingsService.currency();
+          const rates = this.accountService.exchangeRates();
+          const accounts = this.accountService.accounts();
+
+          const normalizedTxns = txns.map((t: any) => {
+            const acc = accounts.find(a => a.id === t.accountId);
+            const accCurrency = acc?.currency || 'USD';
+            if (accCurrency.toUpperCase() !== primaryCurrency.toUpperCase() && Object.keys(rates).length > 0) {
+              const fromRate = rates[accCurrency.toUpperCase()] || 1.0;
+              const toRate = rates[primaryCurrency.toUpperCase()] || 1.0;
+              const convertedAmount = (t.amount / fromRate) * toRate;
+              return { ...t, amount: parseFloat(convertedAmount.toFixed(2)) };
+            }
+            return t;
+          });
+
+          this.categoryTxns.set(normalizedTxns);
+
+          if (normalizedTxns.length > 0) {
+            const total = normalizedTxns.reduce((sum, t) => sum + t.amount, 0);
+            const count = normalizedTxns.length;
+            const avg = total / count;
+            const peak = Math.max(...normalizedTxns.map(t => t.amount));
+            const peakTxn = normalizedTxns.find(t => t.amount === peak);
+
+            this.categoryStats.set({
+              total,
+              count,
+              avg,
+              peak,
+              peakDate: peakTxn ? peakTxn.date : ''
+            });
+          }
+        }
+      },
+      error: () => {
+        this.categoryTxnsLoading.set(false);
+      }
+    });
+  }
+
+  closeCategoryExploration() {
+    this.selectedCategoryId.set(null);
+    this.categoryTxns.set(null);
+    this.categoryStats.set(null);
+  }
+
+  getCategoryIcon(id: string) {
+    if (id === 'other_income') return '📦';
+    if (id === 'other_expense') return '📦';
+    return this.catService.getCategoryIcon(id);
+  }
+
+  getCategoryColor(id: string) {
+    if (id === 'other_income') return '#81c784';
+    if (id === 'other_expense') return '#90a4ae';
+    return this.catService.getCategoryColor(id);
+  }
+
+  getCategoryName(id: string) {
+    if (id === 'other_income') return 'Other Income';
+    if (id === 'other_expense') return 'Other Expenses';
+    return this.catService.getCategoryById(id)?.name ?? id;
+  }
+
+  getAccountName(id: string) {
+    const acc = this.accountService.accounts().find(a => a.id === id);
+    return acc ? acc.name : id;
   }
 }

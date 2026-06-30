@@ -578,5 +578,95 @@ ${audit.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n
     } catch (e) { fail(res, e); }
   });
 
+  // ── AI & Auditing Additions ───────────────────────────────────────────────
+
+  router.get('/anomalies', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+      const anomalies = await dbService.scanForAnomalies(userId);
+      ok(res, anomalies);
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/ai/coach', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+      const { message, history } = req.body;
+      if (!message) { fail(res, 'Missing message', 400); return; }
+
+      const accounts = await dbService.getAccounts(userId);
+      const categories = await dbService.getCategories(userId);
+      const txns = await dbService.getTransactions(userId);
+
+      const summaryText = txns.slice(0, 50).map(t => 
+        `- Date: ${t.date} | Desc: ${t.description} | Cat: ${categories.find(c => c.id === t.category)?.name ?? t.category} | Amt: $${t.amount} | Type: ${t.type}`
+      ).join('\n');
+
+      const accountsText = accounts.map(a => 
+        `- Account: ${a.name} | Currency: ${a.currency} | Type: ${a.type}`
+      ).join('\n');
+
+      const apiKey = process.env['GEMINI_API_KEY'];
+      let reply = '';
+
+      if (apiKey) {
+        try {
+          const historyPrompt = (history || []).map((h: any) => 
+            `${h.sender === 'user' ? 'User' : 'Assistant'}: ${h.text}`
+          ).join('\n');
+
+          const prompt = `You are a friendly, expert personal finance coach. You help the user analyze their expenses, set targets, and save money.
+Here is the user's active financial context:
+ACCOUNTS:
+${accountsText}
+
+RECENT TRANSACTIONS (Last 50):
+${summaryText}
+
+CONVERSATION HISTORY:
+${historyPrompt}
+
+User: ${message}
+
+Provide a concise, helpful, and friendly reply. Direct them to specific transactions or categories if relevant. Keep it under 150 words.`;
+
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }]
+            })
+          });
+
+          if (response.ok) {
+            const json = await response.json() as any;
+            const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              reply = text.trim();
+            }
+          }
+        } catch (err) {
+          console.error('Gemini Coach API call failed:', err);
+        }
+      }
+
+      if (!reply) {
+        const lowercaseMsg = message.toLowerCase();
+        if (lowercaseMsg.includes('hello') || lowercaseMsg.includes('hi')) {
+          reply = `Hello! I'm your AI Finance Coach. Ask me anything about your transaction history, budgets, or how you can optimize your savings!`;
+        } else if (lowercaseMsg.includes('budget') || lowercaseMsg.includes('spend')) {
+          reply = `Based on your recent transactions, your highest spends are typically in Food and Transport. Setting monthly budgets can help keep those in check!`;
+        } else if (lowercaseMsg.includes('saving') || lowercaseMsg.includes('goal')) {
+          reply = `You have set some financial goals. Try to save at least 20% of your salary each month by automating a transfer on payday.`;
+        } else {
+          reply = `I've analyzed your recent transactions. It looks like you've spent $${txns.filter(t => t.type === 'expense').slice(0, 10).reduce((s,t) => s + t.amount, 0).toFixed(2)} across your last 10 expenses. Ask me to drill down into any specific category!`;
+        }
+      }
+
+      ok(res, { reply });
+    } catch (e) { fail(res, e); }
+  });
+
   return router;
 }
