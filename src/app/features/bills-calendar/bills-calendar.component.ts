@@ -182,6 +182,7 @@ interface CalendarCell {
               <select class="form-control" [(ngModel)]="form.frequency">
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
+                <option value="biweekly">Biweekly</option>
                 <option value="monthly">Monthly</option>
                 <option value="yearly">Yearly</option>
               </select>
@@ -611,6 +612,11 @@ export class BillsCalendarComponent implements OnInit {
       
       if (s.frequency === 'daily') return true;
       if (s.frequency === 'weekly') return d.getDay() === start.getDay();
+      if (s.frequency === 'biweekly') {
+        const diffTime = d.getTime() - start.getTime();
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays >= 0 && diffDays % 14 === 0;
+      }
       
       if (s.frequency === 'monthly') {
         const targetDay = start.getDate();

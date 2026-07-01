@@ -16,6 +16,58 @@ import { dbService } from '../db.service.js';
 export function createAuthRouter(): Router {
   const router = Router();
 
+  if (process.env['NODE_ENV'] !== 'production') {
+    router.get('/dev-login', async (req: Request, res: Response): Promise<void> => {
+      try {
+        const profile = {
+          id: 'dev_user_123',
+          email: 'dev@example.com',
+          name: 'Developer User',
+          picture: '',
+        };
+        const now = new Date().toISOString();
+
+        await prisma.user.upsert({
+          where: { id: profile.id },
+          update: {
+            name: profile.name,
+            picture: profile.picture,
+          },
+          create: {
+            id: profile.id,
+            email: profile.email,
+            name: profile.name,
+            picture: profile.picture,
+            createdAt: now,
+          },
+        });
+
+        await dbService.initializeUser(profile.id);
+
+        const user: SessionUser = {
+          userId: profile.id,
+          email: profile.email,
+          name: profile.name,
+          picture: profile.picture,
+        };
+
+        setSession(req, { user });
+
+        console.log('[DEBUG /auth/dev-login] Developer Session set successfully:', {
+          userId: user.userId,
+          email: user.email,
+        });
+
+        res.status(200).send(`<!doctype html><html><head><meta charset="utf-8">
+<script>window.location.replace('/dashboard');</script>
+</head><body>Signing you in…</body></html>`);
+      } catch (err: any) {
+        console.error('Dev login error:', err.message);
+        res.redirect(`/login?auth_error=${encodeURIComponent(err.message ?? 'unknown_error')}`);
+      }
+    });
+  }
+
   // ── Step 1: Redirect to Google ────────────────────────────────────────────
   // State is an HMAC-signed token — no session cookie needed to store it.
   // This avoids the Vercel Lambda adapter issue where res.redirect() can bypass

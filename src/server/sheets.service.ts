@@ -660,12 +660,14 @@ export class SheetsService {
     return true;
   }
 
-  advanceDateByFrequency(dateStr: string, frequency: 'daily' | 'weekly' | 'monthly' | 'yearly'): string {
+  advanceDateByFrequency(dateStr: string, frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'yearly'): string {
     const date = parseLocalDate(dateStr);
     if (frequency === 'daily') {
       date.setDate(date.getDate() + 1);
     } else if (frequency === 'weekly') {
       date.setDate(date.getDate() + 7);
+    } else if (frequency === 'biweekly') {
+      date.setDate(date.getDate() + 14);
     } else if (frequency === 'monthly') {
       const originalDay = date.getDate();
       date.setMonth(date.getMonth() + 1);

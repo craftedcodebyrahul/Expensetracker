@@ -141,6 +141,28 @@
                name="notes" placeholder="Any extra details...">
       </div>
 
+      <!-- Recurring Options -->
+      <div class="form-group">
+        <label class="recurring-toggle" style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none; margin-top: 0.25rem;">
+          <input type="checkbox" [(ngModel)]="form.isRecurring" name="isRecurring">
+          <span style="font-size: 0.8125rem; font-weight: 500; color: var(--text-secondary);">🔄 Repeat automatically</span>
+        </label>
+        @if (form.isRecurring) {
+          <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
+            <select class="form-control" [(ngModel)]="form.recurringFrequency" name="recurringFrequency" style="font-size: 0.8125rem;">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Biweekly (every 2 weeks)</option>
+              <option value="monthly">Monthly (same date each month)</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.25rem 0 0;">
+              The app will automatically add this transaction next {{ form.recurringFrequency }} on the same date.
+            </p>
+          </div>
+        }
+      </div>
+
       <!-- Submit -->
       <button class="btn btn-lg" type="submit"
               [disabled]="submitting() || !isValid()"

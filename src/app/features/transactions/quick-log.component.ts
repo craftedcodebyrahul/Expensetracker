@@ -8,6 +8,7 @@ import { AccountService } from '../../core/services/account.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ApiService } from '../../core/services/api.service';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
+import { RecurringService } from '../../core/services/recurring.service';
 
 @Component({
   selector: 'app-quick-log',
@@ -84,6 +85,7 @@ export class QuickLogComponent implements OnInit {
   accountService = inject(AccountService);
   private toast = inject(ToastService);
   private api = inject(ApiService);
+  recurringService = inject(RecurringService);
  
   submitting = signal(false);
   justSaved = signal(false);
@@ -104,6 +106,8 @@ export class QuickLogComponent implements OnInit {
     notes: '',
     accountId: '',
     toAccountId: '',
+    isRecurring: false,
+    recurringFrequency: 'monthly' as 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'yearly',
   };
 
   recentLogs = this.txnService.recentTransactions;
@@ -225,7 +229,8 @@ export class QuickLogComponent implements OnInit {
       description: savedDesc,
       date: this.form.date,
       tags: [],
-      isRecurring: false,
+      isRecurring: this.form.isRecurring,
+      recurringFrequency: this.form.isRecurring ? this.form.recurringFrequency : undefined,
       paymentMethod: undefined,
       notes: this.form.notes || undefined,
       accountId: this.form.accountId,
@@ -237,6 +242,9 @@ export class QuickLogComponent implements OnInit {
         this.lastSavedAmount.set(savedAmount);
         this.justSaved.set(true);
         setTimeout(() => this.justSaved.set(false), 3000);
+        if (this.form.isRecurring) {
+          this.recurringService.loadSchedules().subscribe();
+        }
         this.resetForm();
       } else {
         this.toast.error('Could not save transaction');
@@ -258,6 +266,8 @@ export class QuickLogComponent implements OnInit {
       notes: '',
       accountId: this.form.accountId,
       toAccountId: '',
+      isRecurring: false,
+      recurringFrequency: 'monthly' as 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'yearly',
     };
   }
 }

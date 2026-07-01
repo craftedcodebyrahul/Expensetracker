@@ -170,6 +170,7 @@ import { ApiService } from '../../core/services/api.service';
                 <select class="form-control mt-2" [(ngModel)]="form.recurringFrequency" name="recurringFrequency">
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
+                  <option value="biweekly">Biweekly (every 2 weeks)</option>
                   <option value="monthly">Monthly (same date each month)</option>
                   <option value="yearly">Yearly</option>
                 </select>

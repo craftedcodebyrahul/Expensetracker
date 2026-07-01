@@ -4,7 +4,7 @@ export interface RecurringSchedule {
   amount: number;
   category: string;
   description: string;
-  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'yearly';
   startDate: string; // YYYY-MM-DD
   nextDueDate: string; // YYYY-MM-DD
   accountId: string;

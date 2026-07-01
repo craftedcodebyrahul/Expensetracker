@@ -212,6 +212,7 @@ function advanceDateByFrequency(dateStr: string, frequency: string): string {
   const originalDay = date.getDate();
   if (frequency === 'daily')   { date.setDate(date.getDate() + 1); }
   else if (frequency === 'weekly')  { date.setDate(date.getDate() + 7); }
+  else if (frequency === 'biweekly') { date.setDate(date.getDate() + 14); }
   else if (frequency === 'monthly') {
     date.setMonth(date.getMonth() + 1);
     if (date.getDate() !== originalDay) date.setDate(0); // handle month-end

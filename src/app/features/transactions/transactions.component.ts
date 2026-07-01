@@ -11,6 +11,7 @@ import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { TransactionFormComponent } from './transaction-form.component';
 import { Transaction } from '../../core/models';
 import { advanceDateByFrequency } from '../../shared/utils/date.utils';
+import { RecurringService } from '../../core/services/recurring.service';
 
 @Component({
   selector: 'app-transactions',
@@ -374,11 +375,30 @@ import { advanceDateByFrequency } from '../../shared/utils/date.utils';
             }
             <p class="text-muted text-sm mt-2">This action cannot be undone.</p>
           </div>
-          <div class="modal-footer">
-            <button class="btn btn-ghost" (click)="cancelDelete()">Cancel</button>
-            <button class="btn btn-danger" (click)="deleteTransaction()" [disabled]="deleting()">
-              {{ deleting() ? 'Deleting...' : 'Delete' }}
-            </button>
+          <div class="modal-footer" [style.flex-direction]="deletingTransaction()!.isRecurring ? 'column' : 'row'" [style.gap]="deletingTransaction()!.isRecurring ? '0.75rem' : '0.5rem'">
+            @if (!deletingTransaction()!.isRecurring) {
+              <button class="btn btn-ghost" (click)="cancelDelete()">Cancel</button>
+              <button class="btn btn-danger" (click)="deleteTransaction()" [disabled]="deleting()">
+                {{ deleting() ? 'Deleting...' : 'Delete' }}
+              </button>
+            } @else {
+              <div style="display: flex; gap: 0.5rem; justify-content: flex-end; width: 100%;">
+                <button class="btn btn-ghost" (click)="cancelDelete()">Cancel</button>
+                <button class="btn btn-danger" (click)="deleteTransaction()" [disabled]="deleting()">
+                  Delete Occurrence
+                </button>
+              </div>
+              @if (deletingTransaction()!.recurringId) {
+                <div style="border-top: 1px solid var(--border); width: 100%; padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                  <button class="btn btn-warning btn-sm" (click)="deleteSeriesFromTxn(deletingTransaction()!.recurringId!, deletingTransaction()!.description)" [disabled]="deleting()">
+                    🗑️ Delete Entire Series (All Occurrences)
+                  </button>
+                  <button class="btn btn-ghost btn-sm" (click)="stopSeriesFromTxn(deletingTransaction()!.recurringId!, deletingTransaction()!.description)" [disabled]="deleting()">
+                    🛑 Stop Future Recurrences
+                  </button>
+                </div>
+              }
+            }
           </div>
         </div>
       </div>
@@ -554,6 +574,7 @@ export class TransactionsComponent implements OnInit {
   categoryService = inject(CategoryService);
   accountService = inject(AccountService);
   private toast = inject(ToastService);
+  recurringService = inject(RecurringService);
 
   activeTab = signal<'all' | 'recurring'>('all');
   showForm = signal(false);
@@ -633,44 +654,18 @@ export class TransactionsComponent implements OnInit {
   });
 
   recurringSchedules = computed(() => {
-    const txns = this.txnService.transactions();
-    const recurring = txns.filter(t => t.isRecurring && t.recurringId);
-
-    const groups = new Map<string, { earliest: Transaction; latest: Transaction; count: number }>();
-    recurring.forEach(t => {
-      const existing = groups.get(t.recurringId!);
-      if (!existing) {
-        groups.set(t.recurringId!, { earliest: t, latest: t, count: 1 });
-      } else {
-        if (t.date < existing.earliest.date) existing.earliest = t;
-        if (t.date > existing.latest.date) existing.latest = t;
-        existing.count++;
-      }
-    });
-
-    const todayStr = new Date().toLocaleDateString('en-CA');
-
-    return Array.from(groups.values()).map(({ earliest, latest, count }) => {
-      const startDate = earliest.createdAt ? earliest.createdAt.split('T')[0] : earliest.date;
-      let nextDueDate = latest.date;
-      if (latest.date <= todayStr) {
-        nextDueDate = advanceDateByFrequency(latest.date, (latest.recurringFrequency ?? 'monthly') as any);
-      }
-
-      return {
-        recurringId: latest.recurringId!,
-        type: latest.type,
-        amount: latest.amount,
-        category: latest.category,
-        description: latest.description,
-        frequency: latest.recurringFrequency ?? 'monthly',
-        startDate,
-        nextDueDate,
-        accountId: latest.accountId,
-        toAccountId: latest.toAccountId,
-        count
-      };
-    });
+    return this.recurringService.schedules().map(s => ({
+      recurringId: s.id,
+      type: s.type,
+      amount: s.amount,
+      category: s.category,
+      description: s.description,
+      frequency: s.frequency,
+      startDate: s.startDate,
+      nextDueDate: s.nextDueDate,
+      accountId: s.accountId,
+      toAccountId: s.toAccountId,
+    }));
   });
 
   displayedTransactions() {
@@ -683,6 +678,7 @@ export class TransactionsComponent implements OnInit {
 
   ngOnInit() {
     this.txnService.loadTransactions().subscribe();
+    this.recurringService.loadSchedules().subscribe();
     this.categoryService.loadCategories().subscribe();
     this.accountService.loadAccounts().subscribe();
   }
@@ -742,6 +738,7 @@ export class TransactionsComponent implements OnInit {
       next: () => {
         this.toast.success('Recurring series stopped');
         this.cancelStopSeries();
+        this.recurringService.loadSchedules().subscribe();
       },
       error: () => {
         this.toast.error('Failed to stop recurring series');
@@ -766,11 +763,22 @@ export class TransactionsComponent implements OnInit {
       next: () => {
         this.toast.success('Recurring series deleted');
         this.cancelDeleteSeries();
+        this.recurringService.loadSchedules().subscribe();
       },
       error: () => {
         this.toast.error('Failed to delete recurring series');
       }
     });
+  }
+
+  deleteSeriesFromTxn(recurringId: string, description: string) {
+    this.cancelDelete();
+    this.confirmDeleteSeries(recurringId, description);
+  }
+
+  stopSeriesFromTxn(recurringId: string, description: string) {
+    this.cancelDelete();
+    this.confirmStopSeries(recurringId, description);
   }
 
   clearFilters() {

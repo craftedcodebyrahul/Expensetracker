@@ -9,7 +9,7 @@ export interface Transaction {
   date: string; // ISO date string YYYY-MM-DD
   tags: string[];
   isRecurring: boolean;
-  recurringFrequency?: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  recurringFrequency?: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'yearly';
   recurringId?: string;  // Groups all occurrences of the same recurring series
   paymentMethod?: string;
   notes?: string;
