@@ -4,7 +4,20 @@ export interface StockHolding {
   ticker: string;
   shares: number;
   price: number;
+  costBasis: number;
   updatedAt: string;
+}
+
+export interface StockOrder {
+  id: string;
+  accountId: string;
+  ticker: string;
+  type: 'BUY' | 'SELL';
+  shares: number;
+  pricePerShare: number;
+  date: string;
+  transactionId?: string;
+  createdAt?: string;
 }
 
 export interface Account {
@@ -15,5 +28,6 @@ export interface Account {
   initialBalance?: number;
   isInvestment?: boolean;
   stockHoldings?: StockHolding[];
+  stockOrders?: StockOrder[];
   createdAt?: string;
 }

@@ -208,11 +208,41 @@ Chart.register(...registerables);
             <span class="card-title">Budget Status</span>
             <a routerLink="/budgets" class="btn btn-ghost btn-sm">Manage</a>
           </div>
-          @if (budgetService.budgetAlerts().length === 0) {
+
+          @let pacing = budgetService.pacingStatus();
+          @if (budgetService.totalPlannedOutflow() > 0) {
+            <div class="dash-pacing-summary" [class]="pacing.class">
+              <div class="dash-pacing-meta">
+                <span class="dash-pacing-badge">
+                  {{ pacing.icon }} {{ pacing.label }}
+                </span>
+                <span class="dash-pacing-amounts">
+                  {{ budgetService.totalActualExpenses() | currencyFormat }} / {{ budgetService.totalPlannedOutflow() | currencyFormat }}
+                </span>
+              </div>
+              <div class="pacing-progress-bar" style="height: 8px; margin-top: 0.5rem; margin-bottom: 0.75rem;">
+                <div class="time-marker" [style.left.%]="budgetService.monthProgressPercentage()" style="width: 2px;"></div>
+                <div class="pacing-fill" [style.width.%]="Math.min(budgetService.pacingPercentage(), 100)"
+                     [style.background]="pacing.status === 'exceeded' ? 'var(--accent-red)' :
+                                          pacing.status === 'warning_fast' ? 'var(--accent-yellow)' :
+                                          pacing.status === 'warning_slight' ? 'var(--accent-blue-light)' :
+                                          'var(--accent-green)'">
+                </div>
+              </div>
+              <p class="dash-pacing-desc">{{ pacing.description }}</p>
+              <div class="dash-pacing-divider"></div>
+            </div>
+          }
+
+          @if (budgetService.totalPlannedOutflow() === 0) {
             <div class="empty-state">
               <span class="empty-icon">🎯</span>
-              <p>No budgets set</p>
+              <p>No budgets or bills set</p>
               <a routerLink="/budgets" class="btn btn-primary btn-sm">Set Budgets</a>
+            </div>
+          } @else if (budgetService.budgetAlerts().length === 0) {
+            <div class="empty-state" style="padding: 1rem;">
+              <p style="font-size: 0.8rem;">No category budgets set. Your pacing includes scheduled recurring bills.</p>
             </div>
           } @else {
             <div class="budget-list">
@@ -435,6 +465,49 @@ Chart.register(...registerables);
     .empty-state { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; padding: 2rem 1rem; text-align: center; }
     .empty-icon { font-size: 2.5rem; }
     .empty-state p { color: var(--text-muted); font-size: 0.875rem; }
+
+    /* Dashboard Pacing Styles */
+    .dash-pacing-summary { display: flex; flex-direction: column; margin-bottom: 0.875rem; }
+    .dash-pacing-meta { display: flex; justify-content: space-between; align-items: center; }
+    .dash-pacing-badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: 100px;
+    }
+    .dash-pacing-summary.status-success .dash-pacing-badge { background: rgba(76, 175, 80, 0.15); color: var(--accent-green); }
+    .dash-pacing-summary.status-warning .dash-pacing-badge { background: rgba(255, 193, 7, 0.15); color: var(--accent-yellow); }
+    .dash-pacing-summary.status-info .dash-pacing-badge { background: rgba(121, 134, 203, 0.15); color: var(--accent-blue-light); }
+    .dash-pacing-summary.status-danger .dash-pacing-badge { background: rgba(239, 83, 80, 0.15); color: var(--accent-red); }
+
+    .dash-pacing-amounts { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
+    .dash-pacing-desc { font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; margin: 0; }
+    .dash-pacing-divider { height: 1px; background: var(--border); margin-top: 0.875rem; }
+
+    .pacing-progress-bar {
+      height: 8px;
+      background: var(--border);
+      border-radius: 100px;
+      position: relative;
+      overflow: visible;
+    }
+    .pacing-fill {
+      height: 100%;
+      border-radius: 100px;
+      transition: width 0.5s ease;
+    }
+    .time-marker {
+      position: absolute;
+      top: -2px;
+      bottom: -2px;
+      width: 2px;
+      background: #ffffff;
+      box-shadow: 0 0 4px #ffffff;
+      z-index: 2;
+      transform: translateX(-50%);
+      pointer-events: none;
+      border-radius: 1px;
+    }
 
     /* AI Smart Audit Banner styling */
     .ai-banner {

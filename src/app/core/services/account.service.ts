@@ -2,12 +2,12 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { ApiService } from './api.service';
 import { TransactionService } from './transaction.service';
 import { SettingsService } from './settings.service';
-import { Account, StockHolding } from '../models';
+import { Account, StockHolding, StockOrder } from '../models';
 import { tap, catchError, of } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class AccountService {
-  private api = inject(ApiService);
+  api = inject(ApiService);
   private txnService = inject(TransactionService);
   private settingsService = inject(SettingsService);
 
@@ -131,6 +131,58 @@ export class AccountService {
         }
       }),
       catchError(err => of(null))
+    );
+  }
+
+  // ── Stock Orders ────────────────────────────────────────────────────────────
+
+  getStockOrders(accountId: string) {
+    return this.api.getStockOrders(accountId);
+  }
+
+  addStockOrder(
+    accountId: string,
+    ticker: string,
+    type: 'BUY' | 'SELL',
+    shares: number,
+    pricePerShare: number,
+    date: string
+  ) {
+    return this.api.addStockOrder(accountId, ticker, type, shares, pricePerShare, date).pipe(
+      tap(res => {
+        if (res.success) {
+          this.loadAccounts().subscribe();
+          this.txnService.loadTransactions().subscribe();
+        }
+      })
+    );
+  }
+
+  updateStockOrder(
+    accountId: string,
+    orderId: string,
+    shares: number,
+    pricePerShare: number,
+    date: string
+  ) {
+    return this.api.updateStockOrder(accountId, orderId, shares, pricePerShare, date).pipe(
+      tap(res => {
+        if (res.success) {
+          this.loadAccounts().subscribe();
+          this.txnService.loadTransactions().subscribe();
+        }
+      })
+    );
+  }
+
+  deleteStockOrder(accountId: string, orderId: string) {
+    return this.api.deleteStockOrder(accountId, orderId).pipe(
+      tap(res => {
+        if (res.success) {
+          this.loadAccounts().subscribe();
+          this.txnService.loadTransactions().subscribe();
+        }
+      })
     );
   }
 

@@ -18,6 +18,7 @@ export interface Transaction {
   accountId: string;
   toAccountId?: string;
   status?: 'posted' | 'scheduled';
+  stockOrderId?: string;
 }
 
 export interface TransactionFilter {

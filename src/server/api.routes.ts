@@ -462,7 +462,83 @@ ${audit.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n
     } catch (e) { fail(res, e); }
   });
 
-  // ── Stock Holdings ────────────────────────────────────────────────────────
+  // ── Stock Holdings & Orders ───────────────────────────────────────────────
+
+  router.get('/stocks/search', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const q = req.query['q'] as string;
+      if (!q) { ok(res, []); return; }
+      const results = await dbService.searchStocks(q);
+      ok(res, results);
+    } catch (e) { fail(res, e); }
+  });
+
+  router.get('/stocks/price', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const ticker = req.query['ticker'] as string;
+      if (!ticker) { fail(res, 'Missing ticker', 400); return; }
+      const price = await dbService.fetchStockPrice(ticker);
+      ok(res, { price });
+    } catch (e) { fail(res, e); }
+  });
+
+  router.get('/accounts/:id/orders', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const orders = await dbService.getStockOrders(getUserId(req), pid(req));
+      ok(res, orders);
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/accounts/:id/orders', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { ticker, type, shares, pricePerShare, date } = req.body;
+      if (!ticker || !type || shares == null || pricePerShare == null || !date) {
+        fail(res, 'Missing ticker, type, shares, pricePerShare, or date', 400);
+        return;
+      }
+      const order = await dbService.addStockOrder(getUserId(req), pid(req), {
+        ticker,
+        type,
+        shares: parseFloat(shares),
+        pricePerShare: parseFloat(pricePerShare),
+        date
+      });
+      if (!order) { fail(res, 'Account not found', 404); return; }
+      ok(res, order, 'Order added');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.put('/accounts/:id/orders/:orderId', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { shares, pricePerShare, date } = req.body;
+      if (shares == null || pricePerShare == null || !date) {
+        fail(res, 'Missing shares, pricePerShare, or date', 400);
+        return;
+      }
+      const order = await dbService.updateStockOrder(
+        getUserId(req),
+        pid(req),
+        req.params['orderId'] as string,
+        {
+          shares: parseFloat(shares),
+          pricePerShare: parseFloat(pricePerShare),
+          date
+        }
+      );
+      if (!order) { fail(res, 'Order not found', 404); return; }
+      ok(res, order, 'Order updated');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.delete('/accounts/:id/orders/:orderId', async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!await dbService.deleteStockOrder(getUserId(req), pid(req), req.params['orderId'] as string)) {
+        fail(res, 'Order not found', 404);
+        return;
+      }
+      ok(res, null, 'Order deleted');
+    } catch (e) { fail(res, e); }
+  });
 
   router.post('/accounts/:id/holdings', async (req: Request, res: Response): Promise<void> => {
     try {

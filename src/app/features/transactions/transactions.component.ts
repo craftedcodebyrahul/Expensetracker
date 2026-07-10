@@ -235,12 +235,16 @@ import { RecurringService } from '../../core/services/recurring.service';
                         </span>
                       </td>
                       <td class="text-right">
-                        <div class="action-btns">
-                          <button class="btn btn-ghost btn-icon btn-sm" (click)="editTransaction(txn)"
-                                  title="Edit" aria-label="Edit transaction">✏️</button>
-                          <button class="btn btn-ghost btn-icon btn-sm" (click)="confirmDelete(txn)"
-                                  title="Delete" aria-label="Delete transaction">🗑️</button>
-                        </div>
+                        @if (txn.stockOrderId) {
+                          <span class="badge-invest" style="background: rgba(245,158,11,0.18); color: #f59e0b; font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 100px; font-weight: 600; display: inline-block; cursor: help;" title="Stock Order transaction managed via Investment Account">📈 Stock Order</span>
+                        } @else {
+                          <div class="action-btns">
+                            <button class="btn btn-ghost btn-icon btn-sm" (click)="editTransaction(txn)"
+                                    title="Edit" aria-label="Edit transaction">✏️</button>
+                            <button class="btn btn-ghost btn-icon btn-sm" (click)="confirmDelete(txn)"
+                                    title="Delete" aria-label="Delete transaction">🗑️</button>
+                          </div>
+                        }
                       </td>
                     </tr>
                   }

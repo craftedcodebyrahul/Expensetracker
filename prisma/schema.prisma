@@ -54,6 +54,7 @@ model Account {
   schedules          RecurringSchedule[] @relation("ScheduleFrom")
   toSchedules        RecurringSchedule[] @relation("ScheduleTo")
   stockHoldings      StockHolding[]
+  stockOrders        StockOrder[]
 
   @@index([userId])
   @@map("accounts")
@@ -65,6 +66,7 @@ model StockHolding {
   ticker    String
   shares    Float
   price     Float  @default(0)
+  costBasis Float  @default(0) @map("cost_basis")
   updatedAt String @map("updated_at")
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -116,13 +118,15 @@ model Transaction {
   importId           String? @map("import_id")                         // FK to bank_imports
   rawDescription     String? @map("raw_description")                   // original bank statement text
   bankTransactionHash String? @map("bank_transaction_hash")            // duplicate detection hash
+  stockOrderId       String? @unique @map("stock_order_id")
   createdAt          String  @map("created_at")
   updatedAt          String  @map("updated_at")
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account   Account    @relation("AccountFrom", fields: [accountId], references: [id])
-  toAccount Account?   @relation("AccountTo", fields: [toAccountId], references: [id])
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account    Account     @relation("AccountFrom", fields: [accountId], references: [id])
+  toAccount  Account?    @relation("AccountTo", fields: [toAccountId], references: [id])
   bankImport BankImport? @relation(fields: [importId], references: [id])
+  stockOrder StockOrder? @relation(fields: [stockOrderId], references: [id], onDelete: Cascade)
 
   @@index([userId, date(sort: Desc)])
   @@index([recurringId])
@@ -237,4 +241,23 @@ model Goal {
 
   @@index([userId])
   @@map("goals")
+}
+
+// ── STOCK ORDERS ───────────────────────────────────────────────────────────────
+
+model StockOrder {
+  id            String   @id
+  accountId     String   @map("account_id")
+  ticker        String
+  type          String   // 'BUY' | 'SELL'
+  shares        Float
+  pricePerShare Float    @map("price_per_share")
+  date          String   // YYYY-MM-DD
+  createdAt     String   @map("created_at")
+
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transaction Transaction?
+
+  @@index([accountId])
+  @@map("stock_orders")
 }

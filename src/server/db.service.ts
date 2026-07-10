@@ -34,7 +34,7 @@ interface PrismaAccountRow {
 }
 interface PrismaStockHoldingRow {
   id: string; accountId: string; ticker: string;
-  shares: number; price: number; updatedAt: string;
+  shares: number; price: number; costBasis: number; updatedAt: string;
 }
 interface PrismaBudgetRow {
   id: string; userId: string; categoryId: string; categoryName: string;
@@ -70,6 +70,7 @@ export interface Transaction {
   source?: 'manual' | 'import' | 'recurring';
   importId?: string;
   rawDescription?: string;
+  stockOrderId?: string;
 }
 
 export interface Category {
@@ -88,7 +89,20 @@ export interface StockHolding {
   ticker: string;
   shares: number;
   price: number;
+  costBasis: number;
   updatedAt: string;
+}
+
+export interface StockOrder {
+  id: string;
+  accountId: string;
+  ticker: string;
+  type: 'BUY' | 'SELL';
+  shares: number;
+  pricePerShare: number;
+  date: string;
+  transactionId?: string | null;
+  createdAt: string;
 }
 
 export interface Account {
@@ -203,6 +217,7 @@ function rowToTransaction(row: any): Transaction {
     source: (row.source as any) ?? 'manual',
     importId: row.importId ?? undefined,
     rawDescription: row.rawDescription ?? undefined,
+    stockOrderId: row.stockOrderId ?? undefined,
   };
 }
 
@@ -859,11 +874,72 @@ export class DbService {
   // ── Accounts ──────────────────────────────────────────────────────────────
 
   async getAccounts(userId: string): Promise<Account[]> {
-    const rows = await prisma.account.findMany({
+    let rows = await prisma.account.findMany({
       where: { userId },
       orderBy: { createdAt: 'asc' },
       include: { stockHoldings: true },
     });
+
+    let didSeed = false;
+    for (const acc of rows) {
+      if (acc.isInvestment === 1 && acc.stockHoldings?.length) {
+        for (const holding of acc.stockHoldings) {
+          const count = await prisma.stockOrder.count({
+            where: { accountId: acc.id, ticker: holding.ticker }
+          });
+          if (count === 0) {
+            didSeed = true;
+            const now = new Date().toISOString();
+            const orderId = uuidv4();
+            const txnId = uuidv4();
+
+            await prisma.transaction.create({
+              data: {
+                id: txnId,
+                userId,
+                accountId: acc.id,
+                type: 'expense',
+                amount: holding.shares * holding.price,
+                category: 'investment',
+                description: `Initial Position: Buy ${holding.shares} shares of ${holding.ticker}`,
+                date: acc.createdAt.split('T')[0],
+                source: 'manual',
+                stockOrderId: orderId,
+                createdAt: now,
+                updatedAt: now
+              }
+            });
+
+            await prisma.stockOrder.create({
+              data: {
+                id: orderId,
+                accountId: acc.id,
+                ticker: holding.ticker,
+                type: 'BUY',
+                shares: holding.shares,
+                pricePerShare: holding.price,
+                date: acc.createdAt.split('T')[0],
+                createdAt: now
+              }
+            });
+
+            await prisma.stockHolding.update({
+              where: { id: holding.id },
+              data: { costBasis: holding.price }
+            });
+          }
+        }
+      }
+    }
+
+    if (didSeed) {
+      rows = await prisma.account.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'asc' },
+        include: { stockHoldings: true },
+      });
+    }
+
     return rows.map((r: any) => ({
       id: r.id,
       name: r.name,
@@ -877,6 +953,7 @@ export class DbService {
         ticker: h.ticker,
         shares: h.shares,
         price: h.price,
+        costBasis: h.costBasis ?? 0,
         updatedAt: h.updatedAt,
       })),
       createdAt: r.createdAt,
@@ -884,7 +961,7 @@ export class DbService {
   }
 
   /** Fetch live market price for a ticker from Yahoo Finance. Returns null if not found. */
-  private async fetchStockPrice(ticker: string): Promise<number | null> {
+  public async fetchStockPrice(ticker: string): Promise<number | null> {
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}`;
       const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
@@ -916,48 +993,353 @@ export class DbService {
     return this.getAccounts(userId);
   }
 
-  /** Add a stock holding to an investment account. */
+  /** Search stocks/ETFs using Yahoo Finance search suggestions endpoint. */
+  async searchStocks(query: string): Promise<any[]> {
+    try {
+      const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}`;
+      const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (!res.ok) return [];
+      const json = await res.json() as any;
+      const quotes = json.quotes || [];
+      return quotes.map((q: any) => ({
+        symbol: q.symbol,
+        name: q.shortname || q.longname || q.symbol,
+        exchange: q.exchange,
+        typeDisp: q.typeDisp
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  /** Get all stock orders for an account. */
+  async getStockOrders(userId: string, accountId: string): Promise<StockOrder[]> {
+    const rows = await prisma.stockOrder.findMany({
+      where: { accountId, account: { userId } },
+      orderBy: [
+        { date: 'desc' },
+        { createdAt: 'desc' }
+      ]
+    });
+    return rows.map((r: any) => ({
+      id: r.id,
+      accountId: r.accountId,
+      ticker: r.ticker,
+      type: r.type as StockOrder['type'],
+      shares: r.shares,
+      pricePerShare: r.pricePerShare,
+      date: r.date,
+      transactionId: r.transactionId,
+      createdAt: r.createdAt
+    }));
+  }
+
+  /** Recalculate holdings based on orders. */
+  private async recalculateStockHoldings(accountId: string, ticker: string): Promise<void> {
+    ticker = ticker.toUpperCase().trim();
+    const orders = await prisma.stockOrder.findMany({
+      where: { accountId, ticker },
+      orderBy: [
+        { date: 'asc' },
+        { createdAt: 'asc' }
+      ]
+    });
+
+    if (orders.length === 0) {
+      await prisma.stockHolding.deleteMany({
+        where: { accountId, ticker }
+      });
+      return;
+    }
+
+    let totalShares = 0;
+    let totalCost = 0;
+    let averagePrice = 0;
+
+    for (const order of orders) {
+      if (order.type === 'BUY') {
+        totalShares += order.shares;
+        totalCost += order.shares * order.pricePerShare;
+        averagePrice = totalShares > 0 ? totalCost / totalShares : 0;
+      } else if (order.type === 'SELL') {
+        totalShares -= order.shares;
+        if (totalShares < 0) totalShares = 0;
+        totalCost = totalShares * averagePrice;
+      }
+    }
+
+    if (totalShares <= 0) {
+      await prisma.stockHolding.deleteMany({
+        where: { accountId, ticker }
+      });
+      return;
+    }
+
+    let livePrice = await this.fetchStockPrice(ticker);
+    if (livePrice === null) {
+      const existingHolding = await prisma.stockHolding.findFirst({
+        where: { accountId, ticker }
+      });
+      livePrice = existingHolding ? existingHolding.price : averagePrice;
+    }
+
+    const existingHolding = await prisma.stockHolding.findFirst({
+      where: { accountId, ticker }
+    });
+
+    const now = new Date().toISOString();
+
+    if (existingHolding) {
+      await prisma.stockHolding.update({
+        where: { id: existingHolding.id },
+        data: {
+          shares: totalShares,
+          costBasis: averagePrice,
+          price: livePrice,
+          updatedAt: now
+        }
+      });
+    } else {
+      await prisma.stockHolding.create({
+        data: {
+          id: uuidv4(),
+          accountId,
+          ticker,
+          shares: totalShares,
+          costBasis: averagePrice,
+          price: livePrice,
+          updatedAt: now
+        }
+      });
+    }
+  }
+
+  /** Add a stock order. */
+  async addStockOrder(
+    userId: string,
+    accountId: string,
+    data: { ticker: string; type: 'BUY' | 'SELL'; shares: number; pricePerShare: number; date: string }
+  ): Promise<StockOrder | null> {
+    const acc = await prisma.account.findFirst({ where: { id: accountId, userId } });
+    if (!acc) return null;
+
+    const orderId = uuidv4();
+    const txnId = uuidv4();
+    const now = new Date().toISOString();
+    const totalAmount = data.shares * data.pricePerShare;
+    const ticker = data.ticker.toUpperCase().trim();
+
+    // Create linked transaction in ledger
+    await prisma.transaction.create({
+      data: {
+        id: txnId,
+        userId,
+        accountId,
+        type: data.type === 'BUY' ? 'expense' : 'income',
+        amount: totalAmount,
+        category: 'investment',
+        description: `${data.type === 'BUY' ? 'Bought' : 'Sold'} ${data.shares} shares of ${ticker}`,
+        date: data.date,
+        source: 'manual',
+        stockOrderId: orderId,
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const order = await prisma.stockOrder.create({
+      data: {
+        id: orderId,
+        accountId,
+        ticker,
+        type: data.type,
+        shares: data.shares,
+        pricePerShare: data.pricePerShare,
+        date: data.date,
+        createdAt: now
+      }
+    });
+
+    await this.recalculateStockHoldings(accountId, ticker);
+
+    return {
+      id: order.id,
+      accountId: order.accountId,
+      ticker: order.ticker,
+      type: order.type as StockOrder['type'],
+      shares: order.shares,
+      pricePerShare: order.pricePerShare,
+      date: order.date,
+      createdAt: order.createdAt
+    };
+  }
+
+  /** Update a stock order. */
+  async updateStockOrder(
+    userId: string,
+    accountId: string,
+    orderId: string,
+    data: { shares: number; pricePerShare: number; date: string }
+  ): Promise<StockOrder | null> {
+    const order = await prisma.stockOrder.findFirst({
+      where: { id: orderId, accountId, account: { userId } }
+    });
+    if (!order) return null;
+
+    const totalAmount = data.shares * data.pricePerShare;
+
+    const updatedOrder = await prisma.stockOrder.update({
+      where: { id: orderId },
+      data: {
+        shares: data.shares,
+        pricePerShare: data.pricePerShare,
+        date: data.date
+      }
+    });
+
+    const linkedTxn = await prisma.transaction.findFirst({
+      where: { stockOrderId: orderId }
+    });
+
+    if (linkedTxn) {
+      await prisma.transaction.update({
+        where: { id: linkedTxn.id },
+        data: {
+          amount: totalAmount,
+          date: data.date,
+          description: `${order.type === 'BUY' ? 'Bought' : 'Sold'} ${data.shares} shares of ${order.ticker}`,
+          updatedAt: new Date().toISOString()
+        }
+      });
+    }
+
+    await this.recalculateStockHoldings(accountId, order.ticker);
+
+    return {
+      id: updatedOrder.id,
+      accountId: updatedOrder.accountId,
+      ticker: updatedOrder.ticker,
+      type: updatedOrder.type as StockOrder['type'],
+      shares: updatedOrder.shares,
+      pricePerShare: updatedOrder.pricePerShare,
+      date: updatedOrder.date,
+      createdAt: updatedOrder.createdAt
+    };
+  }
+
+  /** Delete a stock order. */
+  async deleteStockOrder(userId: string, accountId: string, orderId: string): Promise<boolean> {
+    const order = await prisma.stockOrder.findFirst({
+      where: { id: orderId, accountId, account: { userId } }
+    });
+    if (!order) return false;
+
+    // Delete linked transaction explicitly
+    await prisma.transaction.deleteMany({
+      where: { stockOrderId: orderId }
+    });
+
+    await prisma.stockOrder.delete({
+      where: { id: orderId }
+    });
+
+    await this.recalculateStockHoldings(accountId, order.ticker);
+
+    return true;
+  }
+
+  /** Add a stock holding to an investment account. (Legacy wrapper) */
   async addStockHolding(
     userId: string,
     accountId: string,
     ticker: string,
     shares: number
   ): Promise<StockHolding | null> {
-    const acc = await prisma.account.findFirst({ where: { id: accountId, userId } });
-    if (!acc) return null;
-    const now = new Date().toISOString();
-    const price = (await this.fetchStockPrice(ticker)) ?? 0;
-    const row = await prisma.stockHolding.create({
-      data: { id: uuidv4(), accountId, ticker: ticker.toUpperCase().trim(), shares, price, updatedAt: now },
+    const livePrice = (await this.fetchStockPrice(ticker)) ?? 0;
+    const today = new Date().toLocaleDateString('en-CA');
+    const order = await this.addStockOrder(userId, accountId, {
+      ticker,
+      type: 'BUY',
+      shares,
+      pricePerShare: livePrice,
+      date: today
     });
-    return { id: row.id, accountId: row.accountId, ticker: row.ticker, shares: row.shares, price: row.price, updatedAt: row.updatedAt };
+    if (!order) return null;
+    const holding = await prisma.stockHolding.findFirst({
+      where: { accountId, ticker: ticker.toUpperCase().trim() }
+    });
+    return holding ? {
+      id: holding.id,
+      accountId: holding.accountId,
+      ticker: holding.ticker,
+      shares: holding.shares,
+      price: holding.price,
+      costBasis: holding.costBasis ?? 0,
+      updatedAt: holding.updatedAt
+    } : null;
   }
 
-  /** Update shares for an existing holding. */
+  /** Update shares for an existing holding. (Legacy wrapper) */
   async updateStockHolding(
     userId: string,
     holdingId: string,
     shares: number
   ): Promise<StockHolding | null> {
-    const row = await prisma.stockHolding.findFirst({
-      where: { id: holdingId, account: { userId } },
+    const holding = await prisma.stockHolding.findFirst({
+      where: { id: holdingId, account: { userId } }
     });
-    if (!row) return null;
-    const price = (await this.fetchStockPrice(row.ticker)) ?? row.price;
-    const updated = await prisma.stockHolding.update({
-      where: { id: holdingId },
-      data: { shares, price, updatedAt: new Date().toISOString() },
+    if (!holding) return null;
+
+    const firstOrder = await prisma.stockOrder.findFirst({
+      where: { accountId: holding.accountId, ticker: holding.ticker, type: 'BUY' },
+      orderBy: { date: 'asc' }
     });
-    return { id: updated.id, accountId: updated.accountId, ticker: updated.ticker, shares: updated.shares, price: updated.price, updatedAt: updated.updatedAt };
+
+    if (firstOrder) {
+      await this.updateStockOrder(userId, holding.accountId, firstOrder.id, {
+        shares,
+        pricePerShare: firstOrder.pricePerShare,
+        date: firstOrder.date
+      });
+    } else {
+      await this.addStockOrder(userId, holding.accountId, {
+        ticker: holding.ticker,
+        type: 'BUY',
+        shares,
+        pricePerShare: holding.price,
+        date: new Date().toLocaleDateString('en-CA')
+      });
+    }
+
+    const freshHolding = await prisma.stockHolding.findFirst({
+      where: { id: holdingId }
+    });
+    return freshHolding ? {
+      id: freshHolding.id,
+      accountId: freshHolding.accountId,
+      ticker: freshHolding.ticker,
+      shares: freshHolding.shares,
+      price: freshHolding.price,
+      costBasis: freshHolding.costBasis ?? 0,
+      updatedAt: freshHolding.updatedAt
+    } : null;
   }
 
-  /** Remove a holding from an investment account. */
+  /** Remove a holding from an investment account. (Legacy wrapper) */
   async deleteStockHolding(userId: string, holdingId: string): Promise<boolean> {
-    const row = await prisma.stockHolding.findFirst({
-      where: { id: holdingId, account: { userId } },
+    const holding = await prisma.stockHolding.findFirst({
+      where: { id: holdingId, account: { userId } }
     });
-    if (!row) return false;
-    await prisma.stockHolding.delete({ where: { id: holdingId } });
+    if (!holding) return false;
+
+    const orders = await prisma.stockOrder.findMany({
+      where: { accountId: holding.accountId, ticker: holding.ticker }
+    });
+
+    for (const o of orders) {
+      await this.deleteStockOrder(userId, holding.accountId, o.id);
+    }
+
     return true;
   }
 

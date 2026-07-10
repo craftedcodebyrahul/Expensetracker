@@ -7,7 +7,7 @@ import { CategoryService } from '../../core/services/category.service';
 import { ToastService } from '../../core/services/toast.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
-import { Account, StockHolding, Transaction } from '../../core/models';
+import { Account, StockHolding, StockOrder, Transaction } from '../../core/models';
 
 @Component({
   selector: 'app-accounts',
@@ -267,77 +267,163 @@ import { Account, StockHolding, Transaction } from '../../core/models';
           <!-- ── Portfolio Tab ── -->
           @if (ddMainTab() === 'portfolio' && acc.isInvestment) {
             <div class="portfolio-section">
-              <div class="portfolio-header">
+              <!-- Summary Dashboard -->
+              <div class="portfolio-summary-dashboard" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:1rem; padding: 1.25rem; background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.18); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);">
                 <div>
-                  <span class="portfolio-label">Total Market Value</span>
-                  <span class="portfolio-total text-income">{{ getInvestmentValue(acc) | currencyFormat }}</span>
+                  <span class="portfolio-label" style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; font-weight:600; display:block; margin-bottom:0.25rem;">Market Value</span>
+                  <span class="portfolio-total text-income" style="font-size:1.5rem; font-weight:800; display:block;">{{ getInvestmentValue(acc) | currencyFormat }}</span>
                 </div>
-                <button class="btn btn-primary btn-sm" (click)="openAddHolding(acc)">+ Add Holding</button>
+                <div>
+                  <span class="portfolio-label" style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; font-weight:600; display:block; margin-bottom:0.25rem;">Total Cost</span>
+                  <span style="font-size:1.5rem; font-weight:800; display:block; color:var(--text-primary);">{{ getHoldingsCost(acc) | currencyFormat }}</span>
+                </div>
+                @let totalRet = getInvestmentValue(acc) - getHoldingsCost(acc);
+                @let totalCostVal = getHoldingsCost(acc);
+                @let totalRetPct = totalCostVal > 0 ? (totalRet / totalCostVal) * 100 : 0;
+                <div>
+                  <span class="portfolio-label" style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; font-weight:600; display:block; margin-bottom:0.25rem;">Total Return</span>
+                  <span [class.text-income]="totalRet >= 0" [class.text-expense]="totalRet < 0" style="font-size:1.5rem; font-weight:800; display:block;">
+                    {{ totalRet >= 0 ? '+' : '' }}{{ totalRet | currencyFormat }}
+                    <span style="font-size:0.875rem; font-weight:600; margin-left:0.25rem;">({{ totalRet >= 0 ? '+' : '' }}{{ totalRetPct | number:'1.1-2' }}%)</span>
+                  </span>
+                </div>
               </div>
 
-              @if (!acc.stockHoldings?.length) {
-                <div class="dd-empty">
-                  <span>📊</span>
-                  <p>No holdings yet. Click "Add Holding" to track a stock or ETF.</p>
+              <!-- Portfolio Sub-tabs -->
+              <div class="portfolio-sub-tabs" style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid var(--border); padding-bottom:0.5rem; margin-top:0.5rem;">
+                <div style="display:flex; gap:0.5rem;">
+                  <button class="dd-main-tab" [class.active]="portfolioSubTab() === 'holdings'" (click)="portfolioSubTab.set('holdings')">
+                    📊 Current Holdings
+                  </button>
+                  <button class="dd-main-tab" [class.active]="portfolioSubTab() === 'orders'" (click)="portfolioSubTab.set('orders')">
+                    📝 Order History
+                  </button>
                 </div>
-              } @else {
-                <div class="table-wrapper">
-                  <table class="dd-table">
-                    <thead>
-                      <tr>
-                        <th>Ticker</th>
-                        <th class="text-right">Shares</th>
-                        <th class="text-right">Price</th>
-                        <th class="text-right">Market Value</th>
-                        <th class="text-right">Weight</th>
-                        <th>Last Updated</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      @for (h of acc.stockHoldings!; track h.id) {
-                        <tr>
-                          <td><span class="ticker-badge">{{ h.ticker }}</span></td>
-                          <td class="text-right">{{ h.shares }}</td>
-                          <td class="text-right"><span>&#36;</span>{{ h.price | number:'1.2-2' }}</td>
-                          <td class="text-right text-income">{{ (h.shares * h.price) | currencyFormat }}</td>
-                          <td class="text-right text-muted">
-                            {{ getInvestmentValue(acc) > 0 ? ((h.shares * h.price / getInvestmentValue(acc)) * 100 | number:'1.1-1') + '%' : '—' }}
-                          </td>
-                          <td class="dd-date">{{ h.updatedAt | date:'MMM d, y, h:mm a' }}</td>
-                          <td>
-                            <div style="display:flex;gap:0.25rem;justify-content:flex-end;">
-                              <button class="btn btn-ghost btn-icon btn-sm" (click)="openEditHolding(acc, h)" title="Edit shares">✏️</button>
-                              <button class="btn btn-ghost btn-icon btn-sm" (click)="deleteHolding(acc, h)" title="Remove holding">🗑️</button>
-                            </div>
-                          </td>
-                        </tr>
-                      }
-                    </tbody>
-                  </table>
-                </div>
+                <button class="btn btn-primary btn-sm" (click)="openAddOrder(acc)">+ Log Order</button>
+              </div>
 
-                <!-- Allocation bar -->
-                <div class="alloc-bar-section">
-                  <span class="alloc-label">Allocation</span>
-                  <div class="alloc-bar">
-                    @for (h of acc.stockHoldings!; track h.id; let i = $index) {
-                      <div class="alloc-segment"
-                           [style.width]="getInvestmentValue(acc) > 0 ? ((h.shares * h.price / getInvestmentValue(acc)) * 100) + '%' : '0'"
-                           [style.background]="allocColors[i % allocColors.length]"
-                           [title]="h.ticker + ': ' + (getInvestmentValue(acc) > 0 ? ((h.shares * h.price / getInvestmentValue(acc)) * 100 | number:'1.1-1') : '0') + '%'">
-                      </div>
-                    }
+              <!-- Holdings View -->
+              @if (portfolioSubTab() === 'holdings') {
+                @if (!acc.stockHoldings?.length) {
+                  <div class="dd-empty">
+                    <span>📊</span>
+                    <p>No holdings yet. Click "Log Order" to track a stock or ETF purchase.</p>
                   </div>
-                  <div class="alloc-legend">
-                    @for (h of acc.stockHoldings!; track h.id; let i = $index) {
-                      <span class="alloc-item">
-                        <span class="alloc-dot" [style.background]="allocColors[i % allocColors.length]"></span>
-                        {{ h.ticker }}
-                      </span>
-                    }
+                } @else {
+                  <div class="table-wrapper">
+                    <table class="dd-table">
+                      <thead>
+                        <tr>
+                          <th>Ticker</th>
+                          <th class="text-right">Shares</th>
+                          <th class="text-right">Avg Cost</th>
+                          <th class="text-right">Total Cost</th>
+                          <th class="text-right">Live Price</th>
+                          <th class="text-right">Market Value</th>
+                          <th class="text-right">Total Return</th>
+                          <th class="text-right">Weight</th>
+                          <th>Last Updated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (h of acc.stockHoldings!; track h.id) {
+                          @let cost = h.shares * h.costBasis;
+                          @let value = h.shares * h.price;
+                          @let ret = value - cost;
+                          @let retP = h.costBasis > 0 ? (ret / cost) * 100 : 0;
+                          <tr>
+                            <td><span class="ticker-badge">{{ h.ticker }}</span></td>
+                            <td class="text-right">{{ h.shares }}</td>
+                            <td class="text-right"><span>&#36;</span>{{ h.costBasis | number:'1.2-2' }}</td>
+                            <td class="text-right">{{ cost | currencyFormat }}</td>
+                            <td class="text-right"><span>&#36;</span>{{ h.price | number:'1.2-2' }}</td>
+                            <td class="text-right text-income">{{ value | currencyFormat }}</td>
+                            <td class="text-right" [class.text-income]="ret >= 0" [class.text-expense]="ret < 0">
+                              {{ ret >= 0 ? '+' : '' }}{{ ret | currencyFormat }}
+                              <span style="font-size:0.7rem; display:block; font-weight:600;">{{ ret >= 0 ? '+' : '' }}{{ retP | number:'1.1-2' }}%</span>
+                            </td>
+                            <td class="text-right text-muted">
+                              {{ getInvestmentValue(acc) > 0 ? ((value / getInvestmentValue(acc)) * 100 | number:'1.1-1') + '%' : '—' }}
+                            </td>
+                            <td class="dd-date">{{ h.updatedAt | date:'MMM d, y, h:mm a' }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
                   </div>
-                </div>
+
+                  <!-- Allocation bar -->
+                  <div class="alloc-bar-section">
+                    <span class="alloc-label">Allocation</span>
+                    <div class="alloc-bar">
+                      @for (h of acc.stockHoldings!; track h.id; let i = $index) {
+                        <div class="alloc-segment"
+                             [style.width]="getInvestmentValue(acc) > 0 ? ((h.shares * h.price / getInvestmentValue(acc)) * 100) + '%' : '0'"
+                             [style.background]="allocColors[i % allocColors.length]"
+                             [title]="h.ticker + ': ' + (getInvestmentValue(acc) > 0 ? ((h.shares * h.price / getInvestmentValue(acc)) * 100 | number:'1.1-1') : '0') + '%'">
+                        </div>
+                      }
+                    </div>
+                    <div class="alloc-legend">
+                      @for (h of acc.stockHoldings!; track h.id; let i = $index) {
+                        <span class="alloc-item">
+                          <span class="alloc-dot" [style.background]="allocColors[i % allocColors.length]"></span>
+                          {{ h.ticker }}
+                        </span>
+                      }
+                    </div>
+                  </div>
+                }
+              }
+
+              <!-- Orders View -->
+              @if (portfolioSubTab() === 'orders') {
+                @if (stockOrders().length === 0) {
+                  <div class="dd-empty">
+                    <span>📝</span>
+                    <p>No orders logged yet. Click "Log Order" to record your purchases or sales.</p>
+                  </div>
+                } @else {
+                  <div class="table-wrapper">
+                    <table class="dd-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Ticker</th>
+                          <th>Type</th>
+                          <th class="text-right">Shares</th>
+                          <th class="text-right">Price per Share</th>
+                          <th class="text-right">Total Amount</th>
+                          <th class="text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (o of stockOrders(); track o.id) {
+                          <tr>
+                            <td class="dd-date">{{ o.date }}</td>
+                            <td><span class="ticker-badge">{{ o.ticker }}</span></td>
+                            <td>
+                              <span class="type-chip" [class.chip-income]="o.type === 'SELL'" [class.chip-expense]="o.type === 'BUY'">
+                                {{ o.type }}
+                              </span>
+                            </td>
+                            <td class="text-right">{{ o.shares }}</td>
+                            <td class="text-right"><span>&#36;</span>{{ o.pricePerShare | number:'1.2-2' }}</td>
+                            <td class="text-right" [class.text-income]="o.type === 'SELL'" [class.text-expense]="o.type === 'BUY'">
+                              {{ o.type === 'SELL' ? '+' : '-' }}{{ (o.shares * o.pricePerShare) | currencyFormat }}
+                            </td>
+                            <td class="text-right">
+                              <div style="display:flex;gap:0.25rem;justify-content:flex-end;">
+                                <button class="btn btn-ghost btn-icon btn-sm" (click)="openEditOrder(acc, o)" title="Edit order">✏️</button>
+                                <button class="btn btn-ghost btn-icon btn-sm" (click)="deleteOrder(acc, o)" title="Delete order">🗑️</button>
+                              </div>
+                            </td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                }
               }
             </div>
           }
@@ -421,46 +507,99 @@ import { Account, StockHolding, Transaction } from '../../core/models';
       </div>
     }
 
-    <!-- Add / Edit Holding Modal -->
-    @if (showHoldingForm()) {
-      <div class="modal-overlay" (click)="onHoldingOverlayClick($event)">
-        <div class="modal" style="max-width: 420px;" role="dialog" aria-modal="true">
+    <!-- Add / Edit Order Modal -->
+    @if (showOrderForm()) {
+      <div class="modal-overlay" (click)="onOrderOverlayClick($event)">
+        <div class="modal" style="max-width: 440px;" role="dialog" aria-modal="true">
           <div class="modal-header">
-            <h3>{{ editingHolding() ? 'Edit Holding' : 'Add Holding' }}</h3>
-            <button class="btn btn-ghost btn-icon" (click)="closeHoldingForm()">✕</button>
+            <h3>{{ editingOrder() ? 'Edit Order' : 'Add Stock Order' }}</h3>
+            <button class="btn btn-ghost btn-icon" (click)="closeOrderForm()">✕</button>
           </div>
           <div class="modal-body">
-            @if (!editingHolding()) {
-              <div class="form-group">
+            <!-- Ticker (Disabled if editing) -->
+            @if (!editingOrder()) {
+              <div class="form-group" style="position: relative;">
                 <label class="form-label">Ticker Symbol *</label>
-                <input type="text" class="form-control" [(ngModel)]="holdingForm.ticker"
-                       placeholder="e.g. AAPL, VFV.TO, XEQT.TO"
-                       style="text-transform:uppercase;">
-                <span class="field-help text-xs text-muted" style="display:block;margin-top:0.3rem;">
-                  Enter the Yahoo Finance ticker. Live price will be fetched automatically.
-                </span>
+                <input type="text" class="form-control" 
+                       [ngModel]="orderForm.ticker"
+                       (ngModelChange)="onTickerInput($event)"
+                       (keydown)="onTickerKeydown($event)"
+                       placeholder="e.g. AAPL, VFV.TO"
+                       style="text-transform:uppercase;"
+                       autocomplete="off">
+                
+                <!-- Autocomplete Dropdown -->
+                @if (suggestions().length > 0) {
+                  <div class="autocomplete-dropdown">
+                    @for (s of suggestions(); track s.symbol; let idx = $index) {
+                      <div class="autocomplete-item" 
+                           [class.active]="idx === selectedSuggestionIndex()"
+                           (click)="selectSuggestion(s)">
+                        <span class="ac-item-sym">{{ s.symbol }}</span>
+                        <span class="ac-item-name">{{ s.name }}</span>
+                        <span class="ac-item-exch">{{ s.exchange }}</span>
+                      </div>
+                    }
+                  </div>
+                }
+                
+                @if (fetchingPrice()) {
+                  <span class="field-help text-xs text-muted" style="display:block;margin-top:0.3rem;">⚡ Fetching price...</span>
+                } @else if (priceMessage()) {
+                  <span class="field-help text-xs text-income" style="display:block;margin-top:0.3rem;font-weight:600;">{{ priceMessage() }}</span>
+                } @else {
+                  <span class="field-help text-xs text-muted" style="display:block;margin-top:0.3rem;">
+                    Type Yahoo Finance ticker. Autocomplete suggestions will appear.
+                  </span>
+                }
               </div>
             } @else {
               <div class="form-group">
                 <label class="form-label">Ticker</label>
-                <input type="text" class="form-control" [value]="editingHolding()!.ticker" disabled>
+                <input type="text" class="form-control" [value]="editingOrder()!.ticker" disabled>
               </div>
             }
+
+            <!-- Type: BUY or SELL (Disabled if editing) -->
+            <div class="form-group">
+              <label class="form-label">Order Type *</label>
+              <div style="display:flex; gap:0.5rem;">
+                <button type="button" class="btn btn-outline" style="flex:1;"
+                        [class.active-buy]="orderForm.type === 'BUY'"
+                        [disabled]="!!editingOrder()"
+                        (click)="orderForm.type = 'BUY'">🟢 BUY</button>
+                <button type="button" class="btn btn-outline" style="flex:1;"
+                        [class.active-sell]="orderForm.type === 'SELL'"
+                        [disabled]="!!editingOrder()"
+                        (click)="orderForm.type = 'SELL'">🔴 SELL</button>
+              </div>
+            </div>
+
+            <!-- Shares -->
             <div class="form-group">
               <label class="form-label">Number of Shares *</label>
-              <input type="number" class="form-control" [(ngModel)]="holdingForm.shares"
-                     placeholder="e.g. 12.5" step="0.0001" min="0">
+              <input type="number" class="form-control" [(ngModel)]="orderForm.shares"
+                     placeholder="e.g. 10" step="0.0001" min="0.0001">
             </div>
-            @if (!editingHolding()) {
-              <p class="field-help text-muted text-xs">
-                ⚡ A live price lookup will happen when you save. This may take a moment.
-              </p>
-            }
+
+            <!-- Price per Share -->
+            <div class="form-group">
+              <label class="form-label">Price per Share ($) *</label>
+              <input type="number" class="form-control" [(ngModel)]="orderForm.pricePerShare"
+                     placeholder="e.g. 150.00" step="0.01" min="0.01">
+            </div>
+
+            <!-- Date -->
+            <div class="form-group">
+              <label class="form-label">Order Date *</label>
+              <input type="date" class="form-control" [(ngModel)]="orderForm.date">
+            </div>
           </div>
           <div class="modal-footer">
-            <button class="btn btn-ghost" (click)="closeHoldingForm()">Cancel</button>
-            <button class="btn btn-primary" (click)="saveHolding()" [disabled]="savingHolding() || !holdingForm.shares">
-              {{ savingHolding() ? 'Saving…' : editingHolding() ? 'Update Holding' : 'Add Holding' }}
+            <button class="btn btn-ghost" (click)="closeOrderForm()">Cancel</button>
+            <button class="btn btn-primary" (click)="saveOrder()" 
+                    [disabled]="savingOrder() || !orderForm.shares || !orderForm.pricePerShare || !orderForm.ticker || !orderForm.date">
+              {{ savingOrder() ? 'Saving…' : editingOrder() ? 'Update Order' : 'Log Order' }}
             </button>
           </div>
         </div>
@@ -807,6 +946,49 @@ import { Account, StockHolding, Transaction } from '../../core/models';
       .dd-stats { grid-template-columns: 1fr 1fr; } 
       .accounts-grid { grid-template-columns: 1fr; }
     }
+
+    /* Autocomplete dropdown styles */
+    .autocomplete-dropdown {
+      position: absolute;
+      top: 100%; left: 0; right: 0;
+      background: #1a1b2f;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      max-height: 180px;
+      overflow-y: auto;
+      z-index: 1000;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+    }
+    .autocomplete-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.625rem 0.875rem;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      font-size: 0.8125rem;
+    }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover, .autocomplete-item.active {
+      background: rgba(92,107,192,0.25);
+    }
+    .ac-item-sym { font-weight: 700; color: var(--accent-blue-light); font-family: monospace; }
+    .ac-item-name { flex: 1; margin: 0 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+    .ac-item-exch { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; }
+
+    /* Active BUY/SELL buttons */
+    .active-buy {
+      background: rgba(76,175,80,0.2) !important;
+      border-color: var(--accent-green) !important;
+      color: var(--accent-green) !important;
+      font-weight: 600;
+    }
+    .active-sell {
+      background: rgba(239,83,80,0.2) !important;
+      border-color: var(--accent-red) !important;
+      color: var(--accent-red) !important;
+      font-weight: 600;
+    }
   `]
 })
 export class AccountsComponent implements OnInit {
@@ -840,7 +1022,22 @@ export class AccountsComponent implements OnInit {
 
   form = { name: '', type: 'asset' as 'asset' | 'liability', initialBalance: null as number | null, isInvestment: false };
 
-  // ── Holding modal state ──────────────────────────────────────────
+  // ── Portfolio & Order state ──────────────────────────────────────
+  portfolioSubTab  = signal<'holdings' | 'orders'>('holdings');
+  stockOrders      = signal<StockOrder[]>([]);
+  showOrderForm    = signal(false);
+  orderAccountId   = signal<string>('');
+  editingOrder     = signal<StockOrder | undefined>(undefined);
+  orderForm        = { ticker: '', type: 'BUY' as 'BUY' | 'SELL', shares: null as number | null, pricePerShare: null as number | null, date: '' };
+  savingOrder      = signal(false);
+
+  // Autocomplete states
+  suggestions             = signal<any[]>([]);
+  selectedSuggestionIndex = signal<number>(-1);
+  fetchingPrice           = signal<boolean>(false);
+  priceMessage            = signal<string>('');
+
+  // Legacy compatibility (retaining definitions so no compilation issues)
   showHoldingForm  = signal(false);
   holdingAccountId = signal<string>('');
   editingHolding   = signal<StockHolding | undefined>(undefined);
@@ -959,6 +1156,9 @@ export class AccountsComponent implements OnInit {
       this.selectedAccount.set(acc);
       this.drilldownType.set('all');
       this.ddMainTab.set(acc.isInvestment ? 'portfolio' : 'transactions');
+      if (acc.isInvestment) {
+        this.loadAccountOrders(acc.id);
+      }
     }
   }
 
@@ -1093,5 +1293,155 @@ export class AccountsComponent implements OnInit {
 
   onHoldingOverlayClick(e: MouseEvent) {
     if ((e.target as HTMLElement).classList.contains('modal-overlay')) this.closeHoldingForm();
+  }
+
+  loadAccountOrders(accountId: string) {
+    this.accountService.getStockOrders(accountId).subscribe(res => {
+      if (res.success) {
+        this.stockOrders.set(res.data);
+      }
+    });
+  }
+
+  getHoldingsCost(acc: Account): number {
+    if (!acc.stockHoldings?.length) return 0;
+    return acc.stockHoldings.reduce((s, h) => s + h.shares * (h.costBasis ?? 0), 0);
+  }
+
+  // ── Stock Orders CRUD ──────────────────────────────────────────────
+  openAddOrder(acc: Account) {
+    this.orderAccountId.set(acc.id);
+    this.editingOrder.set(undefined);
+    this.orderForm = {
+      ticker: '',
+      type: 'BUY',
+      shares: null,
+      pricePerShare: null,
+      date: new Date().toISOString().split('T')[0]
+    };
+    this.suggestions.set([]);
+    this.selectedSuggestionIndex.set(-1);
+    this.priceMessage.set('');
+    this.showOrderForm.set(true);
+  }
+
+  openEditOrder(acc: Account, o: StockOrder) {
+    this.orderAccountId.set(acc.id);
+    this.editingOrder.set(o);
+    this.orderForm = {
+      ticker: o.ticker,
+      type: o.type,
+      shares: o.shares,
+      pricePerShare: o.pricePerShare,
+      date: o.date
+    };
+    this.suggestions.set([]);
+    this.selectedSuggestionIndex.set(-1);
+    this.priceMessage.set('');
+    this.showOrderForm.set(true);
+  }
+
+  closeOrderForm() {
+    this.showOrderForm.set(false);
+    this.editingOrder.set(undefined);
+  }
+
+  saveOrder() {
+    if (!this.orderForm.shares || !this.orderForm.pricePerShare || !this.orderForm.ticker || !this.orderForm.date) return;
+    const accId = this.orderAccountId();
+    this.savingOrder.set(true);
+
+    const obs = this.editingOrder()
+      ? this.accountService.updateStockOrder(accId, this.editingOrder()!.id, this.orderForm.shares, this.orderForm.pricePerShare, this.orderForm.date)
+      : this.accountService.addStockOrder(accId, this.orderForm.ticker, this.orderForm.type, this.orderForm.shares, this.orderForm.pricePerShare, this.orderForm.date);
+
+    obs.subscribe(res => {
+      this.savingOrder.set(false);
+      if (res && res.success) {
+        this.closeOrderForm();
+        const fresh = this.accountService.getAccountById(accId);
+        if (fresh) this.selectedAccount.set(fresh);
+        this.loadAccountOrders(accId);
+        this.toast.success(this.editingOrder() ? 'Order updated!' : 'Order logged successfully!');
+      } else {
+        this.toast.error('Failed to log order');
+      }
+    });
+  }
+
+  deleteOrder(acc: Account, o: StockOrder) {
+    if (confirm(`Are you sure you want to delete this order?`)) {
+      this.accountService.deleteStockOrder(acc.id, o.id).subscribe(res => {
+        if (res && res.success) {
+          const fresh = this.accountService.getAccountById(acc.id);
+          if (fresh) this.selectedAccount.set(fresh);
+          this.loadAccountOrders(acc.id);
+          this.toast.success('Order deleted');
+        } else {
+          this.toast.error('Failed to delete order');
+        }
+      });
+    }
+  }
+
+  onOrderOverlayClick(e: MouseEvent) {
+    if ((e.target as HTMLElement).classList.contains('modal-overlay')) this.closeOrderForm();
+  }
+
+  // ── Autocomplete Search handlers ───────────────────────────────────
+  onTickerInput(val: string) {
+    this.orderForm.ticker = val.toUpperCase();
+    const query = val.trim();
+    if (query.length < 2) {
+      this.suggestions.set([]);
+      return;
+    }
+    this.accountService.api.searchStocks(query).subscribe(res => {
+      if (res.success) {
+        this.suggestions.set(res.data || []);
+        this.selectedSuggestionIndex.set(-1);
+      }
+    });
+  }
+
+  onTickerKeydown(e: KeyboardEvent) {
+    const list = this.suggestions();
+    if (list.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this.selectedSuggestionIndex.update(idx => Math.min(list.length - 1, idx + 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.selectedSuggestionIndex.update(idx => Math.max(0, idx - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const idx = this.selectedSuggestionIndex();
+      if (idx >= 0 && idx < list.length) {
+        this.selectSuggestion(list[idx]);
+      } else if (list.length > 0) {
+        this.selectSuggestion(list[0]);
+      }
+    } else if (e.key === 'Escape') {
+      this.suggestions.set([]);
+    }
+  }
+
+  selectSuggestion(s: any) {
+    this.orderForm.ticker = s.symbol;
+    this.suggestions.set([]);
+    this.selectedSuggestionIndex.set(-1);
+
+    this.fetchingPrice.set(true);
+    this.priceMessage.set('Fetching live price...');
+    this.accountService.api.getStockPrice(s.symbol).subscribe(res => {
+      this.fetchingPrice.set(false);
+      if (res.success && res.data && res.data.price !== null) {
+        this.orderForm.pricePerShare = res.data.price;
+        this.priceMessage.set(`Live Price: $${res.data.price.toFixed(2)} (${s.name})`);
+      } else {
+        this.priceMessage.set(`Selected: ${s.name} (Live price unavailable. Enter manually)`);
+      }
+    });
   }
 }

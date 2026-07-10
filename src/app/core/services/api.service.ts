@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Transaction, TransactionFilter, Category, Budget, Account, StockHolding, Goal, RecurringSchedule, ChatMessage, DetectedBill } from '../models';
+import { Transaction, TransactionFilter, Category, Budget, Account, StockHolding, StockOrder, Goal, RecurringSchedule, ChatMessage, DetectedBill } from '../models';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -198,6 +198,57 @@ export class ApiService {
 
   refreshStockPrices(): Observable<ApiResponse<Account[]>> {
     return this.http.post<ApiResponse<Account[]>>(`${this.baseUrl}/accounts/refresh-prices`, {});
+  }
+
+  searchStocks(query: string): Observable<ApiResponse<Array<{ symbol: string; name: string; exchange: string; typeDisp: string }>>> {
+    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/stocks/search`, {
+      params: new HttpParams().set('q', query)
+    });
+  }
+
+  getStockPrice(ticker: string): Observable<ApiResponse<{ price: number | null }>> {
+    return this.http.get<ApiResponse<{ price: number | null }>>(`${this.baseUrl}/stocks/price`, {
+      params: new HttpParams().set('ticker', ticker)
+    });
+  }
+
+  getStockOrders(accountId: string): Observable<ApiResponse<StockOrder[]>> {
+    return this.http.get<ApiResponse<StockOrder[]>>(`${this.baseUrl}/accounts/${accountId}/orders`);
+  }
+
+  addStockOrder(
+    accountId: string,
+    ticker: string,
+    type: 'BUY' | 'SELL',
+    shares: number,
+    pricePerShare: number,
+    date: string
+  ): Observable<ApiResponse<StockOrder>> {
+    return this.http.post<ApiResponse<StockOrder>>(`${this.baseUrl}/accounts/${accountId}/orders`, {
+      ticker,
+      type,
+      shares,
+      pricePerShare,
+      date
+    });
+  }
+
+  updateStockOrder(
+    accountId: string,
+    orderId: string,
+    shares: number,
+    pricePerShare: number,
+    date: string
+  ): Observable<ApiResponse<StockOrder>> {
+    return this.http.put<ApiResponse<StockOrder>>(`${this.baseUrl}/accounts/${accountId}/orders/${orderId}`, {
+      shares,
+      pricePerShare,
+      date
+    });
+  }
+
+  deleteStockOrder(accountId: string, orderId: string): Observable<ApiResponse<void>> {
+    return this.http.delete<ApiResponse<void>>(`${this.baseUrl}/accounts/${accountId}/orders/${orderId}`);
   }
 
 
