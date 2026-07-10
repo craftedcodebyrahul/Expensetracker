@@ -82,6 +82,11 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
   selectedQuarter = signal<number>(Math.floor(new Date().getMonth() / 3) + 1);
   selectedHalf = signal<number>(new Date().getMonth() < 6 ? 1 : 2);
 
+  setYear(val: any) { this.selectedYear.set(Number(val)); }
+  setMonth(val: any) { this.selectedMonth.set(Number(val)); }
+  setQuarter(val: any) { this.selectedQuarter.set(Number(val)); }
+  setHalf(val: any) { this.selectedHalf.set(Number(val)); }
+
 
 
   goalAmount = 10000;
