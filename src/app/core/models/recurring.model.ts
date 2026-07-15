@@ -10,6 +10,8 @@ export interface RecurringSchedule {
   accountId: string;
   toAccountId?: string;
   createdAt?: string;
+  emailReminder?: boolean;
+  reminderDaysBefore?: number;
 }
 
 export interface DetectedBill {

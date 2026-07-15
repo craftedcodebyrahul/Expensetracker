@@ -22,6 +22,7 @@ interface PrismaRecurringScheduleRow {
   category: string | null; description: string; frequency: string;
   startDate: string; nextDueDate: string; accountId: string;
   toAccountId: string | null; isActive: number; createdAt: string;
+  emailReminder: number; reminderDaysBefore: number;
 }
 interface PrismaCategoryRow {
   id: string; userId: string; name: string; type: string;
@@ -154,6 +155,8 @@ export interface RecurringSchedule {
   toAccountId?: string;
   createdAt?: string;
   isActive?: boolean;
+  emailReminder?: boolean;
+  reminderDaysBefore?: number;
 }
 
 export interface AppSettings {
@@ -721,6 +724,8 @@ export class DbService {
       toAccountId: r.toAccountId ?? undefined,
       createdAt: r.createdAt,
       isActive: r.isActive === 1,
+      emailReminder: r.emailReminder === 1,
+      reminderDaysBefore: r.reminderDaysBefore,
     }));
   }
 
@@ -743,6 +748,8 @@ export class DbService {
         accountId: data.accountId,
         toAccountId: data.toAccountId ?? null,
         isActive: 1,
+        emailReminder: data.emailReminder ? 1 : 0,
+        reminderDaysBefore: data.reminderDaysBefore ?? 1,
         createdAt: now,
       },
     });
@@ -763,6 +770,8 @@ export class DbService {
         ...(data.description !== undefined && { description: data.description }),
         ...(data.frequency   !== undefined && { frequency: data.frequency }),
         ...(data.nextDueDate !== undefined && { nextDueDate: data.nextDueDate }),
+        ...(data.emailReminder !== undefined && { emailReminder: data.emailReminder ? 1 : 0 }),
+        ...(data.reminderDaysBefore !== undefined && { reminderDaysBefore: data.reminderDaysBefore }),
       },
     });
     return {
@@ -777,6 +786,8 @@ export class DbService {
       accountId: updated.accountId,
       toAccountId: updated.toAccountId ?? undefined,
       createdAt: updated.createdAt,
+      emailReminder: updated.emailReminder === 1,
+      reminderDaysBefore: updated.reminderDaysBefore,
     };
   }
 

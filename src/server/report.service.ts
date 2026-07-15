@@ -347,6 +347,119 @@ export class ReportService {
     console.log(`✉️ Email report successfully sent to ${reportData.user.email} (MessageID: ${info.messageId})`);
     return info;
   }
+
+  async sendUpcomingBillReminder(schedule: any, daysBefore: number) {
+    const transporter = this.getTransporter();
+    const from = process.env['EMAIL_FROM'] || `"FinTrack Pro" <${process.env['EMAIL_SMTP_USER']}>`;
+    
+    // Get user currency symbol or default to $
+    const settings = await dbService.getSettings(schedule.userId);
+    const symbol = settings.currencySymbol || '$';
+    
+    const formattedAmount = `${symbol}${schedule.amount.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+    // Get category icon and name
+    const categories = await dbService.getCategories(schedule.userId);
+    const categoryObj = categories.find(c => c.id === schedule.category);
+    const categoryIcon = categoryObj?.icon || '📅';
+    const categoryName = categoryObj?.name || schedule.category || 'Uncategorized';
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upcoming Payment Reminder</title>
+</head>
+<body style="background-color: #0b0e14; color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #111622; border: 1px solid #232d42; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.4);">
+    
+    <!-- Top Header Banner -->
+    <div style="background: linear-gradient(135deg, #ef5350 0%, #d32f2f 100%); padding: 30px 20px; text-align: center;">
+      <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.75);">FinTrack Pro</div>
+      <h1 style="margin: 5px 0 0 0; font-size: 24px; color: #ffffff; font-weight: 800;">Upcoming Payment Reminder</h1>
+      <p style="margin: 5px 0 0 0; font-size: 14px; color: #ffebee;">Due in <strong>${daysBefore} ${daysBefore === 1 ? 'day' : 'days'}</strong></p>
+    </div>
+
+    <!-- User greeting -->
+    <div style="padding: 24px 20px 20px 20px;">
+      <p style="margin: 0; font-size: 15px; color: #9ca3af;">Hello <strong>${schedule.user.name}</strong>,</p>
+      <p style="margin: 8px 0 0 0; font-size: 14px; color: #9ca3af; line-height: 1.4;">
+        This is a friendly heads-up that you have a scheduled recurring transaction due in ${daysBefore} ${daysBefore === 1 ? 'day' : 'days'}.
+      </p>
+    </div>
+
+    <!-- Bill Details Card -->
+    <div style="margin: 0 20px 24px 20px; background-color: #181f2f; border: 1px solid #232d42; border-radius: 12px; padding: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #232d42; padding-bottom: 12px; margin-bottom: 12px;">
+        <span style="font-size: 11px; text-transform: uppercase; font-weight: 600; color: #9ca3af; letter-spacing: 0.05em;">Transaction Details</span>
+        <span style="background-color: rgba(239, 83, 80, 0.15); color: #ef5350; font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 4px; text-transform: uppercase;">
+          ${schedule.type}
+        </span>
+      </div>
+      
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #f3f4f6;">
+        <tr>
+          <td style="padding: 8px 0; color: #9ca3af; width: 35%;">Payee/Desc:</td>
+          <td style="padding: 8px 0; font-weight: 600;">${schedule.description}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #9ca3af;">Amount:</td>
+          <td style="padding: 8px 0; font-weight: 700; font-size: 18px; color: ${schedule.type === 'income' ? '#66bb6a' : '#ef5350'};">${formattedAmount}</td>
+        </tr>
+        ${schedule.type !== 'transfer' ? `
+        <tr>
+          <td style="padding: 8px 0; color: #9ca3af;">Category:</td>
+          <td style="padding: 8px 0;">${categoryIcon} ${categoryName}</td>
+        </tr>
+        ` : ''}
+        <tr>
+          <td style="padding: 8px 0; color: #9ca3af;">Frequency:</td>
+          <td style="padding: 8px 0; text-transform: capitalize;">${schedule.frequency}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #9ca3af;">Next Due Date:</td>
+          <td style="padding: 8px 0; font-weight: 600; color: #ffb300;">${schedule.nextDueDate}</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Actions / Dashboard CTA -->
+    <div style="padding: 0 20px 24px 20px; text-align: center;">
+      <a href="${process.env['GOOGLE_REDIRECT_URI']?.replace('/auth/google/callback', '') ?? 'http://localhost:4000'}/bills-calendar" 
+         style="display: inline-block; background-color: #ef5350; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 10px rgba(239, 83, 80, 0.3);">
+        View Calendar
+      </a>
+    </div>
+
+    <!-- Footer -->
+    <div style="background-color: #0b0e14; padding: 24px 20px; border-top: 1px solid #232d42; text-align: center;">
+      <p style="margin: 0; font-size: 12px; color: #6b7280;">You received this email because you enabled email reminders for this schedule.</p>
+      <p style="margin: 6px 0 0 0; font-size: 12px; color: #6b7280;">To edit or disable this reminder, go to your <a href="${process.env['GOOGLE_REDIRECT_URI']?.replace('/auth/google/callback', '') ?? 'http://localhost:4000'}/bills-calendar" style="color: #64b5f6; text-decoration: none;">Upcoming Bills Calendar</a></p>
+      <p style="margin: 18px 0 0 0; font-size: 11px; color: #4b5563;">© 2026 FinTrack Pro. All rights reserved.</p>
+    </div>
+
+  </div>
+</body>
+</html>
+    `;
+
+    const subject = `📅 Reminder: Upcoming payment of ${formattedAmount} for ${schedule.description} is due soon`;
+
+    const info = await transporter.sendMail({
+      from,
+      to: schedule.user.email,
+      subject,
+      html,
+    });
+
+    console.log(`✉️ Bill reminder successfully sent to ${schedule.user.email} (MessageID: ${info.messageId})`);
+    return info;
+  }
 }
 
 export const reportService = new ReportService();

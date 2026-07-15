@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { dbService } from './db.service.js';
 import { requireAuth, getSession, SessionUser } from './auth/oauth.js';
+import { prisma } from './db.js';
 
 // ── Extract userId from session ───────────────────────────────────────────────
 // Replaces the old async sheetsForRequest(req) which created a new SheetsService
@@ -618,6 +619,23 @@ ${audit.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n
       }
       ok(res, null, 'Recurring schedule deleted');
     } catch (e) { fail(res, e); }
+  });
+
+  router.post('/recurring/test-reminder/:id', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+      const scheduleId = req.params['id'];
+      const schedule = await prisma.recurringSchedule.findFirst({
+        where: { id: scheduleId, userId },
+        include: { user: true }
+      });
+      if (!schedule) { fail(res, 'Recurring schedule not found', 404); return; }
+      const { reportService } = await import('./report.service.js');
+      await reportService.sendUpcomingBillReminder(schedule, 1);
+      ok(res, null, 'Test bill reminder email sent successfully');
+    } catch (e: any) {
+      fail(res, e.message || e);
+    }
   });
 
   // ── Settings ─────────────────────────────────────────────────────────────

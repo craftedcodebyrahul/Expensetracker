@@ -21,7 +21,9 @@ export default defineConfig({
   },
   migrate: {
     adapter: () => {
-      return new PrismaLibSql({ url, authToken: token || undefined });
+      const targetUrl = process.env['TURSO_DATABASE_URL'] || url;
+      console.log('🚀 Prisma Migrate: Directing adapter connection to:', targetUrl);
+      return new PrismaLibSql({ url: targetUrl, authToken: token || undefined });
     },
   },
 });

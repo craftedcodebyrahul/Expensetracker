@@ -149,8 +149,10 @@ model RecurringSchedule {
   nextDueDate String @map("next_due_date")
   accountId   String @map("account_id")
   toAccountId String? @map("to_account_id")
-  isActive    Int    @default(1) @map("is_active")   // 1=active, 0=stopped
-  createdAt   String @map("created_at")
+  isActive            Int    @default(1) @map("is_active")   // 1=active, 0=stopped
+  emailReminder       Int    @default(0) @map("email_reminder") // 0=no, 1=yes
+  reminderDaysBefore  Int    @default(1) @map("reminder_days_before") // days before due date
+  createdAt           String @map("created_at")
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   account   Account  @relation("ScheduleFrom", fields: [accountId], references: [id])

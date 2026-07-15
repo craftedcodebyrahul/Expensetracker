@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
 import { AuthService } from '../../core/services/auth.service';
-import { SettingsService } from '../../core/services/settings.service';
+import { SettingsService, DashboardWidgets } from '../../core/services/settings.service';
 import { HeaderComponent } from '../../layout/header.component';
 
 @Component({
@@ -106,6 +106,170 @@ import { HeaderComponent } from '../../layout/header.component';
         <div class="form-actions">
           <button class="btn btn-primary" (click)="saveSettings()" [disabled]="saving()">
             {{ saving() ? 'Saving...' : 'Save Preferences' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Appearance & Themes -->
+      <div class="card settings-section">
+        <h3 class="section-title">🎨 Appearance & Themes</h3>
+        <p class="section-desc">
+          Customize TCFlow's look and feel with fonts, accents, rounding, and layouts inspired by Cashew.
+        </p>
+
+        <!-- Themes Grid -->
+        <div class="theme-setting-group">
+          <label class="form-label">Theme Selection</label>
+          <div class="theme-cards-grid">
+            <div class="theme-card" [class.active]="settingsService.themeName() === 'dark'" (click)="setTheme('dark')" style="background: #1e2130; border-color: #2e3250;">
+              <div class="theme-preview">
+                <span class="preview-text" style="color: #e8eaf6;">Slate</span>
+                <span class="preview-accent" style="background: #5c6bc0;"></span>
+              </div>
+              <span class="theme-card-label">Default Dark</span>
+            </div>
+            
+            <div class="theme-card" [class.active]="settingsService.themeName() === 'oled'" (click)="setTheme('oled')" style="background: #151026; border-color: #231b40;">
+              <div class="theme-preview">
+                <span class="preview-text" style="color: #f1effa;">Obsidian</span>
+                <span class="preview-accent" style="background: #9c27b0;"></span>
+              </div>
+              <span class="theme-card-label">Obsidian Violet</span>
+            </div>
+
+            <div class="theme-card" [class.active]="settingsService.themeName() === 'light'" (click)="setTheme('light')" style="background: #ffffff; border-color: #e2e8f0;">
+              <div class="theme-preview">
+                <span class="preview-text" style="color: #0f172a;">Light</span>
+                <span class="preview-accent" style="background: #5c6bc0;"></span>
+              </div>
+              <span class="theme-card-label">Premium Light</span>
+            </div>
+
+            <div class="theme-card" [class.active]="settingsService.themeName() === 'sepia'" (click)="setTheme('sepia')" style="background: #1f1b18; border-color: #332d29;">
+              <div class="theme-preview">
+                <span class="preview-text" style="color: #f7f5f2;">Clay</span>
+                <span class="preview-accent" style="background: #ff7043;"></span>
+              </div>
+              <span class="theme-card-label">Warm Terracotta</span>
+            </div>
+
+            <div class="theme-card" [class.active]="settingsService.themeName() === 'nord'" (click)="setTheme('nord')" style="background: #121f1c; border-color: #203530;">
+              <div class="theme-preview">
+                <span class="preview-text" style="color: #e6f2ee;">Aurora</span>
+                <span class="preview-accent" style="background: #00e676;"></span>
+              </div>
+              <span class="theme-card-label">Emerald Aurora</span>
+            </div>
+
+            <div class="theme-card" [class.active]="settingsService.themeName() === 'cyberpunk'" (click)="setTheme('cyberpunk')" style="background: #0f182c; border-color: #1e2c4f;">
+              <div class="theme-preview">
+                <span class="preview-text" style="color: #e3effc;">Ocean</span>
+                <span class="preview-accent" style="background: #00b0ff;"></span>
+              </div>
+              <span class="theme-card-label">Midnight Ocean</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accent Swatches -->
+        <div class="theme-setting-group">
+          <label class="form-label">Accent Color Selection</label>
+          <div class="accent-swatches">
+            @for (acc of accents; track acc.id) {
+              <button class="swatch-btn" 
+                      [class.active]="settingsService.accentColor() === acc.id" 
+                      [style.background]="acc.color"
+                      [title]="acc.name"
+                      (click)="setAccent(acc.id)">
+                @if (settingsService.accentColor() === acc.id) { <span class="swatch-check">✓</span> }
+              </button>
+            }
+          </div>
+        </div>
+
+        <!-- Typography & Sizing -->
+        <div class="settings-grid">
+          <div class="form-group">
+            <label class="form-label">Typography Font</label>
+            <select class="form-control" [ngModel]="settingsService.fontFamily()" (ngModelChange)="setFont($event)">
+              <option value="Inter">Inter (Sans-Serif)</option>
+              <option value="Outfit">Outfit (Modern Geometric)</option>
+              <option value="Roboto">Roboto (Clean / Functional)</option>
+              <option value="Playfair">Playfair Display (Elegant Serif)</option>
+              <option value="Lexend">Lexend (Highly Readable)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Corner Rounding</label>
+            <div class="radius-options">
+              <button class="btn btn-ghost btn-sm" [class.active-radius]="settingsService.borderRadius() === 'sharp'" (click)="setRadius('sharp')">Sharp</button>
+              <button class="btn btn-ghost btn-sm" [class.active-radius]="settingsService.borderRadius() === 'classic'" (click)="setRadius('classic')">Classic</button>
+              <button class="btn btn-ghost btn-sm" [class.active-radius]="settingsService.borderRadius() === 'smooth'" (click)="setRadius('smooth')">Smooth</button>
+              <button class="btn btn-ghost btn-sm" [class.active-radius]="settingsService.borderRadius() === 'rounded'" (click)="setRadius('rounded')">Rounded</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Density Selection -->
+        <div class="theme-setting-group">
+          <label class="form-label">Layout Density</label>
+          <div class="density-selector">
+            <button class="btn" style="font-size: 0.8rem;" [class.btn-primary]="settingsService.density() === 'comfortable'" [class.btn-ghost]="settingsService.density() !== 'comfortable'" (click)="setDensity('comfortable')">
+              Comfortable Layout
+            </button>
+            <button class="btn" style="font-size: 0.8rem;" [class.btn-primary]="settingsService.density() === 'compact'" [class.btn-ghost]="settingsService.density() !== 'compact'" (click)="setDensity('compact')">
+              Compact Layout
+            </button>
+          </div>
+        </div>
+
+        <!-- Homepage Widget Customization -->
+        <div class="theme-setting-group">
+          <label class="form-label">Dashboard Widget Toggles</label>
+          <div class="widgets-toggles-grid">
+            <label class="widget-toggle-item">
+              <input type="checkbox" [ngModel]="settingsService.dashboardWidgets().onboarding" (ngModelChange)="toggleWidget('onboarding', $event)">
+              <span>Checklist Guide</span>
+            </label>
+            <label class="widget-toggle-item">
+              <input type="checkbox" [ngModel]="settingsService.dashboardWidgets().monthComparison" (ngModelChange)="toggleWidget('monthComparison', $event)">
+              <span>Month Comparison</span>
+            </label>
+            <label class="widget-toggle-item">
+              <input type="checkbox" [ngModel]="settingsService.dashboardWidgets().anomalyDetector" (ngModelChange)="toggleWidget('anomalyDetector', $event)">
+              <span>AI Anomaly Alerts</span>
+            </label>
+            <label class="widget-toggle-item">
+              <input type="checkbox" [ngModel]="settingsService.dashboardWidgets().summaryGrid" (ngModelChange)="toggleWidget('summaryGrid', $event)">
+              <span>Summary Totals Cards</span>
+            </label>
+            <label class="widget-toggle-item">
+              <input type="checkbox" [ngModel]="settingsService.dashboardWidgets().chartsRow" (ngModelChange)="toggleWidget('chartsRow', $event)">
+              <span>Trend Graphs</span>
+            </label>
+            <label class="widget-toggle-item">
+              <input type="checkbox" [ngModel]="settingsService.dashboardWidgets().bottomRow" (ngModelChange)="toggleWidget('bottomRow', $event)">
+              <span>Recent Transactions</span>
+            </label>
+            <label class="widget-toggle-item">
+              <input type="checkbox" [ngModel]="settingsService.dashboardWidgets().upcomingBills" (ngModelChange)="toggleWidget('upcomingBills', $event)">
+              <span>Upcoming Bills</span>
+            </label>
+            <label class="widget-toggle-item">
+              <input type="checkbox" [ngModel]="settingsService.dashboardWidgets().categorySpend" (ngModelChange)="toggleWidget('categorySpend', $event)">
+              <span>Top Category Distribution</span>
+            </label>
+            <label class="widget-toggle-item">
+              <input type="checkbox" [ngModel]="settingsService.dashboardWidgets().aiAudit" (ngModelChange)="toggleWidget('aiAudit', $event)">
+              <span>Gemini AI Smart Audit</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-primary" (click)="saveSettings()" [disabled]="saving()">
+            {{ saving() ? 'Saving...' : 'Save Appearance' }}
           </button>
         </div>
       </div>
@@ -312,12 +476,146 @@ import { HeaderComponent } from '../../layout/header.component';
       .about-grid { grid-template-columns: 1fr; }
       .account-card { flex-wrap: wrap; }
     }
+
+    /* Appearance Customization Layout Styles */
+    .theme-setting-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.625rem;
+    }
+    .theme-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+    @media (max-width: 520px) {
+      .theme-cards-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .theme-card {
+      border: 2px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 0.75rem;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      transition: var(--transition);
+      user-select: none;
+    }
+    .theme-card:hover {
+      border-color: var(--border-light);
+      transform: translateY(-1px);
+    }
+    .theme-card.active {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 10px rgba(92, 107, 192, 0.15);
+    }
+    .theme-preview {
+      height: 38px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 0.75rem;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .preview-accent {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .theme-card-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-align: center;
+      color: var(--text-secondary);
+    }
+    .accent-swatches {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.625rem;
+    }
+    .swatch-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+    }
+    .swatch-btn:hover {
+      transform: scale(1.1);
+    }
+    .swatch-btn.active {
+      border-color: var(--text-primary);
+      transform: scale(1.05);
+    }
+    .swatch-check {
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    }
+    .radius-options {
+      display: flex;
+      gap: 0.375rem;
+    }
+    .radius-options .btn {
+      flex: 1;
+      justify-content: center;
+      padding: 0.5rem 0.25rem;
+    }
+    .btn-ghost.active-radius {
+      background: var(--accent-blue);
+      color: #fff;
+      border-color: var(--accent-blue);
+    }
+    .density-selector {
+      display: flex;
+      gap: 0.75rem;
+    }
+    .density-selector .btn {
+      flex: 1;
+      justify-content: center;
+    }
+    .widgets-toggles-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.625rem 1rem;
+      background: var(--bg-input);
+      border-radius: var(--radius-md);
+      padding: 1rem;
+      border: 1px solid var(--border);
+    }
+    @media (max-width: 520px) {
+      .widgets-toggles-grid { grid-template-columns: 1fr; }
+    }
+    .widget-toggle-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      user-select: none;
+    }
+    .widget-toggle-item input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: var(--accent-blue);
+    }
   `]
 })
 export class SettingsComponent implements OnInit {
   private api = inject(ApiService);
   private toast = inject(ToastService);
-  private settingsService = inject(SettingsService);
+  public settingsService = inject(SettingsService);
   auth = inject(AuthService);
 
   syncStatus = signal<any>(null);
@@ -392,5 +690,47 @@ export class SettingsComponent implements OnInit {
 
   onAvatarError(event: Event) {
     (event.target as HTMLImageElement).src = this.avatarFallback();
+  }
+
+  accents = [
+    { id: 'indigo', color: '#5c6bc0', name: 'Indigo' },
+    { id: 'emerald', color: '#10b981', name: 'Emerald' },
+    { id: 'rose', color: '#f43f5e', name: 'Rose' },
+    { id: 'amber', color: '#f59e0b', name: 'Amber' },
+    { id: 'violet', color: '#8b5cf6', name: 'Violet' },
+    { id: 'cyan', color: '#06b6d4', name: 'Cyan' }
+  ];
+
+  setTheme(name: any) {
+    this.settingsService.themeName.set(name);
+    this.settingsService.applyVisualSettings();
+  }
+
+  setAccent(accent: any) {
+    this.settingsService.accentColor.set(accent);
+    this.settingsService.applyVisualSettings();
+  }
+
+  setFont(font: any) {
+    this.settingsService.fontFamily.set(font);
+    this.settingsService.applyVisualSettings();
+  }
+
+  setRadius(radius: any) {
+    this.settingsService.borderRadius.set(radius);
+    this.settingsService.applyVisualSettings();
+  }
+
+  setDensity(density: any) {
+    this.settingsService.density.set(density);
+    this.settingsService.applyVisualSettings();
+  }
+
+  toggleWidget(widgetKey: keyof DashboardWidgets, enabled: boolean) {
+    const current = this.settingsService.dashboardWidgets();
+    this.settingsService.dashboardWidgets.set({
+      ...current,
+      [widgetKey]: enabled
+    });
   }
 }

@@ -129,6 +129,16 @@ import { RecurringService } from '../../core/services/recurring.service';
                      (ngModelChange)="txnService.updateFilter({ dateTo: $event || undefined })">
             </div>
 
+            <!-- Sort By -->
+            <select class="form-control filter-select"
+                    [ngModel]="sortBy()"
+                    (ngModelChange)="sortBy.set($event)">
+              <option value="date-desc">📅 Date: Newest first</option>
+              <option value="date-asc">📅 Date: Oldest first</option>
+              <option value="amount-desc">💰 Amount: High to Low</option>
+              <option value="amount-asc">💰 Amount: Low to High</option>
+            </select>
+ 
             <button class="btn btn-ghost btn-sm" (click)="clearFilters()">Clear</button>
           </div>
         </div>
@@ -586,6 +596,7 @@ export class TransactionsComponent implements OnInit {
   deletingTransaction = signal<Transaction | undefined>(undefined);
   deleting = signal(false);
   recurringFilter = signal<'all' | 'recurring' | 'one-time'>('all');
+  sortBy = signal<'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'>('date-desc');
 
   stoppingSeriesId = signal<string | null>(null);
   stoppingSeriesName = signal<string>('');
@@ -673,11 +684,24 @@ export class TransactionsComponent implements OnInit {
   });
 
   displayedTransactions() {
-    const txns = this.txnService.filteredTransactions();
+    let txns = this.txnService.filteredTransactions();
     const rf = this.recurringFilter();
-    if (rf === 'recurring') return txns.filter(t => t.isRecurring);
-    if (rf === 'one-time') return txns.filter(t => !t.isRecurring);
-    return txns;
+    if (rf === 'recurring') txns = txns.filter(t => t.isRecurring);
+    if (rf === 'one-time') txns = txns.filter(t => !t.isRecurring);
+
+    const sort = this.sortBy();
+    const sorted = [...txns];
+    if (sort === 'date-desc') {
+      sorted.sort((a, b) => b.date.localeCompare(a.date));
+    } else if (sort === 'date-asc') {
+      sorted.sort((a, b) => a.date.localeCompare(b.date));
+    } else if (sort === 'amount-desc') {
+      sorted.sort((a, b) => b.amount - a.amount);
+    } else if (sort === 'amount-asc') {
+      sorted.sort((a, b) => a.amount - b.amount);
+    }
+
+    return sorted;
   }
 
   ngOnInit() {
@@ -788,6 +812,7 @@ export class TransactionsComponent implements OnInit {
   clearFilters() {
     this.txnService.setFilter({ type: 'all' });
     this.recurringFilter.set('all');
+    this.sortBy.set('date-desc');
   }
 
   getCategoryIcon(id: string) { return this.categoryService.getCategoryIcon(id); }

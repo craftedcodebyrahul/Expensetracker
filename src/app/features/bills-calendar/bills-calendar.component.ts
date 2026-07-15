@@ -198,6 +198,25 @@ interface CalendarCell {
                 <input type="date" class="form-control" [(ngModel)]="form.nextDueDate">
               </div>
             </div>
+
+            <!-- Email Reminder Config -->
+            <div class="form-group" style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid var(--border); margin-top: 1rem;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <label class="form-label" style="margin-bottom: 0; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                  <input type="checkbox" [(ngModel)]="form.emailReminder" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-blue);">
+                  ✉️ Enable Email Reminders
+                </label>
+              </div>
+              @if (form.emailReminder) {
+                <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 0.85rem; color: var(--text-secondary);">Remind me:</span>
+                  <select class="form-control" [(ngModel)]="form.reminderDaysBefore" style="width: auto; padding: 4px 8px; font-size: 0.85rem; height: auto;">
+                    <option [value]="1">1 day before due date</option>
+                    <option [value]="2">2 days before due date</option>
+                  </select>
+                </div>
+              }
+            </div>
           </div>
           <div class="modal-footer">
             <button class="btn btn-ghost" (click)="closeForm()">Cancel</button>
@@ -255,6 +274,25 @@ interface CalendarCell {
               <div class="detail-row">
                 <span class="detail-label">Next Due Date:</span>
                 <span class="detail-value">{{ selectedEvent()!.nextDueDate }}</span>
+              </div>
+              <div class="detail-row" style="align-items: center;">
+                <span class="detail-label">Email Reminders:</span>
+                <span class="detail-value" style="display: flex; align-items: center; gap: 8px;">
+                  <input type="checkbox" 
+                         [ngModel]="selectedEvent()!.emailReminder" 
+                         (ngModelChange)="toggleReminderForSelected($event)" 
+                         style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-blue);">
+                  @if (selectedEvent()!.emailReminder) {
+                    <select [ngModel]="selectedEvent()!.reminderDaysBefore" 
+                            (ngModelChange)="updateReminderDaysForSelected($event)"
+                            style="padding: 2px 4px; font-size: 0.8rem; border-radius: 4px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);">
+                      <option [value]="1">1 day before</option>
+                      <option [value]="2">2 days before</option>
+                    </select>
+                  } @else {
+                    <span style="font-size: 0.85rem; color: var(--text-muted);">Disabled</span>
+                  }
+                </span>
               </div>
             </div>
           </div>
@@ -460,7 +498,9 @@ export class BillsCalendarComponent implements OnInit {
     toAccountId: '',
     frequency: 'monthly' as RecurringSchedule['frequency'],
     startDate: new Date().toISOString().split('T')[0],
-    nextDueDate: new Date().toISOString().split('T')[0]
+    nextDueDate: new Date().toISOString().split('T')[0],
+    emailReminder: false,
+    reminderDaysBefore: 1
   };
 
   selectedEvent = signal<RecurringSchedule | undefined>(undefined);
@@ -528,7 +568,9 @@ export class BillsCalendarComponent implements OnInit {
       toAccountId: '',
       frequency: bill.frequency,
       startDate: bill.startDate,
-      nextDueDate: bill.nextDueDate
+      nextDueDate: bill.nextDueDate,
+      emailReminder: false,
+      reminderDaysBefore: 1
     };
     this.showForm.set(true);
   }
@@ -647,7 +689,9 @@ export class BillsCalendarComponent implements OnInit {
       toAccountId: '',
       frequency: 'monthly',
       startDate: new Date().toISOString().split('T')[0],
-      nextDueDate: new Date().toISOString().split('T')[0]
+      nextDueDate: new Date().toISOString().split('T')[0],
+      emailReminder: false,
+      reminderDaysBefore: 1
     };
     this.showForm.set(true);
   }
@@ -665,7 +709,9 @@ export class BillsCalendarComponent implements OnInit {
       startDate: this.form.startDate,
       nextDueDate: this.form.nextDueDate,
       accountId: this.form.accountId,
-      toAccountId: this.form.type === 'transfer' ? this.form.toAccountId : undefined
+      toAccountId: this.form.type === 'transfer' ? this.form.toAccountId : undefined,
+      emailReminder: this.form.emailReminder,
+      reminderDaysBefore: Number(this.form.reminderDaysBefore)
     };
 
     this.recurringService.createSchedule(data).subscribe(() => {
@@ -673,6 +719,33 @@ export class BillsCalendarComponent implements OnInit {
       this.closeForm();
       this.toast.success('Recurring schedule created successfully!');
       this.recurringService.loadDetectedBills().subscribe();
+    });
+  }
+
+  toggleReminderForSelected(enabled: boolean) {
+    const event = this.selectedEvent();
+    if (!event) return;
+    this.recurringService.updateSchedule(event.id, { emailReminder: enabled }).subscribe(res => {
+      if (res) {
+        this.toast.success(`Email reminders ${enabled ? 'enabled' : 'disabled'} for this schedule.`);
+        this.selectedEvent.update(e => e ? { ...e, emailReminder: enabled } : undefined);
+      } else {
+        this.toast.error('Failed to update email reminder.');
+      }
+    });
+  }
+
+  updateReminderDaysForSelected(days: any) {
+    const event = this.selectedEvent();
+    if (!event) return;
+    const numDays = Number(days);
+    this.recurringService.updateSchedule(event.id, { reminderDaysBefore: numDays }).subscribe(res => {
+      if (res) {
+        this.toast.success(`Reminder set to ${numDays} day(s) before.`);
+        this.selectedEvent.update(e => e ? { ...e, reminderDaysBefore: numDays } : undefined);
+      } else {
+        this.toast.error('Failed to update reminder days.');
+      }
     });
   }
 

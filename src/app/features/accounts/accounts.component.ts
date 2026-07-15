@@ -8,6 +8,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { Account, StockHolding, StockOrder, Transaction } from '../../core/models';
+import { SettingsService } from '../../core/services/settings.service';
 
 @Component({
   selector: 'app-accounts',
@@ -89,7 +90,7 @@ import { Account, StockHolding, StockOrder, Transaction } from '../../core/model
               <span class="balance-value"
                     [class.text-income]="acc.type === 'asset' && balance >= 0"
                     [class.text-expense]="acc.type === 'liability' || balance < 0">
-                {{ acc.type === 'asset' && balance < 0 ? '-' : '' }}{{ balance | currencyFormat }}
+                {{ acc.type === 'asset' && balance < 0 ? '-' : '' }}{{ balance | currencyFormat:settingsService.getSymbol(acc.currency || 'USD') }}
               </span>
               @if (acc.isInvestment && acc.stockHoldings?.length) {
                 <span class="balance-sub">{{ acc.stockHoldings!.length }} holding{{ acc.stockHoldings!.length !== 1 ? 's' : '' }}</span>
@@ -452,10 +453,18 @@ import { Account, StockHolding, StockOrder, Transaction } from '../../core/model
                 <option value="liability">Liability (Money you owe: credit cards, loans, debt)</option>
               </select>
             </div>
+            <div class="form-group">
+              <label class="form-label">Currency *</label>
+              <select class="form-control" [(ngModel)]="form.currency" [disabled]="!!editingAccount()">
+                @for (c of settingsService.currencies; track c.code) {
+                  <option [value]="c.code">{{ c.code }} — {{ c.name }} ({{ c.symbol }})</option>
+                }
+              </select>
+            </div>
             <div class="form-group" [class.disabled-field]="editingAccount()">
               <label class="form-label">Initial Balance</label>
               <div class="input-prefix">
-                <span class="prefix">$</span>
+                <span class="prefix">{{ settingsService.getSymbol(form.currency) }}</span>
                 <input type="number" class="form-control" [(ngModel)]="form.initialBalance"
                        placeholder="0.00" step="0.01" [disabled]="!!editingAccount()">
               </div>
@@ -611,15 +620,25 @@ import { Account, StockHolding, StockOrder, Transaction } from '../../core/model
 
     /* ── Net Worth Banner ─────────────────────────────────────────── */
     .net-worth-banner {
-      background: linear-gradient(135deg, rgba(92,107,192,0.15) 0%, rgba(33,150,243,0.05) 100%);
-      border: 1px solid var(--border);
+      background: linear-gradient(135deg, rgba(92, 107, 192, 0.25) 0%, rgba(103, 58, 183, 0.15) 50%, rgba(3, 169, 244, 0.1) 100%);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: var(--radius-lg);
-      padding: 1.5rem 2rem;
+      padding: 2rem 2.5rem;
       display: flex;
       justify-content: center;
       align-items: center;
       text-align: center;
-      box-shadow: var(--shadow-sm);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), var(--shadow-glow-blue);
+      position: relative;
+      overflow: hidden;
+    }
+    .net-worth-banner::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at top left, rgba(255, 255, 255, 0.04), transparent 75%);
+      pointer-events: none;
     }
     .nw-content { display: flex; flex-direction: column; gap: 0.5rem; }
     .nw-label { font-size: 0.875rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
@@ -993,6 +1012,7 @@ import { Account, StockHolding, StockOrder, Transaction } from '../../core/model
 })
 export class AccountsComponent implements OnInit {
   accountService  = inject(AccountService);
+  settingsService = inject(SettingsService);
   private txnService  = inject(TransactionService);
   private catService  = inject(CategoryService);
   private toast       = inject(ToastService);
@@ -1020,7 +1040,7 @@ export class AccountsComponent implements OnInit {
   drilldownFrom = signal(this.yearStart);
   drilldownTo   = signal(this.today);
 
-  form = { name: '', type: 'asset' as 'asset' | 'liability', initialBalance: null as number | null, isInvestment: false };
+  form = { name: '', type: 'asset' as 'asset' | 'liability', initialBalance: null as number | null, isInvestment: false, currency: 'USD' };
 
   // ── Portfolio & Order state ──────────────────────────────────────
   portfolioSubTab  = signal<'holdings' | 'orders'>('holdings');
@@ -1168,7 +1188,7 @@ export class AccountsComponent implements OnInit {
 
   // ── Account CRUD ──────────────────────────────────────────────────
   openForm() {
-    this.form = { name: '', type: 'asset', initialBalance: null, isInvestment: false };
+    this.form = { name: '', type: 'asset', initialBalance: null, isInvestment: false, currency: 'USD' };
     this.editingAccount.set(undefined);
     this.showForm.set(true);
   }
@@ -1179,6 +1199,7 @@ export class AccountsComponent implements OnInit {
       type: acc.type,
       initialBalance: acc.initialBalance != null ? Math.abs(acc.initialBalance) : null,
       isInvestment: !!acc.isInvestment,
+      currency: acc.currency || 'USD'
     };
     this.editingAccount.set(acc);
     this.showForm.set(true);
@@ -1194,7 +1215,12 @@ export class AccountsComponent implements OnInit {
     this.submitting.set(true);
 
     const isEdit = !!this.editingAccount();
-    let payload: any = { name: this.form.name, type: this.form.type, isInvestment: this.form.isInvestment };
+    let payload: any = { 
+      name: this.form.name, 
+      type: this.form.type, 
+      isInvestment: this.form.isInvestment,
+      currency: this.form.currency || 'USD'
+    };
     
     if (!isEdit) {
       let initial = this.form.initialBalance != null ? Number(this.form.initialBalance) : 0;

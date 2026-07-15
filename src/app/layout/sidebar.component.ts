@@ -53,7 +53,7 @@ interface NavItem { path: string; label: string; icon: string; }
              class="nav-item"
              [title]="item.label"
              (click)="closeOnMobile()">
-            <span class="nav-icon" aria-hidden="true">{{ item.icon }}</span>
+            <span class="material-symbols-outlined nav-icon" aria-hidden="true">{{ item.icon }}</span>
             @if (!layout.collapsed() || layout.mobileMenuOpen()) {
               <span class="nav-label">{{ item.label }}</span>
             }
@@ -64,7 +64,7 @@ interface NavItem { path: string; label: string; icon: string; }
       <!-- Bottom -->
       <div class="sidebar-bottom">
         <a routerLink="/settings" routerLinkActive="active" class="nav-item" title="Settings" (click)="closeOnMobile()">
-          <span class="nav-icon" aria-hidden="true">⚙️</span>
+          <span class="material-symbols-outlined nav-icon" aria-hidden="true">settings</span>
           @if (!layout.collapsed() || layout.mobileMenuOpen()) { <span class="nav-label">Settings</span> }
         </a>
 
@@ -79,7 +79,7 @@ interface NavItem { path: string; label: string; icon: string; }
                 <span class="user-name">{{ auth.user()!.name }}</span>
                 <span class="user-email">{{ auth.user()!.email }}</span>
               </div>
-              <button class="logout-btn" (click)="logout()" title="Sign out" aria-label="Sign out">↩</button>
+              <button class="material-symbols-outlined logout-btn" (click)="logout()" title="Sign out" aria-label="Sign out">logout</button>
             }
           </div>
         }
@@ -91,7 +91,8 @@ interface NavItem { path: string; label: string; icon: string; }
     .sidebar {
       width: 240px;
       height: 100vh;
-      background: var(--bg-secondary);
+      background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(var(--accent-rgb, 92, 107, 192), 0.03) 100%);
+      backdrop-filter: blur(20px);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
@@ -249,7 +250,7 @@ interface NavItem { path: string; label: string; icon: string; }
       text-decoration: none;
       font-size: 0.875rem;
       font-weight: 500;
-      transition: var(--transition);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, color 0.2s ease;
       white-space: nowrap;
       overflow: hidden;
       border: none;
@@ -259,7 +260,14 @@ interface NavItem { path: string; label: string; icon: string; }
       font-family: inherit;
       cursor: pointer;
     }
-    .nav-item:hover { background: var(--bg-card); color: var(--text-primary); }
+    .nav-item:hover {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      transform: translateX(4px);
+    }
+    .nav-item:active {
+      transform: scale(0.97) translateX(4px);
+    }
     .nav-item.active { background: rgba(92,107,192,0.15); color: var(--accent-blue-light); }
     .nav-icon { font-size: 1.1rem; flex-shrink: 0; width: 20px; text-align: center; }
     .nav-label { overflow: hidden; text-overflow: ellipsis; }
@@ -298,17 +306,17 @@ export class SidebarComponent {
   syncConnected = signal(false);
 
   navItems: NavItem[] = [
-    { path: '/dashboard',      label: 'Dashboard',      icon: '📊' },
-    { path: '/quick-log',      label: 'Quick Log',      icon: '⚡' },
-    { path: '/transactions',   label: 'Transactions',   icon: '💳' },
-    { path: '/accounts',       label: 'Accounts',       icon: '🏦' },
-    { path: '/insights',       label: 'Insights',       icon: '🔮' },
-    { path: '/budgets',        label: 'Budgets',        icon: '🎯' },
-    { path: '/goals',          label: 'Goals',          icon: '🏆' },
-    { path: '/savings-simulator', label: 'Savings Simulator', icon: '⚖️' },
-    { path: '/bills-calendar', label: 'Upcoming Bills', icon: '📅' },
-    { path: '/categories',     label: 'Categories',     icon: '🏷️' },
-    { path: '/reports',        label: 'Reports',        icon: '📈' },
+    { path: '/dashboard',      label: 'Dashboard',      icon: 'grid_view' },
+    { path: '/quick-log',      label: 'Quick Log',      icon: 'bolt' },
+    { path: '/transactions',   label: 'Transactions',   icon: 'credit_card' },
+    { path: '/accounts',       label: 'Accounts',       icon: 'account_balance' },
+    { path: '/insights',       label: 'Insights',       icon: 'online_prediction' },
+    { path: '/budgets',        label: 'Budgets',        icon: 'track_changes' },
+    { path: '/goals',          label: 'Goals',          icon: 'emoji_events' },
+    { path: '/savings-simulator', label: 'Savings Simulator', icon: 'balance' },
+    { path: '/bills-calendar', label: 'Upcoming Bills', icon: 'calendar_month' },
+    { path: '/categories',     label: 'Categories',     icon: 'sell' },
+    { path: '/reports',        label: 'Reports',        icon: 'show_chart' },
   ];
 
   constructor() {

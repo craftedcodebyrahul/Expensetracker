@@ -2,6 +2,15 @@ import cron from 'node-cron';
 import { prisma } from './db.js';
 import { reportService } from './report.service.js';
 
+function getFutureDateString(daysAhead: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + daysAhead);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export function startReportScheduler() {
   console.log('⏰ Report Scheduler: Initializing monthly cron worker...');
 
@@ -40,5 +49,53 @@ export function startReportScheduler() {
     }
   });
 
-  console.log('⏰ Report Scheduler: Cron worker started and scheduled for the 1st of every month!');
+  console.log('⏰ Report Scheduler: Initializing daily bill reminder worker...');
+
+  // Daily at 08:00 AM ('0 8 * * *')
+  cron.schedule('0 8 * * *', async () => {
+    console.log('⏰ Report Scheduler: Running scheduled daily bill reminder job...');
+    
+    try {
+      const tomorrowStr = getFutureDateString(1);
+      const dayAfterTomorrowStr = getFutureDateString(2);
+
+      const schedulesToRemind = await prisma.recurringSchedule.findMany({
+        where: {
+          isActive: 1,
+          emailReminder: 1,
+          OR: [
+            { nextDueDate: tomorrowStr, reminderDaysBefore: 1 },
+            { nextDueDate: dayAfterTomorrowStr, reminderDaysBefore: 2 }
+          ]
+        },
+        include: {
+          user: true
+        }
+      });
+
+      if (schedulesToRemind.length === 0) {
+        console.log('⏰ Report Scheduler: No bills require reminders today.');
+        return;
+      }
+
+      console.log(`⏰ Report Scheduler: Found ${schedulesToRemind.length} bill(s) to remind. Sending...`);
+
+      for (const schedule of schedulesToRemind) {
+        try {
+          const daysBefore = schedule.nextDueDate === tomorrowStr ? 1 : 2;
+          await reportService.sendUpcomingBillReminder(schedule, daysBefore);
+        } catch (err: any) {
+          console.error(
+            `❌ Report Scheduler: Failed to send bill reminder for schedule ${schedule.id}:`,
+            err?.message || err
+          );
+        }
+      }
+    } catch (err: any) {
+      console.error('❌ Report Scheduler: Daily reminder task critical failure:', err?.message || err);
+    }
+  });
+
+  console.log('⏰ Report Scheduler: Cron workers initialized successfully!');
 }
+

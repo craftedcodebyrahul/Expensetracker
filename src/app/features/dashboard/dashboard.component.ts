@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, computed, AfterViewInit, ElementRef, ViewChild } from '@angular/core';
+import { Component, OnInit, inject, signal, computed, AfterViewInit, ElementRef, ViewChild, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { TransactionService } from '../../core/services/transaction.service';
@@ -14,6 +14,7 @@ import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { AnomalyDetectorComponent } from '../../shared/components/anomaly-detector.component';
 import { Chart, registerables } from 'chart.js';
 import { Goal } from '../../core/models';
+import { SettingsService } from '../../core/services/settings.service';
 
 Chart.register(...registerables);
 
@@ -28,104 +29,202 @@ Chart.register(...registerables);
 
     <div class="dashboard-content">
 
-      <!-- Month comparison bar -->
-      <div class="month-bar">
-        <div class="month-stat">
-          <span class="ms-label">This Month</span>
-          <span class="ms-value text-income">+{{ thisMonthIncome() | currencyFormat }}</span>
-          <span class="ms-value text-expense">-{{ thisMonthExpenses() | currencyFormat }}</span>
-          <a routerLink="/insights" [queryParams]="{ mode: 'this-month' }" class="ms-link">View Insights →</a>
-        </div>
-        <div class="month-divider"></div>
-        <div class="month-stat">
-          <span class="ms-label">Last Month</span>
-          <span class="ms-value text-income">+{{ lastMonthIncome() | currencyFormat }}</span>
-          <span class="ms-value text-expense">-{{ lastMonthExpenses() | currencyFormat }}</span>
-          <a routerLink="/insights" [queryParams]="{ mode: 'last-month' }" class="ms-link">View Insights →</a>
-        </div>
-        <div class="month-divider"></div>
-        <div class="month-stat">
-          <span class="ms-label">Expense Change</span>
-          @if (lastMonthExpenses() === 0) {
-            <span class="ms-value text-muted">No prior data</span>
-          } @else {
-            <span class="ms-value"
-                  [class.text-income]="expenseChange() <= 0"
-                  [class.text-expense]="expenseChange() > 0">
-              {{ expenseChange() > 0 ? '▲' : '▼' }}
-              {{ Math.min(Math.abs(expenseChange()), 999) | number:'1.0-0' }}%
-            </span>
-          }
-        </div>
-        <div class="month-divider"></div>
-        <div class="month-stat">
-          <span class="ms-label">Health Score</span>
-          <div class="health-score" [class.good]="healthScore() >= 70" [class.ok]="healthScore() >= 40 && healthScore() < 70" [class.bad]="healthScore() < 40">
-            <span class="hs-num">{{ healthScore() }}</span>
-            <span class="hs-label">/100</span>
+      <!-- Getting Started Guide -->
+      @if (showOnboarding() && settingsService.dashboardWidgets().onboarding) {
+        <div class="onboarding-card">
+          <button class="onboarding-close-btn" (click)="dismissOnboarding.set(true)" title="Dismiss checklist">✕</button>
+          
+          <div class="ob-header">
+            <h3 class="ob-title">👋 Welcome to FinTrack Pro!</h3>
+            <p class="ob-subtitle">Let's get your dashboard set up. Follow these quick steps to get a full view of your financial health.</p>
+          </div>
+
+          <div class="ob-progress-wrap">
+            <div class="ob-progress-info">
+              <span>Setup Progress</span>
+              <span class="ob-progress-pct">{{ onboardingProgress() }} of 4 steps completed ({{ onboardingProgress() * 25 }}%)</span>
+            </div>
+            <div class="ob-progress-track">
+              <div class="ob-progress-fill" [style.width.%]="onboardingProgress() * 25"></div>
+            </div>
+          </div>
+
+          <div class="ob-list">
+            <!-- Step 1: Add Account -->
+            <div class="ob-item" [class.completed]="hasAccounts()">
+              <div class="ob-item-content">
+                <div class="ob-icon-wrapper">🏦</div>
+                <div class="ob-text-wrap">
+                  <span class="ob-item-title">Add your first account</span>
+                  <span class="ob-item-desc">Create checkings, savings or credit cards</span>
+                </div>
+              </div>
+              @if (hasAccounts()) {
+                <div class="ob-check-mark">✓</div>
+              } @else {
+                <a routerLink="/accounts" class="ob-action-link">Add →</a>
+              }
+            </div>
+
+            <!-- Step 2: Log Transaction -->
+            <div class="ob-item" [class.completed]="hasTransactions()">
+              <div class="ob-item-content">
+                <div class="ob-icon-wrapper">⚡</div>
+                <div class="ob-text-wrap">
+                  <span class="ob-item-title">Log a transaction</span>
+                  <span class="ob-item-desc">Record an income or expense transaction</span>
+                </div>
+              </div>
+              @if (hasTransactions()) {
+                <div class="ob-check-mark">✓</div>
+              } @else {
+                <a routerLink="/quick-log" class="ob-action-link">Log →</a>
+              }
+            </div>
+
+            <!-- Step 3: Set Budget -->
+            <div class="ob-item" [class.completed]="hasBudgets()">
+              <div class="ob-item-content">
+                <div class="ob-icon-wrapper">🎯</div>
+                <div class="ob-text-wrap">
+                  <span class="ob-item-title">Set a category budget</span>
+                  <span class="ob-item-desc">Control outflows with a monthly ceiling</span>
+                </div>
+              </div>
+              @if (hasBudgets()) {
+                <div class="ob-check-mark">✓</div>
+              } @else {
+                <a routerLink="/budgets" class="ob-action-link">Set →</a>
+              }
+            </div>
+
+            <!-- Step 4: Add Recurring Bill -->
+            <div class="ob-item" [class.completed]="hasSchedules()">
+              <div class="ob-item-content">
+                <div class="ob-icon-wrapper">📅</div>
+                <div class="ob-text-wrap">
+                  <span class="ob-item-title">Schedule a recurring bill</span>
+                  <span class="ob-item-desc">Track subscriptions & payments easily</span>
+                </div>
+              </div>
+              @if (hasSchedules()) {
+                <div class="ob-check-mark">✓</div>
+              } @else {
+                <a routerLink="/budgets" class="ob-action-link">Schedule →</a>
+              }
+            </div>
           </div>
         </div>
-      </div>
+      }
+
+      <!-- Month comparison bar -->
+      @if (settingsService.dashboardWidgets().monthComparison) {
+        <div class="month-bar">
+          <div class="month-stat">
+            <span class="ms-label">This Month</span>
+            <span class="ms-value text-income">+{{ thisMonthIncome() | currencyFormat }}</span>
+            <span class="ms-value text-expense">-{{ thisMonthExpenses() | currencyFormat }}</span>
+            <a routerLink="/insights" [queryParams]="{ mode: 'this-month' }" class="ms-link">View Insights →</a>
+          </div>
+          <div class="month-divider"></div>
+          <div class="month-stat">
+            <span class="ms-label">Last Month</span>
+            <span class="ms-value text-income">+{{ lastMonthIncome() | currencyFormat }}</span>
+            <span class="ms-value text-expense">-{{ lastMonthExpenses() | currencyFormat }}</span>
+            <a routerLink="/insights" [queryParams]="{ mode: 'last-month' }" class="ms-link">View Insights →</a>
+          </div>
+          <div class="month-divider"></div>
+          <div class="month-stat">
+            <span class="ms-label">Expense Change</span>
+            @if (lastMonthExpenses() === 0) {
+              <span class="ms-value text-muted">No prior data</span>
+            } @else {
+              <span class="ms-value"
+                    [class.text-income]="expenseChange() <= 0"
+                    [class.text-expense]="expenseChange() > 0">
+                {{ expenseChange() > 0 ? '▲' : '▼' }}
+                {{ Math.min(Math.abs(expenseChange()), 999) | number:'1.0-0' }}%
+              </span>
+            }
+          </div>
+          <div class="month-divider"></div>
+          <div class="month-stat">
+            <span class="ms-label">Health Score</span>
+            <div class="health-score" [class.good]="healthScore() >= 70" [class.ok]="healthScore() >= 40 && healthScore() < 70" [class.bad]="healthScore() < 40">
+              <span class="hs-num">{{ healthScore() }}</span>
+              <span class="hs-label">/100</span>
+            </div>
+          </div>
+        </div>
+      }
 
       <!-- System Alerts & Auditing -->
-      <app-anomaly-detector></app-anomaly-detector>
+      @if (settingsService.dashboardWidgets().anomalyDetector) {
+        <app-anomaly-detector></app-anomaly-detector>
+      }
 
       <!-- Summary Cards -->
-      <div class="summary-grid">
-        <div class="summary-card income-card">
-          <div class="summary-icon">📈</div>
-          <div class="summary-info">
-            <span class="summary-label">Total Income</span>
-            <span class="summary-value text-income">{{ currentMonthSummary().totalIncome | currencyFormat }}</span>
-            <span class="summary-sub">{{ currentPeriod }}</span>
+      @if (settingsService.dashboardWidgets().summaryGrid) {
+        <div class="summary-grid">
+          <div class="summary-card income-card">
+            <div class="summary-icon">📈</div>
+            <div class="summary-info">
+              <span class="summary-label">Total Income</span>
+              <span class="summary-value text-income">{{ currentMonthSummary().totalIncome | currencyFormat }}</span>
+              <span class="summary-sub">{{ currentPeriod }}</span>
+            </div>
+          </div>
+          <div class="summary-card expense-card">
+            <div class="summary-icon">📉</div>
+            <div class="summary-info">
+              <span class="summary-label">Total Expenses</span>
+              <span class="summary-value text-expense">{{ currentMonthSummary().totalExpenses | currencyFormat }}</span>
+              <span class="summary-sub">{{ currentPeriod }}</span>
+            </div>
+          </div>
+          <div class="summary-card balance-card" [class.positive]="currentMonthSummary().netBalance >= 0" [class.negative]="currentMonthSummary().netBalance < 0">
+            <div class="summary-icon">{{ currentMonthSummary().netBalance >= 0 ? '💚' : '🔴' }}</div>
+            <div class="summary-info">
+              <span class="summary-label">Net Balance</span>
+              <span class="summary-value" [class.text-income]="currentMonthSummary().netBalance >= 0" [class.text-expense]="currentMonthSummary().netBalance < 0">
+                {{ currentMonthSummary().netBalance | currencyFormat }}
+              </span>
+              <span class="summary-sub">
+                {{ savingsRate() >= 0 ? savingsRate() + '% savings rate' : 'Spending deficit' }}
+              </span>
+            </div>
+          </div>
+          <div class="summary-card txn-card">
+            <div class="summary-icon">🔢</div>
+            <div class="summary-info">
+              <span class="summary-label">Transactions</span>
+              <span class="summary-value">{{ currentMonthSummary().transactionCount }}</span>
+              <span class="summary-sub">Avg: {{ currentMonthSummary().avgTransaction | currencyFormat }}</span>
+            </div>
           </div>
         </div>
-        <div class="summary-card expense-card">
-          <div class="summary-icon">📉</div>
-          <div class="summary-info">
-            <span class="summary-label">Total Expenses</span>
-            <span class="summary-value text-expense">{{ currentMonthSummary().totalExpenses | currencyFormat }}</span>
-            <span class="summary-sub">{{ currentPeriod }}</span>
-          </div>
-        </div>
-        <div class="summary-card balance-card" [class.positive]="currentMonthSummary().netBalance >= 0" [class.negative]="currentMonthSummary().netBalance < 0">
-          <div class="summary-icon">{{ currentMonthSummary().netBalance >= 0 ? '💚' : '🔴' }}</div>
-          <div class="summary-info">
-            <span class="summary-label">Net Balance</span>
-            <span class="summary-value" [class.text-income]="currentMonthSummary().netBalance >= 0" [class.text-expense]="currentMonthSummary().netBalance < 0">
-              {{ currentMonthSummary().netBalance | currencyFormat }}
-            </span>
-            <span class="summary-sub">
-              {{ savingsRate() >= 0 ? savingsRate() + '% savings rate' : 'Spending deficit' }}
-            </span>
-          </div>
-        </div>
-        <div class="summary-card txn-card">
-          <div class="summary-icon">🔢</div>
-          <div class="summary-info">
-            <span class="summary-label">Transactions</span>
-            <span class="summary-value">{{ currentMonthSummary().transactionCount }}</span>
-            <span class="summary-sub">Avg: {{ currentMonthSummary().avgTransaction | currencyFormat }}</span>
-          </div>
-        </div>
-      </div>
+      }
 
       <!-- Charts Row -->
-      <div class="charts-row">
-        <div class="card chart-card">
-          <div class="card-header"><span class="card-title">Income vs Expenses</span></div>
-          <div class="chart-container-sm"><canvas #doughnutChart></canvas></div>
+      @if (settingsService.dashboardWidgets().chartsRow) {
+        <div class="charts-row">
+          <div class="card chart-card">
+            <div class="card-header"><span class="card-title">Income vs Expenses</span></div>
+            <div class="chart-container-sm"><canvas #doughnutChart></canvas></div>
+          </div>
+          <div class="card chart-card chart-card-wide">
+            <div class="card-header"><span class="card-title">Monthly Trend ({{ currentYear }})</span></div>
+            <div class="chart-container"><canvas #barChart></canvas></div>
+          </div>
         </div>
-        <div class="card chart-card chart-card-wide">
-          <div class="card-header"><span class="card-title">Monthly Trend ({{ currentYear }})</span></div>
-          <div class="chart-container"><canvas #barChart></canvas></div>
-        </div>
-      </div>
+      }
 
       <!-- Bottom Row -->
-      <div class="bottom-row">
-        <!-- Recent Transactions -->
-        <div class="card recent-card">
+      @if (settingsService.dashboardWidgets().bottomRow || settingsService.dashboardWidgets().upcomingBills || settingsService.dashboardWidgets().categorySpend) {
+        <div class="bottom-row">
+          @if (settingsService.dashboardWidgets().bottomRow) {
+            <!-- Recent Transactions -->
+            <div class="card recent-card">
           <div class="card-header">
             <span class="card-title">Recent Transactions</span>
             <a routerLink="/transactions" class="btn btn-ghost btn-sm">View All</a>
@@ -163,7 +262,7 @@ Chart.register(...registerables);
                         [class.text-income]="txn.type === 'income'" 
                         [class.text-expense]="txn.type === 'expense'"
                         [class.text-accent]="txn.type === 'transfer'">
-                    {{ txn.type === 'income' ? '+' : txn.type === 'expense' ? '-' : '' }}{{ txn.amount | currencyFormat }}
+                    {{ txn.type === 'income' ? '+' : txn.type === 'expense' ? '-' : '' }}{{ txn.amount | currencyFormat:getAccountCurrencySymbol(txn.accountId) }}
                   </span>
                 </div>
               }
@@ -195,7 +294,7 @@ Chart.register(...registerables);
                 <span class="mini-acc-balance"
                       [class.text-income]="acc.type === 'asset' && balance >= 0"
                       [class.text-expense]="acc.type === 'liability' || balance < 0">
-                  {{ acc.type === 'asset' && balance < 0 ? '-' : '' }}{{ balance | currencyFormat }}
+                  {{ acc.type === 'asset' && balance < 0 ? '-' : '' }}{{ balance | currencyFormat:settingsService.getSymbol(acc.currency || 'USD') }}
                 </span>
               </div>
             }
@@ -305,46 +404,52 @@ Chart.register(...registerables);
             </div>
           }
         </div>
+      }
 
-        <!-- Upcoming Bills Widget -->
-        <div class="card dashboard-bills-card">
-          <div class="card-header">
-            <span class="card-title">Upcoming Bills</span>
-            <a routerLink="/bills-calendar" class="btn btn-ghost btn-sm">Calendar</a>
-          </div>
-          @if (recurringService.schedules().length === 0) {
-            <div class="empty-state">
-              <span class="empty-icon">📅</span>
-              <p>No schedules set</p>
-              <a routerLink="/bills-calendar" class="btn btn-primary btn-sm">Add Schedule</a>
+      @if (settingsService.dashboardWidgets().upcomingBills) {
+          <!-- Upcoming Bills Widget -->
+          <div class="card dashboard-bills-card">
+            <div class="card-header">
+              <span class="card-title">Upcoming Bills</span>
+              <a routerLink="/bills-calendar" class="btn btn-ghost btn-sm">Calendar</a>
             </div>
-          } @else {
-            <div class="dash-bill-list">
-              @for (schedule of recurringService.schedules().slice(0, 3); track schedule.id) {
-                <div class="dash-bill-item">
-                  <span class="db-icon">{{ schedule.type === 'transfer' ? '🔄' : getCategoryIcon(schedule.category) }}</span>
-                  <div class="db-details">
-                    <span class="db-desc">{{ schedule.description }}</span>
-                    <span class="db-date">Due: {{ formatDueDate(schedule.nextDueDate) }}</span>
+            @if (recurringService.schedules().length === 0) {
+              <div class="empty-state">
+                <span class="empty-icon">📅</span>
+                <p>No schedules set</p>
+                <a routerLink="/bills-calendar" class="btn btn-primary btn-sm">Add Schedule</a>
+              </div>
+            } @else {
+              <div class="dash-bill-list">
+                @for (schedule of recurringService.schedules().slice(0, 3); track schedule.id) {
+                  <div class="dash-bill-item">
+                    <span class="db-icon">{{ schedule.type === 'transfer' ? '🔄' : getCategoryIcon(schedule.category) }}</span>
+                    <div class="db-details">
+                      <span class="db-desc">{{ schedule.description }}</span>
+                      <span class="db-date">Due: {{ formatDueDate(schedule.nextDueDate) }}</span>
+                    </div>
+                    <span class="db-amount" [class.text-expense]="schedule.type === 'expense'" [class.text-income]="schedule.type === 'income'">
+                      {{ schedule.amount | currencyFormat:getAccountCurrencySymbol(schedule.accountId) }}
+                    </span>
                   </div>
-                  <span class="db-amount" [class.text-expense]="schedule.type === 'expense'" [class.text-income]="schedule.type === 'income'">
-                    {{ schedule.amount | currencyFormat }}
-                  </span>
-                </div>
-              }
-            </div>
-          }
-        </div>
+                }
+              </div>
+            }
+          </div>
+        }
 
-        <!-- Top Spending Pie -->
-        <div class="card category-card">
-          <div class="card-header"><span class="card-title">Top Spending</span></div>
-          <div class="chart-container-sm"><canvas #pieChart></canvas></div>
-        </div>
+        @if (settingsService.dashboardWidgets().categorySpend) {
+          <!-- Top Spending Pie -->
+          <div class="card category-card">
+            <div class="card-header"><span class="card-title">Top Spending</span></div>
+            <div class="chart-container-sm"><canvas #pieChart></canvas></div>
+          </div>
+        }
       </div>
+    }
 
       <!-- AI Smart Audit Banner -->
-      <div class="card ai-banner" *ngIf="aiAudit()">
+      <div class="card ai-banner" *ngIf="aiAudit() && settingsService.dashboardWidgets().aiAudit">
         <div class="ai-banner-header">
           <span class="ai-banner-title">🤖 AI Smart Financial Audit</span>
           <span class="ai-badge animate-pulse" [class.heuristic]="!aiAudit().isAiGenerated">
@@ -581,9 +686,191 @@ Chart.register(...registerables);
       .summary-grid { grid-template-columns: 1fr; }
       .month-bar { flex-direction: column; align-items: stretch; gap: 0.75rem; }
     }
+
+    /* Onboarding Card styling */
+    .onboarding-card {
+      background: linear-gradient(135deg, rgba(92, 107, 192, 0.12) 0%, rgba(30, 33, 48, 0.95) 50%, rgba(3, 169, 244, 0.05) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), var(--shadow-glow-blue);
+      position: relative;
+      overflow: hidden;
+      animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      transition: box-shadow 0.3s ease;
+    }
+    .onboarding-card:hover {
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.35), var(--shadow-glow-blue);
+    }
+    .onboarding-close-btn {
+      position: absolute;
+      top: 1rem;
+      right: 1.25rem;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.1rem;
+      transition: var(--transition);
+    }
+    .onboarding-close-btn:hover {
+      color: var(--text-primary);
+    }
+    .ob-header {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      text-align: left;
+    }
+    .ob-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0;
+    }
+    .ob-subtitle {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      margin: 0;
+    }
+    .ob-progress-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+    .ob-progress-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .ob-progress-pct {
+      color: var(--accent-blue-light);
+      font-weight: 700;
+    }
+    .ob-progress-track {
+      height: 6px;
+      background: var(--border);
+      border-radius: 100px;
+      overflow: hidden;
+    }
+    .ob-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-blue-light) 0%, var(--accent-cyan) 100%);
+      border-radius: 100px;
+      transition: width 0.4s ease;
+    }
+    .ob-list {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+    }
+    @media (max-width: 768px) {
+      .ob-list {
+        grid-template-columns: 1fr;
+      }
+    }
+    .ob-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 0.75rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      transition: var(--transition);
+    }
+    .ob-item:hover {
+      border-color: var(--border-light);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .ob-item.completed {
+      border-color: rgba(76, 175, 80, 0.2);
+      background: rgba(76, 175, 80, 0.03);
+    }
+    .ob-item-content {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-width: 0;
+      text-align: left;
+    }
+    .ob-icon-wrapper {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .ob-item.completed .ob-icon-wrapper {
+      background: rgba(76, 175, 80, 0.15);
+      border-color: rgba(76, 175, 80, 0.3);
+    }
+    .ob-text-wrap {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .ob-item-title {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ob-item.completed .ob-item-title {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+    .ob-item-desc {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ob-action-link {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--accent-blue-light);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.125rem;
+      flex-shrink: 0;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      transition: var(--transition);
+    }
+    .ob-action-link:hover {
+      background: rgba(92, 107, 192, 0.15);
+      color: #fff;
+    }
+    .ob-check-mark {
+      font-size: 0.9rem;
+      color: var(--accent-green);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
   `]
 })
 export class DashboardComponent implements OnInit, AfterViewInit {
+  settingsService = inject(SettingsService);
   txnService = inject(TransactionService);
   categoryService = inject(CategoryService);
   budgetService = inject(BudgetService);
@@ -593,6 +880,36 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   recurringService = inject(RecurringService);
 
   aiAudit = signal<any>(null);
+
+  constructor() {
+    effect(() => {
+      this.settingsService.themeName();
+      this.settingsService.accentColor();
+      setTimeout(() => this.updateCharts(), 100);
+    });
+  }
+
+  // Onboarding Checklist state
+  dismissOnboarding = signal(false);
+  
+  hasAccounts = computed(() => this.accountService.accounts().length > 0);
+  hasTransactions = computed(() => this.txnService.transactions().length > 0);
+  hasBudgets = computed(() => this.budgetService.budgets().length > 0);
+  hasSchedules = computed(() => this.recurringService.schedules().length > 0);
+
+  onboardingProgress = computed(() => {
+    let count = 0;
+    if (this.hasAccounts()) count++;
+    if (this.hasTransactions()) count++;
+    if (this.hasBudgets()) count++;
+    if (this.hasSchedules()) count++;
+    return count;
+  });
+
+  showOnboarding = computed(() => {
+    if (this.dismissOnboarding()) return false;
+    return this.onboardingProgress() < 4;
+  });
 
   @ViewChild('doughnutChart') doughnutRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('barChart') barRef!: ElementRef<HTMLCanvasElement>;
@@ -763,7 +1080,20 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     const acc = this.accountService.accounts().find(a => a.id === id);
     return acc ? acc.name : id;
   }
+  getAccountCurrencySymbol(accountId: string): string {
+    const acc = this.accountService.accounts().find(a => a.id === accountId);
+    return acc ? this.settingsService.getSymbol(acc.currency || 'USD') : this.settingsService.currencySymbol();
+  }
   formatDate(date: string) { return parseLocalDate(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+
+  private getChartTextColor() {
+    if (typeof window === 'undefined') return '#9fa8da';
+    return window.getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim() || '#9fa8da';
+  }
+  private getChartGridColor() {
+    if (typeof window === 'undefined') return 'rgba(46,50,80,0.3)';
+    return window.getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || 'rgba(46,50,80,0.3)';
+  }
 
   private initCharts() { this.initDoughnutChart(); this.initBarChart(); this.initPieChart(); }
   private updateCharts() { this.updateDoughnutChart(); this.updateBarChart(); this.updatePieChart(); }
@@ -774,7 +1104,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     this.doughnutChart = new Chart(this.doughnutRef.nativeElement, {
       type: 'doughnut',
       data: { labels: ['Income', 'Expenses'], datasets: [{ data: [s.totalIncome, s.totalExpenses], backgroundColor: ['rgba(76,175,80,0.8)', 'rgba(239,83,80,0.8)'], borderColor: ['#4caf50', '#ef5350'], borderWidth: 2 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#9fa8da', font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ` $${ctx.parsed.toLocaleString()}` } } }, cutout: '65%' }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: this.getChartTextColor(), font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ` $${ctx.parsed.toLocaleString()}` } } }, cutout: '65%' }
     });
   }
 
@@ -782,6 +1112,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     if (!this.doughnutChart) { this.initDoughnutChart(); return; }
     const s = this.currentMonthSummary();
     this.doughnutChart.data.datasets[0].data = [s.totalIncome, s.totalExpenses];
+    this.doughnutChart.options.plugins!.legend!.labels!.color = this.getChartTextColor();
     this.doughnutChart.update();
   }
 
@@ -795,7 +1126,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
         { label: 'Income', data: incomeData, backgroundColor: 'rgba(76,175,80,0.7)', borderColor: '#4caf50', borderWidth: 1, borderRadius: 4 },
         { label: 'Expenses', data: expenseData, backgroundColor: 'rgba(239,83,80,0.7)', borderColor: '#ef5350', borderWidth: 1, borderRadius: 4 }
       ]},
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#9fa8da', font: { size: 11 } } }, tooltip: { callbacks: { label: (ctx: any) => ` $${ctx.parsed.y?.toLocaleString() ?? 0}` } } }, scales: { x: { ticks: { color: '#9fa8da' }, grid: { color: 'rgba(46,50,80,0.5)' } }, y: { ticks: { color: '#9fa8da', callback: (v: any) => `$${Number(v).toLocaleString()}` }, grid: { color: 'rgba(46,50,80,0.5)' } } } }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: this.getChartTextColor(), font: { size: 11 } } }, tooltip: { callbacks: { label: (ctx: any) => ` $${ctx.parsed.y?.toLocaleString() ?? 0}` } } }, scales: { x: { ticks: { color: this.getChartTextColor() }, grid: { color: this.getChartGridColor() } }, y: { ticks: { color: this.getChartTextColor(), callback: (v: any) => `$${Number(v).toLocaleString()}` }, grid: { color: this.getChartGridColor() } } } }
     });
   }
 
@@ -804,13 +1135,17 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     const { incomeData, expenseData } = this.getMonthlyData();
     this.barChart.data.datasets[0].data = incomeData;
     this.barChart.data.datasets[1].data = expenseData;
+    this.barChart.options.plugins!.legend!.labels!.color = this.getChartTextColor();
+    this.barChart.options.scales!['x']!.ticks!.color = this.getChartTextColor();
+    this.barChart.options.scales!['x']!.grid!.color = this.getChartGridColor();
+    this.barChart.options.scales!['y']!.ticks!.color = this.getChartTextColor();
+    this.barChart.options.scales!['y']!.grid!.color = this.getChartGridColor();
     this.barChart.update();
   }
 
   private getMonthlyData() {
     const incomeData = Array(12).fill(0);
     const expenseData = Array(12).fill(0);
-    // Use postedNormalizedTransactions to exclude future-dated recurring entries from the bar chart and ensure correct currencies
     this.txnService.postedNormalizedTransactions().forEach(t => {
       const m = parseLocalDate(t.date).getMonth();
       if (t.type === 'income') {
@@ -828,7 +1163,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     this.pieChart = new Chart(this.pieRef.nativeElement, {
       type: 'pie',
       data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 1, borderColor: 'var(--bg-card)' }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#9fa8da', font: { size: 10 }, boxWidth: 12 } }, tooltip: { callbacks: { label: ctx => ` $${ctx.parsed.toLocaleString()}` } } } }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: this.getChartTextColor(), font: { size: 10 }, boxWidth: 12 } }, tooltip: { callbacks: { label: ctx => ` $${ctx.parsed.toLocaleString()}` } } } }
     });
   }
 
@@ -838,6 +1173,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
     this.pieChart.data.labels = labels;
     this.pieChart.data.datasets[0].data = data;
     (this.pieChart.data.datasets[0] as any).backgroundColor = colors;
+    this.pieChart.options.plugins!.legend!.labels!.color = this.getChartTextColor();
     this.pieChart.update();
   }
 
