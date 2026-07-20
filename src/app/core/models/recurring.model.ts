@@ -24,4 +24,5 @@ export interface DetectedBill {
   startDate: string;
   nextDueDate: string;
   matchCount: number;
+  confidence?: 'high' | 'medium' | 'low';
 }

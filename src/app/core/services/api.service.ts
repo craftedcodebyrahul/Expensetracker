@@ -330,6 +330,26 @@ export class ApiService {
     return this.http.get<ApiResponse<DetectedBill[]>>(`${this.baseUrl}/recurring/detect`);
   }
 
+  dismissRecurringBill(description: string): Observable<ApiResponse<void>> {
+    return this.http.post<ApiResponse<void>>(`${this.baseUrl}/recurring/dismiss`, { description });
+  }
+
+  undismissRecurringBill(description: string): Observable<ApiResponse<void>> {
+    return this.http.post<ApiResponse<void>>(`${this.baseUrl}/recurring/undismiss`, { description });
+  }
+
+  getSavingsAdvisor(): Observable<ApiResponse<any>> {
+    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/recurring/savings-advisor`);
+  }
+
+  executeSavingsTransfer(fromAccountId: string, toAccountId: string, amount: number, type: 'savings' | 'topup'): Observable<ApiResponse<any>> {
+    return this.http.post<ApiResponse<any>>(`${this.baseUrl}/recurring/execute-transfer`, { fromAccountId, toAccountId, amount, type });
+  }
+
+  allocateSavingsToGoal(goalId: string, fromAccountId: string, amount: number): Observable<ApiResponse<any>> {
+    return this.http.post<ApiResponse<any>>(`${this.baseUrl}/goals/allocate-savings`, { goalId, fromAccountId, amount });
+  }
+
   // ── AI Coach & Audits ──────────────────────────────────────────────────────
 
   postAiCoach(message: string, history: any[]): Observable<ApiResponse<{ reply: string }>> {

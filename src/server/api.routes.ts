@@ -368,6 +368,23 @@ export function createApiRouter(): Router {
     } catch (e) { fail(res, e); }
   });
 
+  router.post('/goals/allocate-savings', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { goalId, fromAccountId, amount } = req.body;
+      if (!goalId || !fromAccountId || !amount) {
+        fail(res, 'Missing required fields: goalId, fromAccountId, amount', 400);
+        return;
+      }
+      const result = await dbService.allocateSavingsToGoal(
+        getUserId(req),
+        goalId,
+        fromAccountId,
+        parseFloat(amount)
+      );
+      ok(res, result, 'Savings allocated to goal successfully');
+    } catch (e) { fail(res, e); }
+  });
+
   // ── Exchange Rates ──────────────────────────────────────────────────────────
 
   router.get('/exchange-rates', async (req: Request, res: Response): Promise<void> => {
@@ -581,6 +598,45 @@ ${audit.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n
   router.get('/recurring/detect', async (req: Request, res: Response): Promise<void> => {
     try {
       ok(res, await dbService.detectRecurringBills(getUserId(req)));
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/recurring/dismiss', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { description } = req.body;
+      if (!description) { fail(res, 'Missing description', 400); return; }
+      ok(res, await dbService.dismissRecurringBill(getUserId(req), description), 'Bill suggestion dismissed');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/recurring/undismiss', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { description } = req.body;
+      if (!description) { fail(res, 'Missing description', 400); return; }
+      ok(res, await dbService.undismissRecurringBill(getUserId(req), description), 'Bill suggestion restored');
+    } catch (e) { fail(res, e); }
+  });
+
+  router.get('/recurring/savings-advisor', async (req: Request, res: Response): Promise<void> => {
+    try {
+      ok(res, await dbService.getSavingsAdvisor(getUserId(req)));
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/recurring/execute-transfer', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { fromAccountId, toAccountId, amount, type } = req.body;
+      if (!fromAccountId || !toAccountId || !amount || !type) {
+        fail(res, 'Missing required transfer fields', 400); return;
+      }
+      const txn = await dbService.executeSavingsTransfer(
+        getUserId(req),
+        fromAccountId,
+        toAccountId,
+        parseFloat(amount),
+        type
+      );
+      ok(res, txn, 'Transfer executed successfully');
     } catch (e) { fail(res, e); }
   });
 

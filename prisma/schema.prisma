@@ -32,6 +32,7 @@ model User {
   bankImports        BankImport[]
   settings           Settings?
   goals              Goal[]
+  dismissedBills     DismissedBill[]
 
   @@map("users")
 }
@@ -263,3 +264,18 @@ model StockOrder {
   @@index([accountId])
   @@map("stock_orders")
 }
+
+// ── DISMISSED_BILLS ───────────────────────────────────────────────────────────
+
+model DismissedBill {
+  id          String   @id
+  userId      String   @map("user_id")
+  description String   // Stores the normalized description to ignore suggestions
+  createdAt   String   @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, description])
+  @@map("dismissed_bills")
+}
+

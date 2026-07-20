@@ -3008,6 +3008,14 @@ Ensure the response contains ONLY the valid JSON matching the schema, with no ma
       existingSchedules.map(s => this.normalizeDescription(s.description))
     );
 
+    // Fetch user dismissed suggestions
+    const dismissed = await prisma.dismissedBill.findMany({
+      where: { userId }
+    });
+    const dismissedNormalized = new Set(
+      dismissed.map((d: any) => d.description)
+    );
+
     const categories = await this.getCategories(userId);
     const categoryMap = new Map<string, string>();
     categories.forEach(c => categoryMap.set(c.id, c.name.toLowerCase()));
@@ -3036,9 +3044,18 @@ Ensure the response contains ONLY the valid JSON matching the schema, with no ma
       'mortgage', 'automative loan', 'car payment'
     ];
 
+    const highConfidenceSubKeywords = [
+      'netflix', 'spotify', 'youtube', 'disney', 'prime', 'icloud', 'apple', 'google', 'adobe', 'microsoft', 'zoom', 'github', 'chatgpt', 'openai'
+    ];
+
     const matchesKeyword = (desc: string): boolean => {
       const lower = desc.toLowerCase();
       return recurringKeywords.some(kw => lower.includes(kw));
+    };
+
+    const isHighConfidenceSub = (desc: string): boolean => {
+      const lower = desc.toLowerCase();
+      return highConfidenceSubKeywords.some(kw => lower.includes(kw));
     };
 
     const matchesCategory = (catId: string, catName?: string): boolean => {
@@ -3053,6 +3070,7 @@ Ensure the response contains ONLY the valid JSON matching the schema, with no ma
 
     for (const [normDesc, txns] of Object.entries(groups)) {
       if (existingNormalized.has(normDesc)) continue;
+      if (dismissedNormalized.has(normDesc)) continue;
 
       let suggestionAdded = false;
 
@@ -3129,6 +3147,7 @@ Ensure the response contains ONLY the valid JSON matching the schema, with no ma
                 startDate: latestTxn.date,
                 nextDueDate: nextDue,
                 matchCount: txns.length,
+                confidence: 'high',
               });
               suggestionAdded = true;
             }
@@ -3140,24 +3159,375 @@ Ensure the response contains ONLY the valid JSON matching the schema, with no ma
       if (!suggestionAdded && txns.length >= 1) {
         const latestTxn = txns[txns.length - 1];
         const catName = categoryMap.get(latestTxn.category);
-        if (matchesKeyword(latestTxn.description) || matchesCategory(latestTxn.category, catName)) {
-          const nextDue = addDays(latestTxn.date, 30);
-          suggestions.push({
-            description: latestTxn.description,
-            type: latestTxn.type,
-            amount: latestTxn.amount,
-            category: latestTxn.category,
-            accountId: latestTxn.accountId,
-            frequency: 'monthly',
-            startDate: latestTxn.date,
-            nextDueDate: nextDue,
-            matchCount: txns.length,
-          });
+        
+        const hasKeywordMatch = matchesKeyword(latestTxn.description);
+        const hasCategoryMatch = matchesCategory(latestTxn.category, catName);
+        
+        if (hasKeywordMatch || hasCategoryMatch) {
+          if (txns.length === 1) {
+            if (isHighConfidenceSub(latestTxn.description)) {
+              const nextDue = addDays(latestTxn.date, 30);
+              suggestions.push({
+                description: latestTxn.description,
+                type: latestTxn.type,
+                amount: latestTxn.amount,
+                category: latestTxn.category,
+                accountId: latestTxn.accountId,
+                frequency: 'monthly',
+                startDate: latestTxn.date,
+                nextDueDate: nextDue,
+                matchCount: txns.length,
+                confidence: 'low',
+              });
+            }
+          } else {
+            const nextDue = addDays(latestTxn.date, 30);
+            suggestions.push({
+              description: latestTxn.description,
+              type: latestTxn.type,
+              amount: latestTxn.amount,
+              category: latestTxn.category,
+              accountId: latestTxn.accountId,
+              frequency: 'monthly',
+              startDate: latestTxn.date,
+              nextDueDate: nextDue,
+              matchCount: txns.length,
+              confidence: 'medium',
+            });
+          }
         }
       }
     }
 
     return suggestions;
+  }
+
+  async dismissRecurringBill(userId: string, description: string): Promise<boolean> {
+    const norm = this.normalizeDescription(description);
+    if (!norm) return false;
+    
+    const existing = await prisma.dismissedBill.findFirst({
+      where: { userId, description: norm }
+    });
+    if (existing) return true;
+
+    await prisma.dismissedBill.create({
+      data: {
+        id: uuidv4(),
+        userId,
+        description: norm,
+        createdAt: new Date().toISOString()
+      }
+    });
+    return true;
+  }
+
+  async undismissRecurringBill(userId: string, description: string): Promise<boolean> {
+    const norm = this.normalizeDescription(description);
+    if (!norm) return false;
+
+    await prisma.dismissedBill.deleteMany({
+      where: { userId, description: norm }
+    });
+    return true;
+  }
+
+  async getSavingsAdvisor(userId: string): Promise<any> {
+    const accounts = await this.getAccounts(userId);
+    const transactionsRows = await prisma.transaction.findMany({ where: { userId } });
+    const transactions = transactionsRows.map(rowToTransaction);
+    const schedules = await prisma.recurringSchedule.findMany({
+      where: { userId, isActive: 1 }
+    });
+
+    // 1. Calculate running balances
+    const balances: Record<string, number> = {};
+    accounts.forEach((a: any) => {
+      balances[a.id] = a.initialBalance ?? 0;
+    });
+
+    transactions.forEach((t: any) => {
+      if (t.type === 'income') {
+        const acc = accounts.find((a: any) => a.id === t.accountId);
+        if (acc?.type === 'liability') {
+          balances[t.accountId] = (balances[t.accountId] || 0) - t.amount;
+        } else {
+          balances[t.accountId] = (balances[t.accountId] || 0) + t.amount;
+        }
+      } else if (t.type === 'expense') {
+        const acc = accounts.find((a: any) => a.id === t.accountId);
+        if (acc?.type === 'liability') {
+          balances[t.accountId] = (balances[t.accountId] || 0) + t.amount;
+        } else {
+          balances[t.accountId] = (balances[t.accountId] || 0) - t.amount;
+        }
+      } else if (t.type === 'transfer') {
+        const fromAcc = accounts.find((a: any) => a.id === t.accountId);
+        const toAcc = accounts.find((a: any) => a.id === t.toAccountId);
+        if (fromAcc?.type === 'liability') {
+          balances[t.accountId] = (balances[t.accountId] || 0) + t.amount;
+        } else {
+          balances[t.accountId] = (balances[t.accountId] || 0) - t.amount;
+        }
+        if (t.toAccountId) {
+          if (toAcc?.type === 'liability') {
+            balances[t.toAccountId] = (balances[t.toAccountId] || 0) - t.amount;
+          } else {
+            balances[t.toAccountId] = (balances[t.toAccountId] || 0) + t.amount;
+          }
+        }
+      }
+    });
+
+    // 2. Identify checking and savings accounts
+    const analyzedAccounts = accounts.map((a: any) => {
+      const isSavings = a.name.toLowerCase().includes('savings') || a.name.toLowerCase().includes('save') || a.isInvestment === 1;
+      return {
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        currency: a.currency,
+        isSavings,
+        balance: Math.round((balances[a.id] ?? 0) * 100) / 100
+      };
+    });
+
+    // 3. Process upcoming schedules (lookahead: 30 days)
+    const today = new Date();
+    const lookaheadDate = new Date();
+    lookaheadDate.setDate(today.getDate() + 30);
+
+    const upcomingBills = schedules.filter((s: any) => {
+      if (s.type !== 'expense') return false;
+      const due = new Date(s.nextDueDate + 'T00:00:00');
+      return due >= today && due <= lookaheadDate;
+    });
+
+    // 4. Calculate projected daily discretionary spending per account based on last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+    const recentTxns = transactions.filter((t: any) => {
+      return t.type === 'expense' && t.date >= thirtyDaysAgoStr && !t.isRecurring;
+    });
+
+    const dailySpendingMap: Record<string, number> = {};
+    recentTxns.forEach((t: any) => {
+      dailySpendingMap[t.accountId] = (dailySpendingMap[t.accountId] || 0) + t.amount;
+    });
+    // Convert to daily rate
+    Object.keys(dailySpendingMap).forEach(accId => {
+      dailySpendingMap[accId] = dailySpendingMap[accId] / 30;
+    });
+
+    // 5. Analyze each account's safe savings and shortfalls
+    const accountDetails = analyzedAccounts.map((acc: any) => {
+      const accBills = upcomingBills.filter((s: any) => s.accountId === acc.id).map((s: any) => {
+        const due = new Date(s.nextDueDate + 'T00:00:00');
+        const diffMs = due.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        return {
+          id: s.id,
+          description: s.description,
+          amount: s.amount,
+          nextDueDate: s.nextDueDate,
+          daysRemaining: diffDays
+        };
+      });
+
+      const billsTotal = accBills.reduce((sum: number, b: any) => sum + b.amount, 0);
+      const dailyRate = dailySpendingMap[acc.id] || 0;
+      const projectedSpending = Math.round(dailyRate * 15 * 100) / 100;
+      const buffer = 100; // static safety buffer of 100 CAD
+      const currentBalance = acc.balance;
+
+      let safeToSave = 0;
+      let shortfall = 0;
+
+      if (!acc.isSavings && acc.type === 'asset') {
+        const reserved = billsTotal + projectedSpending + buffer;
+        if (currentBalance > reserved) {
+          safeToSave = Math.round((currentBalance - reserved) * 100) / 100;
+        } else {
+          shortfall = Math.round((reserved - currentBalance) * 100) / 100;
+        }
+      }
+
+      return {
+        ...acc,
+        upcomingBills: accBills,
+        upcomingBillsTotal: Math.round(billsTotal * 100) / 100,
+        projectedSpending,
+        safetyBuffer: buffer,
+        safeToSave,
+        shortfall
+      };
+    });
+
+    // 6. Generate Recommendations
+    const globalRecommendations: any[] = [];
+
+    const shortfalls = accountDetails.filter(a => a.shortfall > 0);
+    const surpluses = accountDetails.filter(a => a.safeToSave > 0);
+    const savingsAccounts = accountDetails.filter(a => a.isSavings);
+
+    shortfalls.forEach(acc => {
+      const earliestBill = acc.upcomingBills.sort((a: any, b: any) => a.daysRemaining - b.daysRemaining)[0];
+      const billMsg = earliestBill 
+        ? `due in ${earliestBill.daysRemaining} days (${earliestBill.description})`
+        : `due soon`;
+
+      const source = surpluses.find(s => s.balance > acc.shortfall) || 
+                     accountDetails.find(s => s.isSavings && s.balance > acc.shortfall) ||
+                     surpluses[0] ||
+                     accountDetails.find(s => s.isSavings && s.balance > 0);
+      if (source) {
+        globalRecommendations.push({
+          type: 'warning',
+          title: `Shortfall Risk: ${acc.name}`,
+          message: `Warning: ${acc.name} has a projected shortfall of $${acc.shortfall} to cover upcoming bills and basic spending. Transfer $${acc.shortfall} from ${source.name} to avoid a bounced payment!`,
+          action: {
+            fromAccountId: source.id,
+            toAccountId: acc.id,
+            amount: acc.shortfall,
+            type: 'topup'
+          }
+        });
+      } else {
+        globalRecommendations.push({
+          type: 'warning',
+          title: `Shortfall Risk: ${acc.name}`,
+          message: `Warning: ${acc.name} has a projected shortfall of $${acc.shortfall} to cover upcoming bills ${billMsg}. Deposit cash or top up soon!`,
+        });
+      }
+    });
+
+    surpluses.forEach(acc => {
+      const targetSavings = savingsAccounts[0];
+      if (targetSavings) {
+        globalRecommendations.push({
+          type: 'success',
+          title: `Safe to Save: ${acc.name}`,
+          message: `You have $${acc.safeToSave} in excess cash sitting in ${acc.name} that won't be needed for bills or daily spending in the next 15 days. Move it to ${targetSavings.name}!`,
+          action: {
+            fromAccountId: acc.id,
+            toAccountId: targetSavings.id,
+            amount: acc.safeToSave,
+            type: 'savings'
+          }
+        });
+      } else {
+        globalRecommendations.push({
+          type: 'success',
+          title: `Safe to Save: ${acc.name}`,
+          message: `You have $${acc.safeToSave} in excess cash sitting in ${acc.name} that won't be needed for bills or daily spending in the next 15 days. Move it to a savings goal!`,
+        });
+      }
+    });
+
+    if (globalRecommendations.length === 0) {
+      globalRecommendations.push({
+        type: 'info',
+        title: 'Perfect Cash Flow Balance',
+        message: 'Your accounts are perfectly balanced. All checking accounts have enough cash to cover the next 15 days of upcoming bills and discretionary spending.'
+      });
+    }
+
+    return {
+      accounts: accountDetails,
+      globalRecommendations
+    };
+  }
+
+  async executeSavingsTransfer(
+    userId: string,
+    fromAccountId: string,
+    toAccountId: string,
+    amount: number,
+    type: 'savings' | 'topup'
+  ): Promise<any> {
+    const fromAcc = await prisma.account.findFirst({ where: { id: fromAccountId, userId } });
+    const toAcc = await prisma.account.findFirst({ where: { id: toAccountId, userId } });
+    if (!fromAcc || !toAcc) throw new Error('Invalid accounts');
+
+    const now = new Date().toISOString();
+    const desc = type === 'savings' 
+      ? `Smart Savings Allocation: ${fromAcc.name} ➔ ${toAcc.name}`
+      : `Smart Balance Topup: ${fromAcc.name} ➔ ${toAcc.name}`;
+
+    const txn = await prisma.transaction.create({
+      data: {
+        id: uuidv4(),
+        userId,
+        type: 'transfer',
+        amount,
+        description: desc,
+        date: now.split('T')[0],
+        accountId: fromAccountId,
+        toAccountId: toAccountId,
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    return rowToTransaction(txn);
+  }
+
+  async allocateSavingsToGoal(
+    userId: string,
+    goalId: string,
+    fromAccountId: string,
+    amount: number
+  ): Promise<any> {
+    const goal = await prisma.goal.findFirst({ where: { id: goalId, userId } });
+    if (!goal) throw new Error('Goal not found');
+
+    const fromAcc = await prisma.account.findFirst({ where: { id: fromAccountId, userId } });
+    if (!fromAcc) throw new Error('Source account not found');
+
+    let toAccountId = goal.accountId;
+    if (!toAccountId) {
+      const allAccs = await this.getAccounts(userId);
+      const savingsAcc = allAccs.find((a: any) => a.name.toLowerCase().includes('savings') || a.name.toLowerCase().includes('save') || a.isInvestment === 1);
+      if (savingsAcc) {
+        toAccountId = savingsAcc.id;
+      } else {
+        toAccountId = fromAccountId;
+      }
+    }
+
+    const toAcc = await prisma.account.findFirst({ where: { id: toAccountId, userId } });
+    if (!toAcc) throw new Error('Target savings account not found');
+
+    const now = new Date().toISOString();
+
+    const txn = await prisma.transaction.create({
+      data: {
+        id: uuidv4(),
+        userId,
+        type: 'transfer',
+        amount,
+        description: `Goal Allocation: ${goal.name}`,
+        date: now.split('T')[0],
+        accountId: fromAccountId,
+        toAccountId,
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now
+      }
+    });
+
+    const updatedGoal = await prisma.goal.update({
+      where: { id: goalId },
+      data: { currentAmount: goal.currentAmount + amount }
+    });
+
+    return {
+      transaction: rowToTransaction(txn),
+      goal: updatedGoal
+    };
   }
 
 

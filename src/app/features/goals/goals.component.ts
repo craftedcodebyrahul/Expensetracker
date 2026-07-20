@@ -11,6 +11,7 @@ import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { Goal } from '../../core/models';
 import { SettingsService } from '../../core/services/settings.service';
+import { RecurringService } from '../../core/services/recurring.service';
 
 @Component({
   selector: 'app-goals',
@@ -25,6 +26,49 @@ import { SettingsService } from '../../core/services/settings.service';
     </app-header>
 
     <div class="goals-page">
+
+      <!-- Smart Savings Advisor Panel -->
+      @if (recurringService.advisorData(); as advisor) {
+        <!-- Shortfall warnings -->
+        @for (rec of advisor.globalRecommendations; track rec.title) {
+          @if (rec.type === 'warning') {
+            <div class="advisor-alert warning card" style="margin-bottom: 1rem; border: 1px solid var(--accent-rose); background: rgba(244, 63, 94, 0.08); padding: 1rem; border-radius: var(--radius-lg);">
+              <div class="alert-header font-bold" style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-expense); font-size: 0.9rem;">
+                <span>⚠️</span>
+                <span>{{ rec.title }}</span>
+              </div>
+              <p class="alert-body text-muted" style="margin: 0.25rem 0 0 1.5rem; font-size: 0.8rem; line-height: 1.4;">
+                {{ rec.message }}
+              </p>
+            </div>
+          }
+        }
+
+        <!-- Safe to Save targets -->
+        @for (acc of advisor.accounts; track acc.id) {
+          @if (acc.safeToSave > 0 && goalService.goals().length > 0) {
+            <div class="advisor-alert success card" style="margin-bottom: 1rem; border: 1px solid var(--accent-emerald); background: rgba(16, 185, 129, 0.08); padding: 1rem; border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 0.5rem;">
+              <div class="alert-header font-bold" style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-income); font-size: 0.9rem;">
+                <span>🔮</span>
+                <span>Smart Savings Advisor: Free Cash Found!</span>
+              </div>
+              <p class="alert-body text-muted" style="margin: 0; font-size: 0.8rem; line-height: 1.4;">
+                You have <strong>{{ acc.safeToSave | currencyFormat }}</strong> sitting free in <strong>{{ acc.name }}</strong> that is not needed for upcoming bills or discretionary spending in the next 15 days. Allocate it directly to one of your active goals!
+              </p>
+              
+              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                @for (goal of goalService.goals(); track goal.id) {
+                  @if (goal.currentAmount < goal.targetAmount) {
+                    <button class="btn btn-xs btn-primary btn-rec-action" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" [disabled]="allocating()" (click)="allocateSurplus(goal.id, acc.id, acc.safeToSave)">
+                      ⚡ Save to {{ goal.name }}
+                    </button>
+                  }
+                }
+              </div>
+            </div>
+          }
+        }
+      }
 
       <!-- Goals Overview summary statistics -->
       <div class="overview-bar card">
@@ -486,9 +530,12 @@ export class GoalsComponent implements OnInit {
   accountService = inject(AccountService);
   txnService = inject(TransactionService);
   settingsService = inject(SettingsService);
+  recurringService = inject(RecurringService);
   private toast = inject(ToastService);
   private api = inject(ApiService);
   private router = inject(Router);
+
+  allocating = signal(false);
 
   showBuddyModal = signal(false);
   loadingBuddy = signal(false);
@@ -567,6 +614,24 @@ export class GoalsComponent implements OnInit {
     this.goalService.loadGoals().subscribe();
     this.accountService.loadAccounts().subscribe();
     this.txnService.loadTransactions().subscribe();
+    this.recurringService.loadAdvisorData().subscribe();
+  }
+
+  allocateSurplus(goalId: string, fromAccountId: string, amount: number) {
+    this.allocating.set(true);
+    this.goalService.allocateSavingsToGoal(goalId, fromAccountId, amount).subscribe({
+      next: () => {
+        this.allocating.set(false);
+        this.toast.success('Successfully allocated surplus to your goal!');
+        this.recurringService.loadAdvisorData().subscribe();
+        this.accountService.loadAccounts().subscribe();
+        this.txnService.loadTransactions().subscribe();
+      },
+      error: () => {
+        this.allocating.set(false);
+        this.toast.error('Failed to allocate savings to goal');
+      }
+    });
   }
 
   getPercentage(goal: Goal): number {

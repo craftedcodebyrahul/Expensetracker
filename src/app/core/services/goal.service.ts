@@ -58,4 +58,14 @@ export class GoalService {
       catchError(() => of(null))
     );
   }
+
+  allocateSavingsToGoal(goalId: string, fromAccountId: string, amount: number) {
+    return this.api.allocateSavingsToGoal(goalId, fromAccountId, amount).pipe(
+      tap(res => {
+        if (res.success) {
+          this.goals.update(gs => gs.map(g => g.id === goalId ? res.data.goal : g));
+        }
+      })
+    );
+  }
 }

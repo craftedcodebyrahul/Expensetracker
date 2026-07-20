@@ -11,6 +11,8 @@ export class RecurringService {
   readonly loading = signal(false);
   readonly detectedBills = signal<DetectedBill[]>([]);
   readonly detecting = signal(false);
+  readonly advisorData = signal<any>(null);
+  readonly loadingAdvisor = signal(false);
 
   loadDetectedBills() {
     this.detecting.set(true);
@@ -24,6 +26,52 @@ export class RecurringService {
       catchError(() => {
         this.detecting.set(false);
         return of(null);
+      })
+    );
+  }
+
+  dismissBill(description: string) {
+    return this.api.dismissRecurringBill(description).pipe(
+      tap(res => {
+        if (res.success) {
+          this.detectedBills.update(bills => bills.filter(b => b.description !== description));
+        }
+      })
+    );
+  }
+
+  undismissBill(description: string) {
+    return this.api.undismissRecurringBill(description).pipe(
+      tap(res => {
+        if (res.success) {
+          this.loadDetectedBills().subscribe();
+        }
+      })
+    );
+  }
+
+  loadAdvisorData() {
+    this.loadingAdvisor.set(true);
+    return this.api.getSavingsAdvisor().pipe(
+      tap(res => {
+        if (res.success) {
+          this.advisorData.set(res.data);
+        }
+        this.loadingAdvisor.set(false);
+      }),
+      catchError(() => {
+        this.loadingAdvisor.set(false);
+        return of(null);
+      })
+    );
+  }
+
+  executeTransferRecommendation(fromAccountId: string, toAccountId: string, amount: number, type: 'savings' | 'topup') {
+    return this.api.executeSavingsTransfer(fromAccountId, toAccountId, amount, type).pipe(
+      tap(res => {
+        if (res.success) {
+          this.loadAdvisorData().subscribe();
+        }
       })
     );
   }

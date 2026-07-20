@@ -27,9 +27,8 @@ interface CalendarCell {
     </app-header>
 
     <div class="calendar-page">
- 
       <!-- Smart Bill Detector panel -->
-      @if (recurringService.detectedBills().length > 0) {
+      @if (recurringService.detectedBills().length > 0 || lastDismissedDescription()) {
         <div class="smart-detector-card card">
           <div class="detector-header" (click)="toggleDetectorExpanded()" role="button" tabindex="0" (keydown.enter)="toggleDetectorExpanded()">
             <div class="detector-title font-bold">
@@ -38,13 +37,29 @@ interface CalendarCell {
             </div>
             <button class="btn btn-ghost btn-sm">{{ showDetectorDetails() ? 'Hide Suggestions ▲' : 'Review Suggestions ▼' }}</button>
           </div>
- 
+
+          @if (lastDismissedDescription()) {
+            <div class="undo-banner">
+              <span>Dismissed suggestion: <strong>{{ lastDismissedDescription() }}</strong>.</span>
+              <button class="btn btn-ghost btn-xs text-primary font-bold" (click)="undoLastDismiss($event)" style="padding: 2px 8px; border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius-sm); display: flex; align-items: center; gap: 4px;">
+                ↩️ Undo Dismissal
+              </button>
+            </div>
+          }
+
           @if (showDetectorDetails()) {
             <div class="detector-list">
               @for (bill of recurringService.detectedBills(); track bill.description) {
                 <div class="detector-item">
                   <div class="detector-item-info">
-                    <span class="item-name font-bold">{{ bill.description }}</span>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                      <span class="item-name font-bold">{{ bill.description }}</span>
+                      @if (bill.confidence) {
+                        <span class="badge-confidence" [class]="bill.confidence">
+                          {{ bill.confidence | titlecase }} Confidence
+                        </span>
+                      }
+                    </div>
                     <span class="item-meta text-muted">
                       {{ bill.frequency | titlecase }} · Category: {{ getCategoryName(bill.category) }} · (Charged {{ bill.matchCount }} times)
                     </span>
@@ -53,6 +68,9 @@ interface CalendarCell {
                     <span class="item-amount font-bold text-expense">-{{ bill.amount | currencyFormat }}</span>
                     <button class="btn btn-primary btn-sm btn-sync" (click)="syncDetectedBill(bill)">
                       🔄 Sync to Calendar
+                    </button>
+                    <button class="btn-dismiss" (click)="dismissSuggestion(bill.description, $event)" title="Dismiss Suggestion">
+                      ✕
                     </button>
                   </div>
                 </div>
@@ -438,7 +456,7 @@ interface CalendarCell {
     .detector-item-action {
       display: flex;
       align-items: center;
-      gap: 1.25rem;
+      gap: 0.875rem;
     }
     .item-amount {
       font-size: 1rem;
@@ -449,6 +467,210 @@ interface CalendarCell {
       display: flex;
       align-items: center;
       gap: 0.375rem;
+    }
+    .btn-dismiss {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      transition: all 0.2s ease;
+    }
+    .btn-dismiss:hover {
+      background: rgba(239, 83, 80, 0.15);
+      color: var(--accent-red);
+      transform: scale(1.1);
+    }
+    .badge-confidence {
+      font-size: 0.65rem;
+      padding: 0.15rem 0.4rem;
+      border-radius: var(--radius-sm, 4px);
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+    }
+    .badge-confidence.high {
+      background: rgba(76, 175, 80, 0.15);
+      color: #81c784;
+    }
+    .badge-confidence.medium {
+      background: rgba(255, 152, 0, 0.15);
+      color: #ffb74d;
+    }
+    .badge-confidence.low {
+      background: rgba(33, 150, 243, 0.15);
+      color: #64b5f6;
+    }
+    .undo-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+      border-radius: var(--radius-md);
+      padding: 0.5rem 1rem;
+      margin-top: 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .advisor-card {
+      background: linear-gradient(135deg, rgba(156,39,176,0.12) 0%, rgba(33,150,243,0.04) 100%);
+      border: 1px solid rgba(156, 39, 176, 0.25);
+      padding: 1rem 1.25rem;
+      border-radius: var(--radius-lg);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      display: flex;
+      flex-direction: column;
+    }
+    .advisor-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      outline: none;
+    }
+    .advisor-title {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      font-size: 0.9375rem;
+      color: var(--text-primary);
+    }
+    .advisor-sparkle {
+      font-size: 1.15rem;
+      animation: pulse 2s infinite;
+    }
+    .advisor-content {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      margin-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding-top: 1rem;
+    }
+    .advisor-accounts-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .advisor-acc-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 0.75rem 1rem;
+    }
+    .acc-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+    }
+    .acc-name {
+      color: var(--text-primary);
+    }
+    .acc-balance {
+      color: var(--text-muted);
+    }
+    .acc-allocation-bars {
+      height: 8px;
+      display: flex;
+      border-radius: 4px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.05);
+      margin: 0.25rem 0;
+    }
+    .alloc-bar-segment {
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+    .alloc-bar-segment.bills {
+      background: #ef5350; /* Red for bills */
+    }
+    .alloc-bar-segment.spending {
+      background: #ffb74d; /* Amber for discretionary */
+    }
+    .alloc-bar-segment.buffer {
+      background: #64b5f6; /* Blue for safety buffer */
+    }
+    .acc-allocation-legend {
+      display: flex;
+      flex-wrap: wrap;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-right: 0.25rem;
+      vertical-align: middle;
+    }
+    .legend-dot.bills { background: #ef5350; }
+    .legend-dot.spending { background: #ffb74d; }
+    .legend-dot.buffer { background: #64b5f6; }
+
+    .recommendations-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .rec-card {
+      display: flex;
+      gap: 0.75rem;
+      border-radius: var(--radius-md);
+      padding: 0.875rem 1rem;
+      border: 1px solid transparent;
+      align-items: flex-start;
+    }
+    .rec-card.rec-success {
+      background: rgba(76, 175, 80, 0.08);
+      border-color: rgba(76, 175, 80, 0.2);
+    }
+    .rec-card.rec-warning {
+      background: rgba(239, 83, 80, 0.08);
+      border-color: rgba(239, 83, 80, 0.2);
+    }
+    .rec-card.rec-info {
+      background: rgba(33, 150, 243, 0.08);
+      border-color: rgba(33, 150, 243, 0.2);
+    }
+    .rec-icon {
+      font-size: 1.15rem;
+      line-height: 1;
+    }
+    .rec-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      flex: 1;
+    }
+    .rec-title {
+      font-size: 0.875rem;
+      color: var(--text-primary);
+    }
+    .rec-message {
+      font-size: 0.75rem;
+      margin: 0;
+      line-height: 1.4;
+    }
+    .btn-rec-action {
+      align-self: flex-start;
+      margin-top: 0.5rem;
+      font-size: 0.7rem;
+      padding: 0.25rem 0.625rem;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
     }
     .event-details-grid { display: flex; flex-direction: column; gap: 0.75rem; }
     .detail-row { display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
@@ -478,6 +700,9 @@ export class BillsCalendarComponent implements OnInit {
   showForm = signal(false);
   submitting = signal(false);
   showDetectorDetails = signal(false);
+  lastDismissedDescription = signal<string | null>(null);
+  showAdvisorDetails = signal(true);
+  executingTransfer = signal(false);
  
   filterIncome = signal(true);
   filterExpense = signal(true);
@@ -549,6 +774,7 @@ export class BillsCalendarComponent implements OnInit {
   ngOnInit() {
     this.recurringService.loadSchedules().subscribe();
     this.recurringService.loadDetectedBills().subscribe();
+    this.recurringService.loadAdvisorData().subscribe();
     this.categoryService.loadCategories().subscribe();
     this.accountService.loadAccounts().subscribe();
     this.generateCalendarCells();
@@ -573,6 +799,59 @@ export class BillsCalendarComponent implements OnInit {
       reminderDaysBefore: 1
     };
     this.showForm.set(true);
+  }
+
+  dismissSuggestion(description: string, event: Event) {
+    event.stopPropagation();
+    this.recurringService.dismissBill(description).subscribe({
+      next: () => {
+        this.lastDismissedDescription.set(description);
+        this.toast.success('Suggestion dismissed');
+      },
+      error: () => {
+        this.toast.error('Failed to dismiss suggestion');
+      }
+    });
+  }
+
+  undoLastDismiss(event: Event) {
+    event.stopPropagation();
+    const desc = this.lastDismissedDescription();
+    if (!desc) return;
+
+    this.recurringService.undismissBill(desc).subscribe({
+      next: () => {
+        this.lastDismissedDescription.set(null);
+        this.toast.success('Suggestion restored');
+      },
+      error: () => {
+        this.toast.error('Failed to restore suggestion');
+      }
+    });
+  }
+
+  executeTransfer(action: any) {
+    this.executingTransfer.set(true);
+    this.recurringService.executeTransferRecommendation(
+      action.fromAccountId,
+      action.toAccountId,
+      action.amount,
+      action.type
+    ).subscribe({
+      next: () => {
+        this.executingTransfer.set(false);
+        this.toast.success('Smart transfer logged successfully!');
+        // Reload all data
+        this.recurringService.loadSchedules().subscribe();
+        this.categoryService.loadCategories().subscribe();
+        this.accountService.loadAccounts().subscribe();
+        this.generateCalendarCells();
+      },
+      error: () => {
+        this.executingTransfer.set(false);
+        this.toast.error('Failed to execute transfer');
+      }
+    });
   }
 
   prevMonth() {
