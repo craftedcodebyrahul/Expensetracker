@@ -66,16 +66,101 @@ export function createApiRouter(): Router {
     } catch (e) { fail(res, e); }
   });
 
+  async function resolveAccountId(userId: string, accountId?: string): Promise<string> {
+    if (accountId) return accountId;
+    const accounts = await dbService.getAccounts(userId);
+    const assetAccount = accounts.find(a => a.type === 'asset');
+    if (assetAccount) return assetAccount.id;
+    if (accounts.length > 0) return accounts[0].id;
+    return 'chequing';
+  }
+
+  const handleQuickLog = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+      const payload = req.method === 'GET' ? req.query : req.body;
+
+      let {
+        amount,
+        description,
+        name,
+        title,
+        category,
+        type,
+        date,
+        notes,
+        paymentMethod,
+        accountId
+      } = payload as Record<string, any>;
+
+      description = String(description || name || title || 'Quick Log').trim();
+
+      if (!amount) {
+        fail(res, 'Missing required param: amount', 400);
+        return;
+      }
+
+      const parsedAmount = parseFloat(String(amount).replace(/[^0-9.-]+/g, ''));
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        fail(res, 'Invalid transaction amount', 400);
+        return;
+      }
+
+      const targetAccountId = await resolveAccountId(userId, accountId);
+      const targetDate = date ? String(date) : new Date().toISOString().split('T')[0];
+      const targetType = (type === 'income' || type === 'expense') ? type : 'expense';
+      let targetCategory = category ? String(category) : '';
+
+      // Auto-categorize based on description/name using AI and past purchase history
+      if (!targetCategory || targetCategory === 'other_expense') {
+        try {
+          const autoCat = await dbService.suggestCategory(userId, description, targetType);
+          if (autoCat) {
+            targetCategory = autoCat;
+          }
+        } catch (catErr) {
+          console.warn('Auto-categorization failed, defaulting to other_expense:', catErr);
+        }
+      }
+      if (!targetCategory) {
+        targetCategory = 'other_expense';
+      }
+
+      const t = await dbService.createTransaction(userId, {
+        type: targetType,
+        amount: parsedAmount,
+        category: targetCategory,
+        description,
+        date: targetDate,
+        tags: ['quick-log', 'iphone-shortcut'],
+        isRecurring: false,
+        paymentMethod: paymentMethod ? String(paymentMethod) : 'iOS Shortcut',
+        notes: notes ? String(notes) : 'Logged via automation',
+        accountId: targetAccountId,
+        source: 'manual',
+      });
+
+      ok(res, t, 'Transaction logged successfully');
+    } catch (e) {
+      fail(res, e);
+    }
+  };
+
+  router.get('/quick-log', handleQuickLog);
+  router.post('/quick-log', handleQuickLog);
+
   router.post('/transactions', async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = getUserId(req);
-      const { type, amount, category, description, date, tags, isRecurring,
+      let { type, amount, category, description, date, tags, isRecurring,
               recurringFrequency, paymentMethod, notes, accountId, toAccountId } = req.body;
 
-      if (!type || !amount || !description || !date || !accountId ||
+      if (!type || !amount || !description || !date ||
           (type !== 'transfer' && !category) || (type === 'transfer' && !toAccountId)) {
         fail(res, 'Missing required fields', 400); return;
       }
+
+      accountId = await resolveAccountId(userId, accountId);
 
       const t = await dbService.createTransaction(userId, {
         type, amount: parseFloat(amount), category: category ?? '',
@@ -706,6 +791,15 @@ ${audit.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n
     try {
       ok(res, await dbService.updateSettings(getUserId(req), req.body), 'Settings updated');
     } catch (e) { fail(res, e); }
+  });
+
+  router.post('/settings/api-key/regenerate', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const apiKey = await dbService.regenerateApiKey(getUserId(req));
+      ok(res, { apiKey }, 'API key regenerated successfully');
+    } catch (e: any) {
+      fail(res, e.message || e);
+    }
   });
 
   router.post('/settings/test-report', async (req: Request, res: Response): Promise<void> => {

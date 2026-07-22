@@ -261,6 +261,10 @@ export class ApiService {
     return this.http.put<ApiResponse<any>>(`${this.baseUrl}/settings`, settings);
   }
 
+  regenerateApiKey(): Observable<ApiResponse<{ apiKey: string }>> {
+    return this.http.post<ApiResponse<{ apiKey: string }>>(`${this.baseUrl}/settings/api-key/regenerate`, {});
+  }
+
   sendTestReport(): Observable<ApiResponse<void>> {
     return this.http.post<ApiResponse<void>>(`${this.baseUrl}/settings/test-report`, {});
   }

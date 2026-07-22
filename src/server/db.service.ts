@@ -166,6 +166,7 @@ export interface AppSettings {
   theme: string;
   lastSync: string;
   monthlyReportEnabled?: boolean;
+  apiKey?: string;
 }
 
 export interface BankImport {
@@ -1523,20 +1524,39 @@ export class DbService {
 
   async getSettings(userId: string): Promise<AppSettings> {
     let row = await prisma.settings.findUnique({ where: { userId } });
+    const now = new Date().toISOString();
     if (!row) {
-      // Auto-create settings row if missing (should be seeded on first login)
+      const generatedApiKey = 'usr_key_' + uuidv4().replace(/-/g, '');
       row = await prisma.settings.create({
-        data: { userId, updatedAt: new Date().toISOString() },
+        data: { userId, apiKey: generatedApiKey, updatedAt: now },
+      });
+    } else if (!row.apiKey) {
+      const generatedApiKey = 'usr_key_' + uuidv4().replace(/-/g, '');
+      row = await prisma.settings.update({
+        where: { userId },
+        data: { apiKey: generatedApiKey, updatedAt: now },
       });
     }
+
     return {
       currency: row.currency,
       currencySymbol: row.currencySymbol,
       dateFormat: row.dateFormat,
       theme: row.theme,
-      lastSync: new Date().toISOString(),
+      lastSync: now,
       monthlyReportEnabled: row.monthlyReportEnabled === 1,
+      apiKey: row.apiKey ?? undefined,
     };
+  }
+
+  async regenerateApiKey(userId: string): Promise<string> {
+    const newApiKey = 'usr_key_' + uuidv4().replace(/-/g, '');
+    await prisma.settings.upsert({
+      where: { userId },
+      update: { apiKey: newApiKey, updatedAt: new Date().toISOString() },
+      create: { userId, apiKey: newApiKey, updatedAt: new Date().toISOString() },
+    });
+    return newApiKey;
   }
 
   async updateSettings(userId: string, data: Partial<AppSettings>): Promise<AppSettings> {
@@ -1564,6 +1584,7 @@ export class DbService {
       theme: row.theme,
       lastSync: now,
       monthlyReportEnabled: row.monthlyReportEnabled === 1,
+      apiKey: row.apiKey ?? undefined,
     };
   }
 

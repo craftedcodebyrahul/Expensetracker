@@ -30,6 +30,7 @@ export interface AppSettings {
   dateFormat: string;
   theme?: string;
   monthlyReportEnabled: boolean;
+  apiKey?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -42,6 +43,7 @@ export class SettingsService {
   readonly currencySymbol = signal('$');
   readonly dateFormat = signal('MM/dd/yyyy');
   readonly monthlyReportEnabled = signal(true);
+  readonly apiKey = signal('');
   readonly loaded = signal(false);
 
   // Extended visual settings signals
@@ -88,6 +90,7 @@ export class SettingsService {
           this.currencySymbol.set(res.data.currencySymbol ?? '$');
           this.dateFormat.set(res.data.dateFormat ?? 'MM/dd/yyyy');
           this.monthlyReportEnabled.set(res.data.monthlyReportEnabled !== false);
+          this.apiKey.set(res.data.apiKey ?? '');
           this.parseTheme(res.data.theme);
         }
         this.loaded.set(true);
@@ -96,6 +99,19 @@ export class SettingsService {
         this.loaded.set(true);
         this.applyVisualSettings();
         return of(null);
+      })
+    );
+  }
+
+  regenerateApiKey() {
+    return this.api.regenerateApiKey().pipe(
+      tap(res => {
+        if (res.success && res.data?.apiKey) {
+          this.apiKey.set(res.data.apiKey);
+          this.toast.success('API Key regenerated!');
+        } else {
+          this.toast.error('Failed to regenerate API key');
+        }
       })
     );
   }

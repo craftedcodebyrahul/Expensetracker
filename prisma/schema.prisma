@@ -193,6 +193,7 @@ model Settings {
   dateFormat           String @default("MM/dd/yyyy") @map("date_format")
   theme                String @default("dark")
   monthlyReportEnabled Int    @default(1) @map("monthly_report_enabled")
+  apiKey               String? @map("api_key")
   updatedAt            String @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

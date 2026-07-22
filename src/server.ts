@@ -52,7 +52,7 @@ const SESSION_SECRET = process.env['SESSION_SECRET'] ?? 'fintrack-dev-secret-cha
 app.use(cookieSession({
   name: 'fintrack.session',
   keys: [SESSION_SECRET],
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days (1 month)
   secure: process.env['NODE_ENV'] === 'production',
   httpOnly: true,
   sameSite: 'lax',

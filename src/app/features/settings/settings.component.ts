@@ -110,6 +110,50 @@ import { HeaderComponent } from '../../layout/header.component';
         </div>
       </div>
 
+      <!-- iOS Shortcuts & Automations -->
+      <div class="card settings-section">
+        <h3 class="section-title">📱 iOS Shortcuts & Automations</h3>
+        <p class="section-desc">
+          Log transactions automatically from your iPhone, Siri Shortcuts, or Apple Pay notifications without opening the app!
+        </p>
+
+        <div class="automation-card">
+          <div class="auto-badge">
+            <span class="badge-icon">✨</span>
+            <span><strong>Smart Auto-Categorization:</strong> Category is automatically detected from the merchant/description name using AI and past purchase history!</span>
+          </div>
+
+          <div class="form-group" style="margin-top: 1rem;">
+            <label class="form-label">Your Personal API Key</label>
+            <div class="input-with-button">
+              <input type="text" class="form-control code-input" [value]="showApiKey() ? settingsService.apiKey() : '••••••••••••••••••••••••••••••••'" readonly>
+              <button class="btn btn-ghost btn-sm" (click)="toggleShowApiKey()">
+                {{ showApiKey() ? 'Hide' : 'Show' }}
+              </button>
+              <button class="btn btn-ghost btn-sm" (click)="copyApiKey()">
+                📋 Copy Key
+              </button>
+              <button class="btn btn-outline btn-sm" (click)="regenerateKey()" [disabled]="regeneratingKey()">
+                🔄 Regenerate
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 1rem;">
+            <label class="form-label">Quick-Log Webhook URL (Pre-authenticated)</label>
+            <div class="input-with-button">
+              <input type="text" class="form-control code-input" [value]="shortcutUrl()" readonly>
+              <button class="btn btn-primary btn-sm" (click)="copyShortcutUrl()">
+                📋 Copy Webhook URL
+              </button>
+            </div>
+            <span class="form-hint" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; display: block;">
+              Pass <code class="inline-code">amount</code> and <code class="inline-code">description</code> via GET query params or POST JSON body. Bank account auto-defaults to your primary checking account.
+            </span>
+          </div>
+        </div>
+      </div>
+
       <!-- Appearance & Themes -->
       <div class="card settings-section">
         <h3 class="section-title">🎨 Appearance & Themes</h3>
@@ -604,11 +648,42 @@ import { HeaderComponent } from '../../layout/header.component';
       font-weight: 500;
       user-select: none;
     }
-    .widget-toggle-item input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      cursor: pointer;
-      accent-color: var(--accent-blue);
+    .automation-card {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .auto-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      padding: 0.75rem 1rem;
+      background: rgba(92, 107, 192, 0.12);
+      border: 1px solid rgba(92, 107, 192, 0.3);
+      border-radius: var(--radius-sm);
+      font-size: 0.8125rem;
+      color: var(--text-primary);
+    }
+    .input-with-button {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      width: 100%;
+    }
+    .code-input {
+      font-family: monospace;
+      font-size: 0.8125rem;
+      letter-spacing: 0.05em;
+    }
+    @media (max-width: 600px) {
+      .input-with-button {
+        flex-direction: column;
+        align-items: stretch;
+      }
     }
   `]
 })
@@ -621,6 +696,8 @@ export class SettingsComponent implements OnInit {
   syncStatus = signal<any>(null);
   saving = signal(false);
   sendingTestReport = signal(false);
+  showApiKey = signal(false);
+  regeneratingKey = signal(false);
   settings = { currency: 'USD', currencySymbol: '$', dateFormat: 'MM/dd/yyyy', monthlyReportEnabled: true };
 
   currencies = [
@@ -732,5 +809,41 @@ export class SettingsComponent implements OnInit {
       ...current,
       [widgetKey]: enabled
     });
+  }
+
+  toggleShowApiKey() {
+    this.showApiKey.set(!this.showApiKey());
+  }
+
+  copyApiKey() {
+    const key = this.settingsService.apiKey();
+    if (!key) return;
+    navigator.clipboard.writeText(key).then(() => {
+      this.toast.success('API Key copied to clipboard!');
+    });
+  }
+
+  shortcutUrl(): string {
+    const key = this.settingsService.apiKey();
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}/api/quick-log?apiKey=${key}`;
+  }
+
+  copyShortcutUrl() {
+    const url = this.shortcutUrl();
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+      this.toast.success('Shortcut Webhook URL copied to clipboard!');
+    });
+  }
+
+  regenerateKey() {
+    if (confirm('Are you sure you want to regenerate your API Key? Existing automations using the current key will stop working.')) {
+      this.regeneratingKey.set(true);
+      this.settingsService.regenerateApiKey().subscribe({
+        next: () => this.regeneratingKey.set(false),
+        error: () => this.regeneratingKey.set(false)
+      });
+    }
   }
 }

@@ -97,12 +97,65 @@ export function clearSession(req: Request): void {
 
 // ── Auth middleware ───────────────────────────────────────────────────────────
 
-export function requireAuth(req: Request, res: Response, next: () => void): void {
+import { prisma } from '../db.js';
+
+export async function requireAuth(req: Request, res: Response, next: () => void): Promise<void> {
   const session = getSession(req);
-  console.log('[DEBUG requireAuth USER]', session['user']);
   if (session['user']) {
-    next();
-  } else {
-    res.status(401).json({ success: false, data: null, error: 'Not authenticated' });
+    return next();
   }
+
+  // Check API key in headers or query parameters for external automations (e.g. iOS Shortcuts)
+  const authHeader = req.headers['authorization'];
+  const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+  const apiKey = (req.headers['x-api-key'] as string) ||
+                 bearerToken ||
+                 (req.query['apiKey'] as string) ||
+                 (req.query['api_key'] as string);
+
+  if (apiKey) {
+    // 1. Check global env key fallback
+    const configuredKey = process.env['API_KEY'] || process.env['SESSION_SECRET'];
+    if (configuredKey && apiKey === configuredKey) {
+      try {
+        const firstUser = await prisma.user.findFirst();
+        if (firstUser) {
+          setSession(req, {
+            user: {
+              userId: firstUser.id,
+              email: firstUser.email,
+              name: firstUser.name,
+              picture: firstUser.picture ?? '',
+            }
+          });
+          return next();
+        }
+      } catch (err) {
+        console.error('Failed to resolve user for global API Key:', err);
+      }
+    }
+
+    // 2. Check per-user apiKey in Settings table
+    try {
+      const settingsRow = await prisma.settings.findFirst({ where: { apiKey } });
+      if (settingsRow) {
+        const userRow = await prisma.user.findUnique({ where: { id: settingsRow.userId } });
+        if (userRow) {
+          setSession(req, {
+            user: {
+              userId: userRow.id,
+              email: userRow.email,
+              name: userRow.name,
+              picture: userRow.picture ?? '',
+            }
+          });
+          return next();
+        }
+      }
+    } catch (err) {
+      console.error('Failed to resolve user for personal API Key:', err);
+    }
+  }
+
+  res.status(401).json({ success: false, data: null, error: 'Not authenticated' });
 }
