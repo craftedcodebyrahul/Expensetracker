@@ -11,17 +11,73 @@ function getFutureDateString(daysAhead: number): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+export async function checkAndSendBillReminders(targetUserId?: string): Promise<{ sentCount: number; details: string[] }> {
+  console.log(`⏰ Report Scheduler: Checking bill reminders${targetUserId ? ` for user ${targetUserId}` : ''}...`);
+  const details: string[] = [];
+  let sentCount = 0;
+
+  try {
+    const settingsList = await prisma.settings.findMany({
+      where: {
+        billRemindersEnabled: 1,
+        ...(targetUserId ? { userId: targetUserId } : {}),
+      },
+    });
+
+    if (settingsList.length === 0) {
+      console.log('⏰ Report Scheduler: No users with bill reminders enabled.');
+      return { sentCount: 0, details: ['No users have bill reminders enabled in Settings.'] };
+    }
+
+    for (const userSetting of settingsList) {
+      const globalDaysBefore = userSetting.billReminderDaysBefore || 2;
+
+      // Find all active schedules for this user
+      const schedules = await prisma.recurringSchedule.findMany({
+        where: {
+          userId: userSetting.userId,
+          isActive: 1,
+        },
+        include: {
+          user: true,
+        },
+      });
+
+      for (const schedule of schedules) {
+        // Skip if per-schedule emailReminder is explicitly turned off (0)
+        if (schedule.emailReminder === 0) continue;
+
+        const effectiveDaysBefore = schedule.reminderDaysBefore || globalDaysBefore;
+        const targetDateStr = getFutureDateString(effectiveDaysBefore);
+
+        if (schedule.nextDueDate === targetDateStr) {
+          try {
+            await reportService.sendUpcomingBillReminder(schedule, effectiveDaysBefore);
+            sentCount++;
+            details.push(`Sent reminder for "${schedule.description}" ($${schedule.amount}) due on ${schedule.nextDueDate} (${effectiveDaysBefore} day(s) prior)`);
+          } catch (err: any) {
+            console.error(`❌ Failed to send bill reminder for schedule ${schedule.id}:`, err?.message || err);
+            details.push(`Failed for "${schedule.description}": ${err?.message || err}`);
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error('❌ Critical error in checkAndSendBillReminders:', err?.message || err);
+    details.push(`Error: ${err?.message || err}`);
+  }
+
+  return { sentCount, details };
+}
+
 export function startReportScheduler() {
   console.log('⏰ Report Scheduler: Initializing monthly cron worker...');
 
-  // Pattern '0 0 1 * *' represents:
-  // Minute: 0, Hour: 0, Day of Month: 1, Month: *, Day of Week: *
-  // This triggers exactly at 00:00 (Midnight) on the 1st of every calendar month.
+  // Monthly cron at midnight on 1st of every month
   cron.schedule('0 0 1 * *', async () => {
     console.log('⏰ Report Scheduler: Running scheduled monthly financial audit job...');
     
     try {
-      // Find all users who enabled monthly email reports
       const optedInSettings = await prisma.settings.findMany({
         where: { monthlyReportEnabled: 1 },
         select: { userId: true },
@@ -54,48 +110,8 @@ export function startReportScheduler() {
   // Daily at 08:00 AM ('0 8 * * *')
   cron.schedule('0 8 * * *', async () => {
     console.log('⏰ Report Scheduler: Running scheduled daily bill reminder job...');
-    
-    try {
-      const tomorrowStr = getFutureDateString(1);
-      const dayAfterTomorrowStr = getFutureDateString(2);
-
-      const schedulesToRemind = await prisma.recurringSchedule.findMany({
-        where: {
-          isActive: 1,
-          emailReminder: 1,
-          OR: [
-            { nextDueDate: tomorrowStr, reminderDaysBefore: 1 },
-            { nextDueDate: dayAfterTomorrowStr, reminderDaysBefore: 2 }
-          ]
-        },
-        include: {
-          user: true
-        }
-      });
-
-      if (schedulesToRemind.length === 0) {
-        console.log('⏰ Report Scheduler: No bills require reminders today.');
-        return;
-      }
-
-      console.log(`⏰ Report Scheduler: Found ${schedulesToRemind.length} bill(s) to remind. Sending...`);
-
-      for (const schedule of schedulesToRemind) {
-        try {
-          const daysBefore = schedule.nextDueDate === tomorrowStr ? 1 : 2;
-          await reportService.sendUpcomingBillReminder(schedule, daysBefore);
-        } catch (err: any) {
-          console.error(
-            `❌ Report Scheduler: Failed to send bill reminder for schedule ${schedule.id}:`,
-            err?.message || err
-          );
-        }
-      }
-    } catch (err: any) {
-      console.error('❌ Report Scheduler: Daily reminder task critical failure:', err?.message || err);
-    }
+    await checkAndSendBillReminders();
   });
 
   console.log('⏰ Report Scheduler: Cron workers initialized successfully!');
 }
-

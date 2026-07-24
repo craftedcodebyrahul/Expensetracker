@@ -30,6 +30,8 @@ export interface AppSettings {
   dateFormat: string;
   theme?: string;
   monthlyReportEnabled: boolean;
+  billRemindersEnabled: boolean;
+  billReminderDaysBefore: number;
   apiKey?: string;
 }
 
@@ -43,6 +45,8 @@ export class SettingsService {
   readonly currencySymbol = signal('$');
   readonly dateFormat = signal('MM/dd/yyyy');
   readonly monthlyReportEnabled = signal(true);
+  readonly billRemindersEnabled = signal(true);
+  readonly billReminderDaysBefore = signal(2);
   readonly apiKey = signal('');
   readonly loaded = signal(false);
 
@@ -90,6 +94,8 @@ export class SettingsService {
           this.currencySymbol.set(res.data.currencySymbol ?? '$');
           this.dateFormat.set(res.data.dateFormat ?? 'MM/dd/yyyy');
           this.monthlyReportEnabled.set(res.data.monthlyReportEnabled !== false);
+          this.billRemindersEnabled.set(res.data.billRemindersEnabled !== false);
+          this.billReminderDaysBefore.set(res.data.billReminderDaysBefore ?? 2);
           this.apiKey.set(res.data.apiKey ?? '');
           this.parseTheme(res.data.theme);
         }
@@ -135,6 +141,8 @@ export class SettingsService {
           this.currencySymbol.set(settings.currencySymbol);
           this.dateFormat.set(settings.dateFormat);
           this.monthlyReportEnabled.set(settings.monthlyReportEnabled);
+          this.billRemindersEnabled.set(settings.billRemindersEnabled);
+          this.billReminderDaysBefore.set(settings.billReminderDaysBefore ?? 2);
           this.applyVisualSettings();
           this.toast.success('Preferences saved!');
         } else {

@@ -7,6 +7,7 @@ import { AccountService } from '../../core/services/account.service';
 import { ToastService } from '../../core/services/toast.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
+import { SettingsService } from '../../core/services/settings.service';
 import { RecurringSchedule, DetectedBill } from '../../core/models';
 
 interface CalendarCell {
@@ -226,12 +227,18 @@ interface CalendarCell {
                 </label>
               </div>
               @if (form.emailReminder) {
-                <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
-                  <span style="font-size: 0.85rem; color: var(--text-secondary);">Remind me:</span>
-                  <select class="form-control" [(ngModel)]="form.reminderDaysBefore" style="width: auto; padding: 4px 8px; font-size: 0.85rem; height: auto;">
-                    <option [value]="1">1 day before due date</option>
-                    <option [value]="2">2 days before due date</option>
-                  </select>
+                <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.85rem; color: var(--text-secondary);">Remind me:</span>
+                    <select class="form-control" [(ngModel)]="form.reminderDaysBefore" style="width: auto; padding: 4px 8px; font-size: 0.85rem; height: auto;">
+                      <option [value]="1">1 day before due date</option>
+                      <option [value]="2">2 days before due date</option>
+                      <option [value]="3">3 days before due date</option>
+                      <option [value]="5">5 days before due date</option>
+                      <option [value]="7">7 days before due date</option>
+                    </select>
+                  </div>
+                  <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Default days prior can also be configured globally in Settings.</span>
                 </div>
               }
             </div>
@@ -306,6 +313,9 @@ interface CalendarCell {
                             style="padding: 2px 4px; font-size: 0.8rem; border-radius: 4px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);">
                       <option [value]="1">1 day before</option>
                       <option [value]="2">2 days before</option>
+                      <option [value]="3">3 days before</option>
+                      <option [value]="5">5 days before</option>
+                      <option [value]="7">7 days before</option>
                     </select>
                   } @else {
                     <span style="font-size: 0.85rem; color: var(--text-muted);">Disabled</span>
@@ -694,6 +704,7 @@ export class BillsCalendarComponent implements OnInit {
   recurringService = inject(RecurringService);
   categoryService = inject(CategoryService);
   accountService = inject(AccountService);
+  settingsService = inject(SettingsService);
   private toast = inject(ToastService);
 
   protected Math = Math;
@@ -969,8 +980,8 @@ export class BillsCalendarComponent implements OnInit {
       frequency: 'monthly',
       startDate: new Date().toISOString().split('T')[0],
       nextDueDate: new Date().toISOString().split('T')[0],
-      emailReminder: false,
-      reminderDaysBefore: 1
+      emailReminder: true,
+      reminderDaysBefore: Number(this.settingsService.billReminderDaysBefore() || 2)
     };
     this.showForm.set(true);
   }

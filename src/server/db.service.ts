@@ -166,6 +166,8 @@ export interface AppSettings {
   theme: string;
   lastSync: string;
   monthlyReportEnabled?: boolean;
+  billRemindersEnabled?: boolean;
+  billReminderDaysBefore?: number;
   apiKey?: string;
 }
 
@@ -1545,6 +1547,8 @@ export class DbService {
       theme: row.theme,
       lastSync: now,
       monthlyReportEnabled: row.monthlyReportEnabled === 1,
+      billRemindersEnabled: row.billRemindersEnabled !== 0,
+      billReminderDaysBefore: row.billReminderDaysBefore ?? 2,
       apiKey: row.apiKey ?? undefined,
     };
   }
@@ -1569,12 +1573,16 @@ export class DbService {
         ...(data.dateFormat     !== undefined && { dateFormat: data.dateFormat }),
         ...(data.theme          !== undefined && { theme: data.theme }),
         ...(data.monthlyReportEnabled !== undefined && { monthlyReportEnabled: data.monthlyReportEnabled ? 1 : 0 }),
+        ...(data.billRemindersEnabled !== undefined && { billRemindersEnabled: data.billRemindersEnabled ? 1 : 0 }),
+        ...(data.billReminderDaysBefore !== undefined && { billReminderDaysBefore: data.billReminderDaysBefore }),
         updatedAt: now,
       },
       create: { 
         userId, 
         updatedAt: now,
-        monthlyReportEnabled: data.monthlyReportEnabled ? 1 : 0
+        monthlyReportEnabled: data.monthlyReportEnabled ? 1 : 0,
+        billRemindersEnabled: data.billRemindersEnabled !== false ? 1 : 0,
+        billReminderDaysBefore: data.billReminderDaysBefore ?? 2,
       },
     });
     return {
@@ -1584,6 +1592,8 @@ export class DbService {
       theme: row.theme,
       lastSync: now,
       monthlyReportEnabled: row.monthlyReportEnabled === 1,
+      billRemindersEnabled: row.billRemindersEnabled !== 0,
+      billReminderDaysBefore: row.billReminderDaysBefore ?? 2,
       apiKey: row.apiKey ?? undefined,
     };
   }

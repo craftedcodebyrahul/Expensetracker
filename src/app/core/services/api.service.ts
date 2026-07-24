@@ -269,6 +269,14 @@ export class ApiService {
     return this.http.post<ApiResponse<void>>(`${this.baseUrl}/settings/test-report`, {});
   }
 
+  sendTestBillReminder(): Observable<ApiResponse<void>> {
+    return this.http.post<ApiResponse<void>>(`${this.baseUrl}/settings/test-bill-reminder`, {});
+  }
+
+  processBillReminders(): Observable<ApiResponse<any>> {
+    return this.http.post<ApiResponse<any>>(`${this.baseUrl}/settings/process-bill-reminders`, {});
+  }
+
   syncStatus(): Observable<ApiResponse<{ connected: boolean; provider: string; lastSync: string }>> {
     return this.http.get<ApiResponse<any>>(`${this.baseUrl}/sync/status`);
   }

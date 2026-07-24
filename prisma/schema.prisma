@@ -151,8 +151,8 @@ model RecurringSchedule {
   accountId   String @map("account_id")
   toAccountId String? @map("to_account_id")
   isActive            Int    @default(1) @map("is_active")   // 1=active, 0=stopped
-  emailReminder       Int    @default(0) @map("email_reminder") // 0=no, 1=yes
-  reminderDaysBefore  Int    @default(1) @map("reminder_days_before") // days before due date
+  emailReminder       Int    @default(1) @map("email_reminder") // 0=no, 1=yes
+  reminderDaysBefore  Int    @default(2) @map("reminder_days_before") // days before due date
   createdAt           String @map("created_at")
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -193,6 +193,8 @@ model Settings {
   dateFormat           String @default("MM/dd/yyyy") @map("date_format")
   theme                String @default("dark")
   monthlyReportEnabled Int    @default(1) @map("monthly_report_enabled")
+  billRemindersEnabled Int    @default(1) @map("bill_reminders_enabled")
+  billReminderDaysBefore Int  @default(2) @map("bill_reminder_days_before")
   apiKey               String? @map("api_key")
   updatedAt            String @map("updated_at")
 

@@ -812,6 +812,60 @@ ${audit.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n
     }
   });
 
+  router.post('/settings/test-bill-reminder', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+      const { reportService } = await import('./report.service.js');
+      const userSettings = await dbService.getSettings(userId);
+      const daysBefore = userSettings.billReminderDaysBefore || 2;
+
+      let schedule = await prisma.recurringSchedule.findFirst({
+        where: { userId, isActive: 1 },
+        include: { user: true },
+      });
+
+      if (!schedule) {
+        // Fallback sample schedule for test email
+        const user = await prisma.user.findFirst({ where: { id: userId } });
+        if (!user) { fail(res, 'User not found', 404); return; }
+        schedule = {
+          id: 'test-sample-schedule',
+          userId,
+          type: 'expense',
+          amount: 89.99,
+          category: 'utilities',
+          description: 'Electricity & Power Bill (Sample Test)',
+          frequency: 'monthly',
+          startDate: new Date().toISOString().split('T')[0],
+          nextDueDate: new Date(Date.now() + daysBefore * 86400000).toISOString().split('T')[0],
+          accountId: 'chequing',
+          toAccountId: null,
+          isActive: 1,
+          emailReminder: 1,
+          reminderDaysBefore: daysBefore,
+          createdAt: new Date().toISOString(),
+          user,
+        } as any;
+      }
+
+      await reportService.sendUpcomingBillReminder(schedule, daysBefore);
+      ok(res, null, `Test bill reminder email sent successfully (${daysBefore} days prior preview)! Check your inbox.`);
+    } catch (e: any) {
+      fail(res, e.message || e);
+    }
+  });
+
+  router.post('/settings/process-bill-reminders', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+      const { checkAndSendBillReminders } = await import('./report-scheduler.js');
+      const result = await checkAndSendBillReminders(userId);
+      ok(res, result, `Processed bill reminders: ${result.sentCount} sent.`);
+    } catch (e: any) {
+      fail(res, e.message || e);
+    }
+  });
+
   // ── Bank Imports (future feature) ─────────────────────────────────────────
 
   router.get('/bank-imports', async (req: Request, res: Response): Promise<void> => {

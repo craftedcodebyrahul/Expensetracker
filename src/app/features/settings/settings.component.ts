@@ -79,9 +79,9 @@ import { HeaderComponent } from '../../layout/header.component';
         </div>
       </div>
 
-      <!-- App Preferences -->
+      <!-- App Preferences & Email Notifications -->
       <div class="card settings-section">
-        <h3 class="section-title">⚙️ App Preferences</h3>
+        <h3 class="section-title">⚙️ App Preferences & Email Notifications</h3>
 
         <div class="settings-grid">
           <div class="form-group">
@@ -103,9 +103,47 @@ import { HeaderComponent } from '../../layout/header.component';
           </div>
         </div>
 
-        <div class="form-actions">
+        <div style="border-top: 1px solid var(--border); padding-top: 1.25rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 1rem;">
+          <h4 style="font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); margin: 0;">📬 Automated Email Notifications</h4>
+
+          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.625rem; font-size: 0.875rem; color: var(--text-primary); cursor: pointer; user-select: none;">
+              <input type="checkbox" [(ngModel)]="settings.monthlyReportEnabled" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-blue);">
+              <span><strong>Monthly Financial Audit:</strong> Send automated summary email on the 1st of every month.</span>
+            </label>
+
+            <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.625rem; font-size: 0.875rem; color: var(--text-primary); cursor: pointer; user-select: none;">
+              <input type="checkbox" [(ngModel)]="settings.billRemindersEnabled" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-blue);">
+              <span><strong>Upcoming Bill Email Reminders:</strong> Send email reminders for all upcoming bills & recurring schedules.</span>
+            </label>
+
+            @if (settings.billRemindersEnabled) {
+              <div class="form-group" style="margin-left: 2rem; max-width: 320px;">
+                <label class="form-label" style="font-size: 0.8125rem;">Remind Me (Days Prior)</label>
+                <select class="form-control" [(ngModel)]="settings.billReminderDaysBefore">
+                  <option [ngValue]="1">1 day before due date</option>
+                  <option [ngValue]="2">2 days before due date</option>
+                  <option [ngValue]="3">3 days before due date</option>
+                  <option [ngValue]="5">5 days before due date</option>
+                  <option [ngValue]="7">7 days before due date</option>
+                </select>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="form-actions" style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; border-top: 1px solid var(--border); padding-top: 1rem;">
           <button class="btn btn-primary" (click)="saveSettings()" [disabled]="saving()">
-            {{ saving() ? 'Saving...' : 'Save Preferences' }}
+            {{ saving() ? 'Saving...' : '💾 Save Preferences' }}
+          </button>
+          <!-- <button class="btn btn-ghost btn-sm" (click)="sendTestReport()" [disabled]="sendingTestReport()">
+            {{ sendingTestReport() ? 'Sending Audit Email...' : '✉️ Test Monthly Audit Email' }}
+          </button> -->
+          <!-- <button class="btn btn-ghost btn-sm" (click)="sendTestBillReminder()" [disabled]="sendingTestBillReminder()">
+            {{ sendingTestBillReminder() ? 'Sending Bill Reminder...' : '📅 Test Bill Reminder Email' }}
+          </button> -->
+          <button class="btn btn-ghost btn-sm" (click)="processBillRemindersNow()" [disabled]="processingBillReminders()">
+            {{ processingBillReminders() ? 'Processing...' : '🔄 Check Due Reminders Now' }}
           </button>
         </div>
       </div>
@@ -319,7 +357,7 @@ import { HeaderComponent } from '../../layout/header.component';
       </div>
 
       <!-- Email Reports -->
-      <div class="card settings-section">
+      <!-- <div class="card settings-section">
         <h3 class="section-title">✉️ Monthly Email Reports</h3>
         <p class="section-desc">
           Receive a beautiful, full-fledged monthly financial audit report sent directly to your registered email address on the 1st of every month.
@@ -340,7 +378,7 @@ import { HeaderComponent } from '../../layout/header.component';
             {{ sendingTestReport() ? 'Sending...' : '✉️ Send Test Report' }}
           </button>
         </div>
-      </div>
+      </div> -->
 
       <!-- Data Management -->
       <div class="card settings-section">
@@ -696,9 +734,18 @@ export class SettingsComponent implements OnInit {
   syncStatus = signal<any>(null);
   saving = signal(false);
   sendingTestReport = signal(false);
+  sendingTestBillReminder = signal(false);
+  processingBillReminders = signal(false);
   showApiKey = signal(false);
   regeneratingKey = signal(false);
-  settings = { currency: 'USD', currencySymbol: '$', dateFormat: 'MM/dd/yyyy', monthlyReportEnabled: true };
+  settings = {
+    currency: 'USD',
+    currencySymbol: '$',
+    dateFormat: 'MM/dd/yyyy',
+    monthlyReportEnabled: true,
+    billRemindersEnabled: true,
+    billReminderDaysBefore: 2,
+  };
 
   currencies = [
     { code: 'USD', symbol: '$', name: 'US Dollar' },
@@ -714,12 +761,14 @@ export class SettingsComponent implements OnInit {
 
   ngOnInit() {
     this.checkSync();
-    // Load current settings from Sheets and pre-fill the form
+    // Load current settings from database and pre-fill the form
     this.settingsService.load().subscribe(() => {
       this.settings.currency = this.settingsService.currency();
       this.settings.currencySymbol = this.settingsService.currencySymbol();
       this.settings.dateFormat = this.settingsService.dateFormat();
       this.settings.monthlyReportEnabled = this.settingsService.monthlyReportEnabled();
+      this.settings.billRemindersEnabled = this.settingsService.billRemindersEnabled();
+      this.settings.billReminderDaysBefore = this.settingsService.billReminderDaysBefore();
     });
   }
 
@@ -757,6 +806,43 @@ export class SettingsComponent implements OnInit {
       error: (err) => {
         this.sendingTestReport.set(false);
         this.toast.error(err?.error?.error || err?.message || 'SMTP server connection error.');
+      }
+    });
+  }
+
+  sendTestBillReminder() {
+    this.sendingTestBillReminder.set(true);
+    this.api.sendTestBillReminder().subscribe({
+      next: (res) => {
+        this.sendingTestBillReminder.set(false);
+        if (res.success) {
+          this.toast.success(res.message || 'Test bill reminder email sent! Check your inbox.');
+        } else {
+          this.toast.error(res.error || 'Failed to send test bill reminder.');
+        }
+      },
+      error: (err) => {
+        this.sendingTestBillReminder.set(false);
+        this.toast.error(err?.error?.error || err?.message || 'Failed to send test bill reminder.');
+      }
+    });
+  }
+
+  processBillRemindersNow() {
+    this.processingBillReminders.set(true);
+    this.api.processBillReminders().subscribe({
+      next: (res) => {
+        this.processingBillReminders.set(false);
+        if (res.success) {
+          const sent = res.data?.sentCount ?? 0;
+          this.toast.success(`Processed reminders! Sent ${sent} email(s).`);
+        } else {
+          this.toast.error(res.error || 'Failed to process bill reminders.');
+        }
+      },
+      error: (err) => {
+        this.processingBillReminders.set(false);
+        this.toast.error(err?.error?.error || err?.message || 'Failed to process bill reminders.');
       }
     });
   }
@@ -826,7 +912,7 @@ export class SettingsComponent implements OnInit {
   shortcutUrl(): string {
     const key = this.settingsService.apiKey();
     if (typeof window === 'undefined') return '';
-    return `${window.location.origin}/api/quick-log?apiKey=${key}`;
+    return `${window.location.origin}/api/quick-log?apiKey=${key}&amount={ammount}&description={description}`;
   }
 
   copyShortcutUrl() {
