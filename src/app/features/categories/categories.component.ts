@@ -1,9 +1,10 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CategoryService } from '../../core/services/category.service';
 import { ToastService } from '../../core/services/toast.service';
 import { HeaderComponent } from '../../layout/header.component';
+import { CategorySelectComponent } from '../../shared/components/category-select.component';
 import { Category } from '../../core/models';
 
 const PRESET_COLORS = [
@@ -12,14 +13,14 @@ const PRESET_COLORS = [
 ];
 
 const PRESET_ICONS = ['💰', '🍽️', '🚗', '🏠', '💡', '🏥', '🎬', '🛍️', '📚', '✈️', '📱', '🛡️',
-  '💼', '💻', '📈', '🏘️', '🏢', '🎁', '💸', '🎯', '🔧', '🎮', '🐾', '🌿'];
+  '💼', '💻', '📈', '🏘️', '🏢', '🎁', '💸', '🎯', '🔧', '🎮', '🐾', '🌿', '🛒', '🍕', '🚘', '⛽'];
 
 @Component({
   selector: 'app-categories',
   standalone: true,
-  imports: [CommonModule, FormsModule, HeaderComponent],
+  imports: [CommonModule, FormsModule, HeaderComponent, CategorySelectComponent],
   template: `
-    <app-header title="Categories" subtitle="Organize your transactions with custom categories">
+    <app-header title="Categories" subtitle="Organize your transactions with nested parent & child subcategories">
       <button class="btn btn-primary btn-sm" (click)="openForm()">+ Add Category</button>
     </app-header>
 
@@ -38,32 +39,64 @@ const PRESET_ICONS = ['💰', '🍽️', '🚗', '🏠', '💡', '🏥', '🎬',
         </button>
       </div>
 
-      <!-- Categories Grid -->
-      <div class="categories-grid">
-        @for (cat of filteredCategories(); track cat.id) {
-          <div class="category-card">
-            <div class="cc-icon" [style.background]="cat.color + '22'" [style.border-color]="cat.color + '44'">
-              <span>{{ cat.icon }}</span>
+      <!-- Categories Hierarchy List -->
+      <div class="categories-hierarchy">
+        @for (parent of categoryTree(); track parent.id) {
+          <div class="parent-category-block">
+            <div class="parent-header">
+              <div class="cc-icon" [style.background]="parent.color + '22'" [style.border-color]="parent.color + '44'">
+                <span>{{ parent.icon }}</span>
+              </div>
+              <div class="cc-info">
+                <div class="cc-title-row">
+                  <span class="parent-name">{{ parent.name }}</span>
+                  <span class="cc-type badge" [class.badge-income]="parent.type === 'income'"
+                        [class.badge-expense]="parent.type === 'expense'"
+                        [class.badge-neutral]="parent.type === 'both'">
+                    {{ parent.type }}
+                  </span>
+                </div>
+                <span class="child-count-hint">
+                  {{ parent.children?.length || 0 }} subcategorie(s)
+                </span>
+              </div>
+              <div class="cc-actions">
+                <button class="btn btn-ghost btn-xs" (click)="openForm(parent.id)" title="Add subcategory under {{ parent.name }}">
+                  + Subcategory
+                </button>
+                <button class="btn btn-ghost btn-icon btn-sm" (click)="editCategory(parent)" aria-label="Edit">✏️</button>
+                <button class="btn btn-ghost btn-icon btn-sm" (click)="confirmDelete(parent)" aria-label="Delete">🗑️</button>
+              </div>
             </div>
-            <div class="cc-info">
-              <span class="cc-name">{{ cat.name }}</span>
-              <span class="cc-type badge" [class.badge-income]="cat.type === 'income'"
-                    [class.badge-expense]="cat.type === 'expense'"
-                    [class.badge-neutral]="cat.type === 'both'">
-                {{ cat.type }}
-              </span>
-            </div>
-            <div class="cc-actions">
-              <button class="btn btn-ghost btn-icon btn-sm" (click)="editCategory(cat)" aria-label="Edit">✏️</button>
-              <button class="btn btn-ghost btn-icon btn-sm" (click)="confirmDelete(cat)" aria-label="Delete">🗑️</button>
+
+            <!-- Children Subcategories Grid -->
+            <div class="children-grid">
+              @for (child of parent.children; track child.id) {
+                <div class="child-card">
+                  <div class="child-icon" [style.background]="child.color + '18'" [style.border-color]="child.color + '33'">
+                    <span>{{ child.icon }}</span>
+                  </div>
+                  <div class="child-info">
+                    <span class="child-name">{{ child.name }}</span>
+                    <span class="parent-ref-tag">under {{ parent.name }}</span>
+                  </div>
+                  <div class="cc-actions">
+                    <button class="btn btn-ghost btn-icon btn-xs" (click)="editCategory(child)" aria-label="Edit">✏️</button>
+                    <button class="btn btn-ghost btn-icon btn-xs" (click)="confirmDelete(child)" aria-label="Delete">🗑️</button>
+                  </div>
+                </div>
+              }
+              <button class="add-sub-btn" (click)="openForm(parent.id)">
+                <span>+ Add Subcategory</span>
+              </button>
             </div>
           </div>
         }
 
-        <!-- Add New Card -->
+        <!-- Independent / Standalone Card Add -->
         <button class="add-category-card" (click)="openForm()">
           <span class="add-icon">+</span>
-          <span>Add Category</span>
+          <span>Add Parent Category</span>
         </button>
       </div>
     </div>
@@ -73,13 +106,24 @@ const PRESET_ICONS = ['💰', '🍽️', '🚗', '🏠', '💡', '🏥', '🎬',
       <div class="modal-overlay" (click)="onOverlayClick($event)">
         <div class="modal" role="dialog" aria-modal="true">
           <div class="modal-header">
-            <h3>{{ editingCategory() ? 'Edit Category' : 'Add Category' }}</h3>
+            <h3>{{ editingCategory() ? 'Edit Category' : (form.parentId ? 'Add Subcategory' : 'Add Parent Category') }}</h3>
             <button class="btn btn-ghost btn-icon" (click)="closeForm()">✕</button>
           </div>
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label">Name *</label>
               <input type="text" class="form-control" [(ngModel)]="form.name" placeholder="Category name">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Parent Category (Optional)</label>
+              <app-category-select
+                [(ngModel)]="form.parentId"
+                placeholder="-- None (Top-level Parent Category) --"
+                [excludeId]="editingCategory()?.id"
+                [typeFilter]="form.type === 'income' ? 'income' : 'expense'">
+              </app-category-select>
+              <span class="form-hint">Assigning a parent turns this into a subcategory.</span>
             </div>
 
             <div class="form-group">
@@ -127,7 +171,14 @@ const PRESET_ICONS = ['💰', '🍽️', '🚗', '🏠', '💡', '🏥', '🎬',
                 <div class="cc-icon" [style.background]="form.color + '22'" [style.border-color]="form.color + '44'">
                   <span>{{ form.icon }}</span>
                 </div>
-                <span class="cc-name">{{ form.name || 'Category Name' }}</span>
+                <div style="display:flex; flex-direction:column;">
+                  <span class="cc-name">{{ form.name || 'Category Name' }}</span>
+                  @if (form.parentId) {
+                    <span style="font-size:0.75rem; color:var(--accent-blue);">
+                      Subcategory of {{ getParentName(form.parentId) }}
+                    </span>
+                  }
+                </div>
                 <span class="badge" [class.badge-income]="form.type === 'income'"
                       [class.badge-expense]="form.type === 'expense'"
                       [class.badge-neutral]="form.type === 'both'">
@@ -146,12 +197,12 @@ const PRESET_ICONS = ['💰', '🍽️', '🚗', '🏠', '💡', '🏥', '🎬',
       </div>
     }
 
-    <!-- Delete Confirm -->
+    <!-- Hierarchy-Aware Delete Confirm Modal -->
     @if (deletingCategory()) {
       <div class="modal-overlay" (click)="onDeleteOverlayClick($event)">
-        <div class="modal" style="max-width: 400px;" role="alertdialog">
+        <div class="modal" style="max-width: 460px;" role="alertdialog">
           <div class="modal-header">
-            <h3>Delete Category</h3>
+            <h3>Delete {{ deletingCategory()?.parentId ? 'Subcategory' : 'Parent Category' }}</h3>
             <button class="btn btn-ghost btn-icon" (click)="cancelDelete()">✕</button>
           </div>
           <div class="modal-body">
@@ -163,20 +214,42 @@ const PRESET_ICONS = ['💰', '🍽️', '🚗', '🏠', '💡', '🏥', '🎬',
                   <span>⚠️</span>
                   <span>Category In Use</span>
                 </div>
-                <p style="color: var(--text-secondary); margin: 0;">This category is used in <strong>{{ affectedCount() }}</strong> transaction(s) or recurring schedule(s). To delete it, you must reassign them to another category.</p>
+                <p style="color: var(--text-secondary); margin: 0;">
+                  This category is currently used in <strong>{{ affectedCount() }}</strong> transaction(s). To delete it, select a replacement category to reassign them to.
+                </p>
+                @if (childCount() > 0) {
+                  <p style="color: var(--text-primary); margin: 0; font-weight: 600;">
+                    Note: This parent category also has <strong>{{ childCount() }}</strong> subcategories.
+                  </p>
+                }
               </div>
 
+              @if (childCount() > 0) {
+                <div class="form-group" style="margin-top: 1rem;">
+                  <label class="form-label" style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">
+                    How to handle child subcategories?
+                  </label>
+                  <select class="form-control" [(ngModel)]="childAction" style="width: 100%;">
+                    <option value="promote">Promote child subcategories to top-level Parent Categories</option>
+                    <option value="reassign_parent">Move child subcategories under replacement Parent Category</option>
+                  </select>
+                </div>
+              }
+
               <div class="form-group" style="margin-top: 1rem;">
-                <label class="form-label" style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500; color: var(--text-secondary);">Reassign to *</label>
-                <select class="form-control" [(ngModel)]="reassignCategoryId" style="width: 100%;" required>
-                  <option value="" disabled>Select a replacement category</option>
-                  @for (cat of getReassignCategories(); track cat.id) {
-                    <option [value]="cat.id">{{ cat.icon }} {{ cat.name }} ({{ cat.type }})</option>
-                  }
-                </select>
+                <label class="form-label" style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">
+                  Reassign transactions to *
+                </label>
+                <app-category-select
+                  [(ngModel)]="reassignCategoryId"
+                  placeholder="Select replacement category..."
+                  [excludeId]="deletingCategory()?.id"
+                  [recommendedId]="deletingCategory()?.parentId || undefined"
+                  [typeFilter]="deletingCategory()?.type === 'income' ? 'income' : 'expense'">
+                </app-category-select>
               </div>
             } @else {
-              <p class="text-muted text-sm mt-2">Transactions using this category will keep the category ID but may not display correctly.</p>
+              <p class="text-muted text-sm mt-2">Any transactions using this category will require reassignment.</p>
             }
           </div>
           <div class="modal-footer">
@@ -214,19 +287,80 @@ const PRESET_ICONS = ['💰', '🍽️', '🚗', '🏠', '💡', '🏥', '🎬',
     .tab-btn:hover { background: var(--bg-card); color: var(--text-primary); }
     .tab-btn.active { background: rgba(92, 107, 192, 0.15); color: var(--accent-blue-light); border-color: var(--accent-blue); }
 
-    .categories-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+    .categories-hierarchy { display: flex; flex-direction: column; gap: 1.25rem; }
 
-    .category-card {
+    .parent-category-block {
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
-      padding: 1rem 1.25rem;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .parent-header {
       display: flex;
       align-items: center;
       gap: 0.875rem;
+      border-bottom: 1px dashed var(--border);
+      padding-bottom: 0.75rem;
+    }
+
+    .cc-title-row { display: flex; align-items: center; gap: 0.5rem; }
+    .parent-name { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+    .child-count-hint { font-size: 0.75rem; color: var(--text-muted); }
+
+    .children-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 0.75rem;
+      padding-left: 0.5rem;
+    }
+
+    .child-card {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 0.625rem 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
       transition: var(--transition);
     }
-    .category-card:hover { border-color: var(--border-light); }
+    .child-card:hover { border-color: var(--accent-blue); transform: translateY(-1px); }
+
+    .child-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: var(--radius-sm);
+      border: 1px solid;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .child-info { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .child-name { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .parent-ref-tag { font-size: 0.7rem; color: var(--text-muted); }
+
+    .add-sub-btn {
+      background: transparent;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-md);
+      padding: 0.625rem 0.875rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-blue-light);
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: inherit;
+    }
+    .add-sub-btn:hover { background: rgba(92, 107, 192, 0.08); border-color: var(--accent-blue); }
 
     .cc-icon {
       width: 44px;
@@ -240,9 +374,10 @@ const PRESET_ICONS = ['💰', '🍽️', '🚗', '🏠', '💡', '🏥', '🎬',
       flex-shrink: 0;
     }
     .cc-info { flex: 1; display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
-    .cc-name { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .cc-type { font-size: 0.7rem; align-self: flex-start; }
-    .cc-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
+    .cc-name { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+    .cc-type { font-size: 0.7rem; }
+    .cc-actions { display: flex; gap: 0.25rem; flex-shrink: 0; align-items: center; }
+    .btn-xs { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
 
     .add-category-card {
       background: transparent;
@@ -259,7 +394,7 @@ const PRESET_ICONS = ['💰', '🍽️', '🚗', '🏠', '💡', '🏥', '🎬',
       cursor: pointer;
       transition: var(--transition);
       font-family: inherit;
-      min-height: 72px;
+      min-height: 60px;
     }
     .add-category-card:hover { border-color: var(--accent-blue); color: var(--accent-blue-light); background: rgba(92, 107, 192, 0.05); }
     .add-icon { font-size: 1.25rem; }
@@ -309,47 +444,83 @@ export class CategoriesComponent implements OnInit {
   deletingCategory = signal<Category | undefined>(undefined);
   submitting = signal(false);
 
-  // Reassignment state variables
+  // Hierarchy delete & reassign state
   showReassignOptions = signal(false);
   reassignCategoryId = '';
+  childAction: 'promote' | 'reassign_parent' = 'promote';
   affectedCount = signal(0);
+  childCount = signal(0);
 
   presetColors = PRESET_COLORS;
   presetIcons = PRESET_ICONS;
 
-  form = { name: '', type: 'expense' as 'income' | 'expense' | 'both', icon: '💰', color: '#607D8B' };
+  form = {
+    name: '',
+    type: 'expense' as 'income' | 'expense' | 'both',
+    icon: '💰',
+    color: '#607D8B',
+    parentId: null as string | null
+  };
 
-  filteredCategories() {
-    const tab = this.activeTab();
-    if (tab === 'all') return this.categoryService.categories();
-    if (tab === 'income') return this.categoryService.incomeCategories();
-    return this.categoryService.expenseCategories();
+  categoryTree = computed(() => {
+    return this.categoryService.getCategoryTree(this.activeTab());
+  });
+
+  parentCategoriesForSelect() {
+    return this.categoryService.categories().filter(c => !c.parentId && (!this.editingCategory() || c.id !== this.editingCategory()!.id));
   }
 
   ngOnInit() {
     this.categoryService.loadCategories().subscribe();
   }
 
-  openForm() {
-    this.form = { name: '', type: 'expense', icon: '💰', color: '#607D8B' };
+  openForm(parentId: string | null = null) {
+    this.form = { name: '', type: 'expense', icon: '💰', color: '#607D8B', parentId };
+    if (parentId) {
+      const parent = this.categoryService.getCategoryById(parentId);
+      if (parent) this.form.type = parent.type;
+    }
     this.editingCategory.set(undefined);
     this.showForm.set(true);
   }
 
   editCategory(cat: Category) {
-    this.form = { name: cat.name, type: cat.type, icon: cat.icon, color: cat.color };
+    this.form = {
+      name: cat.name,
+      type: cat.type,
+      icon: cat.icon,
+      color: cat.color,
+      parentId: cat.parentId ?? null
+    };
     this.editingCategory.set(cat);
     this.showForm.set(true);
   }
 
-  closeForm() { this.showForm.set(false); this.editingCategory.set(undefined); }
+  closeForm() {
+    this.showForm.set(false);
+    this.editingCategory.set(undefined);
+  }
+
+  getParentName(parentId?: string | null): string {
+    if (!parentId) return '';
+    return this.categoryService.getCategoryById(parentId)?.name ?? parentId;
+  }
 
   saveCategory() {
     if (!this.form.name) return;
     this.submitting.set(true);
+    const payload = {
+      name: this.form.name,
+      type: this.form.type,
+      icon: this.form.icon,
+      color: this.form.color,
+      parentId: this.form.parentId
+    };
+
     const obs = this.editingCategory()
-      ? this.categoryService.updateCategory(this.editingCategory()!.id, this.form)
-      : this.categoryService.createCategory(this.form);
+      ? this.categoryService.updateCategory(this.editingCategory()!.id, payload)
+      : this.categoryService.createCategory(payload);
+
     obs.subscribe(() => {
       this.submitting.set(false);
       this.closeForm();
@@ -361,14 +532,23 @@ export class CategoriesComponent implements OnInit {
     this.deletingCategory.set(cat);
     this.showReassignOptions.set(false);
     this.reassignCategoryId = '';
+    this.childAction = 'promote';
     this.affectedCount.set(0);
+    this.childCount.set(0);
+
+    // If deleting a subcategory, pre-fill its parent category as default recommendation!
+    if (cat.parentId) {
+      this.reassignCategoryId = cat.parentId;
+    }
   }
 
   cancelDelete() {
     this.deletingCategory.set(undefined);
     this.showReassignOptions.set(false);
     this.reassignCategoryId = '';
+    this.childAction = 'promote';
     this.affectedCount.set(0);
+    this.childCount.set(0);
   }
 
   deleteCategory() {
@@ -376,13 +556,10 @@ export class CategoriesComponent implements OnInit {
     if (!cat) return;
     this.submitting.set(true);
     const reassignTo = this.showReassignOptions() ? this.reassignCategoryId : undefined;
-    this.categoryService.deleteCategory(cat.id, reassignTo).subscribe({
+    this.categoryService.deleteCategory(cat.id, reassignTo, this.childAction).subscribe({
       next: (res: any) => {
         this.submitting.set(false);
-        this.deletingCategory.set(undefined);
-        this.showReassignOptions.set(false);
-        this.reassignCategoryId = '';
-        this.affectedCount.set(0);
+        this.cancelDelete();
         this.toast.success(reassignTo ? 'Category deleted and transactions reassigned!' : 'Category deleted');
       },
       error: (err: any) => {
@@ -391,7 +568,11 @@ export class CategoriesComponent implements OnInit {
         if (err?.error?.error === 'HAS_TRANSACTIONS') {
           this.showReassignOptions.set(true);
           this.affectedCount.set(err.error.count || 0);
-          this.toast.warning('Category has transactions. Please select a category to reassign them to.');
+          this.childCount.set(err.error.childCount || 0);
+          if (cat.parentId && !this.reassignCategoryId) {
+            this.reassignCategoryId = cat.parentId;
+          }
+          this.toast.warning('Category has associated transactions. Please select a replacement category.');
         } else {
           this.toast.error(err?.error?.message || 'Failed to delete category');
         }
@@ -399,16 +580,30 @@ export class CategoriesComponent implements OnInit {
     });
   }
 
-  getReassignCategories() {
-    const deletingCat = this.deletingCategory();
-    if (!deletingCat) return [];
-    const filtered = this.categoryService.categories().filter(c => 
-      c.id !== deletingCat.id && 
-      (c.type === deletingCat.type || c.type === 'both' || deletingCat.type === 'both')
-    );
-    return filtered.length > 0 
-      ? filtered 
-      : this.categoryService.categories().filter(c => c.id !== deletingCat.id);
+  recommendedParentCategory(): Category | null {
+    const deleting = this.deletingCategory();
+    if (!deleting || !deleting.parentId) return null;
+    return this.categoryService.getCategoryById(deleting.parentId) || null;
+  }
+
+  getReassignGroups(): Array<{ parent: Category; children: Category[] }> {
+    const deleting = this.deletingCategory();
+    if (!deleting) return [];
+    const all = this.categoryService.categories().filter(c => c.id !== deleting.id);
+    const parents = all.filter(c => !c.parentId && (c.type === deleting.type || c.type === 'both' || deleting.type === 'both'));
+
+    return parents.map(parent => ({
+      parent,
+      children: all.filter(child => child.parentId === parent.id && (child.type === deleting.type || child.type === 'both' || deleting.type === 'both'))
+    }));
+  }
+
+  getOrphanReassignCategories(): Category[] {
+    const deleting = this.deletingCategory();
+    if (!deleting) return [];
+    const all = this.categoryService.categories().filter(c => c.id !== deleting.id);
+    const parentIdSet = new Set(all.filter(c => !c.parentId).map(c => c.id));
+    return all.filter(c => c.parentId && !parentIdSet.has(c.parentId) && (c.type === deleting.type || c.type === 'both' || deleting.type === 'both'));
   }
 
   onOverlayClick(e: MouseEvent) {

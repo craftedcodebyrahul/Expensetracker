@@ -116,6 +116,53 @@
       </div>
     </div>
 
+    <!-- Smart Category Split Recommendations Banner -->
+    @if (splitSuggestions().length > 0) {
+      <div class="card split-suggestions-card" style="border: 1px solid var(--accent-blue); background: rgba(92, 107, 192, 0.05); margin-bottom: 1.25rem; padding: 1.25rem; border-radius: var(--radius-lg);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span style="font-size: 1.5rem;">⚡</span>
+            <div>
+              <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Smart Category Split Recommendations</h3>
+              <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">We detected broad categories containing distinct recurring items. Split them into subcategories for cleaner budget tracking.</p>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem;">
+          @for (sug of splitSuggestions(); track sug.id) {
+            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <span style="font-size: 1.25rem;">{{ sug.suggestedIcon }}</span>
+                  <span style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">{{ sug.suggestedName }}</span>
+                </div>
+                <span class="badge badge-neutral" style="font-size: 0.75rem;">sub of {{ sug.parentCategoryName }}</span>
+              </div>
+
+              <p style="font-size: 0.8125rem; color: var(--text-secondary); margin: 0; line-height: 1.4;">{{ sug.reason }}</p>
+
+              <div style="background: var(--bg-input); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.75rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.25rem;">
+                <span style="font-weight: 600; color: var(--text-primary);">Sample Transactions:</span>
+                @for (desc of sug.sampleDescriptions; track desc) {
+                  <span>• {{ desc }}</span>
+                }
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.25rem;">
+                <span style="font-size: 0.8rem; font-weight: 600; color: var(--accent-blue-light);">
+                  Total: ${{ sug.totalAmount | number:'1.2-2' }} ({{ sug.affectedCount }} items)
+                </span>
+                <button class="btn btn-primary btn-sm" [disabled]="splittingId() === sug.id" (click)="executeSplit(sug)">
+                  {{ splittingId() === sug.id ? 'Creating...' : '✨ Create & Reassign' }}
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
     <!-- KPIs Row -->
     <div class="kpi-row">
       <div class="kpi-card">

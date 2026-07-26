@@ -14,7 +14,8 @@ import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { PredictiveRunwayComponent } from '../../shared/components/predictive-runway.component';
 import { parseLocalDate } from '../../shared/utils/date.utils';
-import { ChatMessage } from '../../core/models';
+import { ToastService } from '../../core/services/toast.service';
+import { ChatMessage, CategorySplitSuggestion } from '../../core/models';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -386,6 +387,10 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
     setTimeout(() => this.renderGoalChart(), 50);
   }
 
+  private toast = inject(ToastService);
+  splitSuggestions = signal<CategorySplitSuggestion[]>([]);
+  splittingId = signal<string | null>(null);
+
   ngOnInit() {
     // Bind query parameters to preset period selectors if coming from Dashboard
     this.route.queryParams.subscribe(params => {
@@ -409,6 +414,44 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
     });
     this.catService.loadCategories().subscribe();
     this.accountService.loadAccounts().subscribe();
+    this.loadSplitSuggestions();
+  }
+
+  loadSplitSuggestions() {
+    this.api.getCategorySplitSuggestions().subscribe({
+      next: res => {
+        if (res.success && Array.isArray(res.data)) {
+          this.splitSuggestions.set(res.data);
+        }
+      }
+    });
+  }
+
+  executeSplit(sug: CategorySplitSuggestion) {
+    this.splittingId.set(sug.id);
+    this.catService.executeCategorySplit(sug.parentCategoryId, [
+      {
+        name: sug.suggestedName,
+        icon: sug.suggestedIcon,
+        color: sug.suggestedColor,
+        transactionIds: sug.transactionIds
+      }
+    ]).subscribe({
+      next: (res: any) => {
+        this.splittingId.set(null);
+        if (res && res.success) {
+          this.toast.success(`Created subcategory '${sug.suggestedName}' and reassigned ${sug.affectedCount} transaction(s)!`);
+          this.txnService.loadTransactions().subscribe();
+          this.loadSplitSuggestions();
+        } else {
+          this.toast.error(res?.error || 'Failed to split category');
+        }
+      },
+      error: () => {
+        this.splittingId.set(null);
+        this.toast.error('Error executing category split');
+      }
+    });
   }
 
   // ── Sankey Cashflow Flowchart computed data ──

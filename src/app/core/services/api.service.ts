@@ -72,10 +72,22 @@ export class ApiService {
     return this.http.put<ApiResponse<Category>>(`${this.baseUrl}/categories/${id}`, category);
   }
 
-  deleteCategory(id: string, reassignTo?: string): Observable<ApiResponse<void>> {
+  deleteCategory(id: string, reassignTo?: string, childAction: 'promote' | 'reassign_parent' = 'promote'): Observable<ApiResponse<void>> {
     let params = new HttpParams();
     if (reassignTo) params = params.set('reassignTo', reassignTo);
+    if (childAction) params = params.set('childAction', childAction);
     return this.http.delete<ApiResponse<void>>(`${this.baseUrl}/categories/${id}`, { params });
+  }
+
+  getCategorySplitSuggestions(): Observable<ApiResponse<any[]>> {
+    return this.http.get<ApiResponse<any[]>>(`${this.baseUrl}/insights/category-split-suggestions`);
+  }
+
+  splitAndReassignCategory(parentCategoryId: string, subcategories: Array<{ name: string; icon: string; color: string; transactionIds: string[] }>): Observable<ApiResponse<any>> {
+    return this.http.post<ApiResponse<any>>(`${this.baseUrl}/categories/split-and-reassign`, {
+      parentCategoryId,
+      subcategories
+    });
   }
 
   // ── Budgets ───────────────────────────────────────────────────────────────

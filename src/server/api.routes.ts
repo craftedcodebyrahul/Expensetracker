@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { dbService } from './db.service.js';
+import { categoryDetectorService } from './category-detector.service.js';
 import { requireAuth, getSession, SessionUser } from './auth/oauth.js';
 import { prisma } from './db.js';
 
@@ -219,10 +220,10 @@ export function createApiRouter(): Router {
 
   router.post('/categories', async (req: Request, res: Response): Promise<void> => {
     try {
-      const { name, type, icon, color, budget } = req.body;
+      const { name, type, icon, color, budget, parentId } = req.body;
       if (!name || !type) { fail(res, 'Missing required fields: name, type', 400); return; }
       ok(res, await dbService.createCategory(getUserId(req), {
-        name, type, icon: icon ?? '💰', color: color ?? '#607D8B', budget,
+        name, type, icon: icon ?? '💰', color: color ?? '#607D8B', budget, parentId: parentId ?? null,
       }), 'Category created');
     } catch (e) { fail(res, e); }
   });
@@ -237,15 +238,17 @@ export function createApiRouter(): Router {
 
   router.delete('/categories/:id', async (req: Request, res: Response): Promise<void> => {
     try {
-      const { reassignTo } = req.query as Record<string, string>;
-      const result = await dbService.deleteCategory(getUserId(req), pid(req), reassignTo);
+      const { reassignTo, childAction } = req.query as Record<string, string>;
+      const action = childAction === 'reassign_parent' ? 'reassign_parent' : 'promote';
+      const result = await dbService.deleteCategory(getUserId(req), pid(req), reassignTo, action);
       if (!result.success) {
         if (result.hasTransactions) {
           res.status(400).json({
             success: false,
             error: 'HAS_TRANSACTIONS',
             message: `Category has ${result.count} transactions associated with it.`,
-            count: result.count
+            count: result.count,
+            childCount: result.childCount ?? 0,
           });
           return;
         }
@@ -253,6 +256,31 @@ export function createApiRouter(): Router {
         return;
       }
       ok(res, null, 'Category deleted');
+    } catch (e) { fail(res, e); }
+  });
+
+  // ── Smart Category Split Endpoints ──────────────────────────────────────────
+
+  router.get('/insights/category-split-suggestions', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const suggestions = await categoryDetectorService.getSplitSuggestions(getUserId(req));
+      ok(res, suggestions);
+    } catch (e) { fail(res, e); }
+  });
+
+  router.post('/categories/split-and-reassign', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { parentCategoryId, subcategories } = req.body;
+      if (!parentCategoryId || !Array.isArray(subcategories)) {
+        fail(res, 'Missing required fields: parentCategoryId, subcategories', 400);
+        return;
+      }
+      const result = await categoryDetectorService.executeCategorySplit(
+        getUserId(req),
+        parentCategoryId,
+        subcategories
+      );
+      ok(res, result, 'Category split completed successfully');
     } catch (e) { fail(res, e); }
   });
 

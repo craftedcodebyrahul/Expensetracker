@@ -7,11 +7,12 @@ import { TransactionService } from '../../core/services/transaction.service';
 import { AccountService } from '../../core/services/account.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ApiService } from '../../core/services/api.service';
+import { CategorySelectComponent } from '../../shared/components/category-select.component';
 
 @Component({
   selector: 'app-transaction-form',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CategorySelectComponent],
   template: `
     <div class="modal-overlay" (click)="onOverlayClick($event)">
       <div class="modal" role="dialog" aria-modal="true" [attr.aria-label]="editMode ? 'Edit Transaction' : 'Add Transaction'">
@@ -120,12 +121,11 @@ import { ApiService } from '../../core/services/api.service';
             @if (form.type !== 'transfer') {
               <div class="form-group">
                 <label class="form-label" for="category">Category *</label>
-                <select id="category" class="form-control" [(ngModel)]="form.category" required>
-                  <option value="">Select category...</option>
-                  @for (cat of availableCategories(); track cat.id) {
-                    <option [value]="cat.id">{{ cat.icon }} {{ cat.name }}</option>
-                  }
-                </select>
+                <app-category-select
+                  [(ngModel)]="form.category"
+                  placeholder="Select category..."
+                  [typeFilter]="form.type === 'income' ? 'income' : 'expense'">
+                </app-category-select>
               </div>
             }
 
@@ -329,18 +329,28 @@ export class TransactionFormComponent implements OnInit {
     const previousCategory = this.form.category;
     if (this.form.type === 'income') {
       this.availableCategories.set(this.categoryService.incomeCategories());
-      // Only clear if old category isn't valid for income
       const stillValid = this.categoryService.incomeCategories().some(c => c.id === previousCategory);
       if (!stillValid) this.form.category = '';
     } else if (this.form.type === 'expense') {
       this.availableCategories.set(this.categoryService.expenseCategories());
-      // Only clear if old category isn't valid for expense
       const stillValid = this.categoryService.expenseCategories().some(c => c.id === previousCategory);
       if (!stillValid) this.form.category = '';
     } else {
-      // Transfer: no category needed
       this.availableCategories.set([]);
     }
+  }
+
+  parentCategoriesForForm() {
+    return this.availableCategories().filter(c => !c.parentId);
+  }
+
+  getSubcategoriesForForm(parentId: string) {
+    return this.availableCategories().filter(c => c.parentId === parentId);
+  }
+
+  orphanCategoriesForForm() {
+    const parents = new Set(this.parentCategoriesForForm().map(p => p.id));
+    return this.availableCategories().filter(c => c.parentId && !parents.has(c.parentId));
   }
 
   addTag(event: Event) {

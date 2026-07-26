@@ -26,7 +26,7 @@ interface PrismaRecurringScheduleRow {
 }
 interface PrismaCategoryRow {
   id: string; userId: string; name: string; type: string;
-  icon: string; color: string; budget: number | null; createdAt: string;
+  icon: string; color: string; budget: number | null; parentId: string | null; createdAt: string;
 }
 interface PrismaAccountRow {
   id: string; userId: string; name: string; type: string;
@@ -81,6 +81,8 @@ export interface Category {
   icon: string;
   color: string;
   budget?: number;
+  parentId?: string | null;
+  children?: Category[];
   createdAt: string;
 }
 
@@ -276,35 +278,42 @@ async function fetchGeminiWithRetry(url: string, options: RequestInit, retries =
 // ── Default seed data ─────────────────────────────────────────────────────────
 
 const DEFAULT_CATEGORIES: Omit<Category, 'createdAt'>[] = [
-  { id: 'food',          name: 'Food & Dining',      type: 'expense', icon: '🍽️', color: '#FF6384' },
-  { id: 'transport',     name: 'Transportation',     type: 'expense', icon: '🚗', color: '#36A2EB' },
-  { id: 'housing',       name: 'Housing & Rent',     type: 'expense', icon: '🏠', color: '#FFCE56' },
-  { id: 'utilities',     name: 'Utilities',          type: 'expense', icon: '💡', color: '#4BC0C0' },
-  { id: 'healthcare',    name: 'Healthcare',         type: 'expense', icon: '🏥', color: '#9966FF' },
-  { id: 'entertainment', name: 'Entertainment',      type: 'expense', icon: '🎬', color: '#FF9F40' },
-  { id: 'shopping',      name: 'Shopping',           type: 'expense', icon: '🛍️', color: '#FF6384' },
-  { id: 'education',     name: 'Education',          type: 'expense', icon: '📚', color: '#36A2EB' },
-  { id: 'travel',        name: 'Travel',             type: 'expense', icon: '✈️', color: '#4BC0C0' },
-  { id: 'subscriptions', name: 'Subscriptions',      type: 'expense', icon: '📱', color: '#9966FF' },
-  { id: 'insurance',     name: 'Insurance',          type: 'expense', icon: '🛡️', color: '#FFCE56' },
-  { id: 'groceries',     name: 'Groceries',          type: 'expense', icon: '🛒', color: '#8BC34A' },
-  { id: 'dining_out',    name: 'Dining Out',         type: 'expense', icon: '🍕', color: '#FF5722' },
-  { id: 'fitness',       name: 'Fitness & Sports',   type: 'expense', icon: '🏋️', color: '#00BCD4' },
-  { id: 'personal_care', name: 'Personal Care',      type: 'expense', icon: '💅', color: '#E91E63' },
-  { id: 'pets',          name: 'Pets',               type: 'expense', icon: '🐾', color: '#795548' },
-  { id: 'gifts_given',   name: 'Gifts Given',        type: 'expense', icon: '🎁', color: '#9C27B0' },
-  { id: 'taxes',         name: 'Taxes & Fees',       type: 'expense', icon: '🧾', color: '#607D8B' },
-  { id: 'other_expense', name: 'Other Expenses',     type: 'expense', icon: '💸', color: '#C9CBCF' },
-  { id: 'salary',        name: 'Salary',             type: 'income',  icon: '💼', color: '#4CAF50' },
-  { id: 'freelance',     name: 'Freelance',          type: 'income',  icon: '💻', color: '#8BC34A' },
-  { id: 'investment',    name: 'Investment Returns', type: 'income',  icon: '📈', color: '#00BCD4' },
-  { id: 'rental',        name: 'Rental Income',      type: 'income',  icon: '🏘️', color: '#FF9800' },
-  { id: 'business',      name: 'Business Income',    type: 'income',  icon: '🏢', color: '#9C27B0' },
-  { id: 'bonus',         name: 'Bonus',              type: 'income',  icon: '🎯', color: '#F44336' },
-  { id: 'gift_received', name: 'Gifts Received',     type: 'income',  icon: '🎁', color: '#E91E63' },
-  { id: 'refund',        name: 'Refunds',            type: 'income',  icon: '↩️', color: '#00BCD4' },
-  { id: 'side_hustle',   name: 'Side Hustle',        type: 'income',  icon: '⚡', color: '#FF9800' },
-  { id: 'other_income',  name: 'Other Income',       type: 'income',  icon: '💰', color: '#607D8B' },
+  { id: 'food',          name: 'Food & Dining',      type: 'expense', icon: '🍽️', color: '#FF6384', parentId: null },
+  { id: 'groceries',     name: 'Groceries',          type: 'expense', icon: '🛒', color: '#8BC34A', parentId: 'food' },
+  { id: 'dining_out',    name: 'Dining Out',         type: 'expense', icon: '🍕', color: '#FF5722', parentId: 'food' },
+
+  { id: 'transport',     name: 'Transportation',     type: 'expense', icon: '🚗', color: '#36A2EB', parentId: null },
+  { id: 'auto_insurance',name: 'Car Insurance',      type: 'expense', icon: '🛡️', color: '#FFCE56', parentId: 'transport' },
+  { id: 'car_payment',   name: 'Car Payment / Loan', type: 'expense', icon: '🚘', color: '#36A2EB', parentId: 'transport' },
+  { id: 'gas_fuel',      name: 'Gas & Fuel',         type: 'expense', icon: '⛽', color: '#FF9F40', parentId: 'transport' },
+
+  { id: 'housing',       name: 'Housing & Rent',     type: 'expense', icon: '🏠', color: '#FFCE56', parentId: null },
+  { id: 'utilities',     name: 'Utilities',          type: 'expense', icon: '💡', color: '#4BC0C0', parentId: 'housing' },
+
+  { id: 'healthcare',    name: 'Healthcare',         type: 'expense', icon: '🏥', color: '#9966FF', parentId: null },
+  { id: 'entertainment', name: 'Entertainment',      type: 'expense', icon: '🎬', color: '#FF9F40', parentId: null },
+  { id: 'subscriptions', name: 'Subscriptions',      type: 'expense', icon: '📱', color: '#9966FF', parentId: 'entertainment' },
+
+  { id: 'shopping',      name: 'Shopping',           type: 'expense', icon: '🛍️', color: '#FF6384', parentId: null },
+  { id: 'personal_care', name: 'Personal Care',      type: 'expense', icon: '💅', color: '#E91E63', parentId: null },
+  { id: 'fitness',       name: 'Fitness & Sports',   type: 'expense', icon: '🏋️', color: '#00BCD4', parentId: null },
+  { id: 'education',     name: 'Education',          type: 'expense', icon: '📚', color: '#36A2EB', parentId: null },
+  { id: 'travel',        name: 'Travel',             type: 'expense', icon: '✈️', color: '#4BC0C0', parentId: null },
+  { id: 'pets',          name: 'Pets',               type: 'expense', icon: '🐾', color: '#795548', parentId: null },
+  { id: 'gifts_given',   name: 'Gifts Given',        type: 'expense', icon: '🎁', color: '#9C27B0', parentId: null },
+  { id: 'taxes',         name: 'Taxes & Fees',       type: 'expense', icon: '🧾', color: '#607D8B', parentId: null },
+  { id: 'other_expense', name: 'Other Expenses',     type: 'expense', icon: '💸', color: '#C9CBCF', parentId: null },
+
+  { id: 'salary',        name: 'Salary',             type: 'income',  icon: '💼', color: '#4CAF50', parentId: null },
+  { id: 'freelance',     name: 'Freelance',          type: 'income',  icon: '💻', color: '#8BC34A', parentId: null },
+  { id: 'investment',    name: 'Investment Returns', type: 'income',  icon: '📈', color: '#00BCD4', parentId: null },
+  { id: 'rental',        name: 'Rental Income',      type: 'income',  icon: '🏘️', color: '#FF9800', parentId: null },
+  { id: 'business',      name: 'Business Income',    type: 'income',  icon: '🏢', color: '#9C27B0', parentId: null },
+  { id: 'bonus',         name: 'Bonus',              type: 'income',  icon: '🎯', color: '#F44336', parentId: null },
+  { id: 'gift_received', name: 'Gifts Received',     type: 'income',  icon: '🎁', color: '#E91E63', parentId: null },
+  { id: 'refund',        name: 'Refunds',            type: 'income',  icon: '↩️', color: '#00BCD4', parentId: null },
+  { id: 'side_hustle',   name: 'Side Hustle',        type: 'income',  icon: '⚡', color: '#FF9800', parentId: null },
+  { id: 'other_income',  name: 'Other Income',       type: 'income',  icon: '💰', color: '#607D8B', parentId: null },
 ];
 
 const DEFAULT_ACCOUNTS: Omit<Account, 'createdAt'>[] = [
@@ -804,10 +813,49 @@ export class DbService {
   // ── Categories ────────────────────────────────────────────────────────────
 
   async getCategories(userId: string): Promise<Category[]> {
-    const rows = await prisma.category.findMany({
+    let rows = await prisma.category.findMany({
       where: { userId },
       orderBy: { name: 'asc' },
     });
+
+    // Non-destructive migration: auto-link pre-existing flat categories to parents if applicable
+    const unlinked = rows.filter((r: any) => !r.parentId);
+    if (unlinked.length > 0) {
+      const nameToCategory = new Map<string, any>(rows.map((r: any) => [r.name.toLowerCase(), r]));
+      const defaultParentMappings: Record<string, string> = {
+        'groceries': 'food & dining',
+        'dining out': 'food & dining',
+        'car insurance': 'transportation',
+        'insurance': 'transportation',
+        'car payment / loan': 'transportation',
+        'gas & fuel': 'transportation',
+        'utilities': 'housing & rent',
+        'subscriptions': 'entertainment',
+      };
+
+      let updatedAny = false;
+      for (const cat of unlinked) {
+        const targetParentName = defaultParentMappings[cat.name.toLowerCase()];
+        if (targetParentName) {
+          const parentCat = nameToCategory.get(targetParentName);
+          if (parentCat && parentCat.id !== cat.id) {
+            await prisma.category.update({
+              where: { id: cat.id },
+              data: { parentId: parentCat.id }
+            });
+            (cat as any).parentId = parentCat.id;
+            updatedAny = true;
+          }
+        }
+      }
+      if (updatedAny) {
+        rows = await prisma.category.findMany({
+          where: { userId },
+          orderBy: { name: 'asc' },
+        });
+      }
+    }
+
     return rows.map((r: PrismaCategoryRow) => ({
       id: r.id,
       name: r.name,
@@ -815,6 +863,7 @@ export class DbService {
       icon: r.icon,
       color: r.color,
       budget: r.budget ?? undefined,
+      parentId: r.parentId ?? undefined,
       createdAt: r.createdAt,
     }));
   }
@@ -825,9 +874,24 @@ export class DbService {
   ): Promise<Category> {
     const now = new Date().toISOString();
     const row = await prisma.category.create({
-      data: { id: uuidv4(), userId, ...data, createdAt: now, budget: data.budget ?? null },
+      data: {
+        id: uuidv4(),
+        userId,
+        name: data.name,
+        type: data.type,
+        icon: data.icon,
+        color: data.color,
+        budget: data.budget ?? null,
+        parentId: data.parentId ?? null,
+        createdAt: now,
+      },
     });
-    return { ...row, type: row.type as Category['type'], budget: row.budget ?? undefined };
+    return {
+      ...row,
+      type: row.type as Category['type'],
+      budget: row.budget ?? undefined,
+      parentId: row.parentId ?? undefined,
+    };
   }
 
   async updateCategory(
@@ -840,29 +904,46 @@ export class DbService {
     const updated = await prisma.category.update({
       where: { id },
       data: {
-        ...(data.name   !== undefined && { name: data.name }),
-        ...(data.type   !== undefined && { type: data.type }),
-        ...(data.icon   !== undefined && { icon: data.icon }),
-        ...(data.color  !== undefined && { color: data.color }),
-        ...(data.budget !== undefined && { budget: data.budget ?? null }),
+        ...(data.name     !== undefined && { name: data.name }),
+        ...(data.type     !== undefined && { type: data.type }),
+        ...(data.icon     !== undefined && { icon: data.icon }),
+        ...(data.color    !== undefined && { color: data.color }),
+        ...(data.budget   !== undefined && { budget: data.budget ?? null }),
+        ...(data.parentId !== undefined && { parentId: data.parentId ?? null }),
       },
     });
-    return { ...updated, type: updated.type as Category['type'], budget: updated.budget ?? undefined };
+    return {
+      ...updated,
+      type: updated.type as Category['type'],
+      budget: updated.budget ?? undefined,
+      parentId: updated.parentId ?? undefined,
+    };
   }
 
-  async deleteCategory(userId: string, id: string, reassignCategoryId?: string): Promise<{ success: boolean; hasTransactions: boolean; count?: number }> {
+  async deleteCategory(
+    userId: string,
+    id: string,
+    reassignCategoryId?: string,
+    childAction: 'promote' | 'reassign_parent' = 'promote'
+  ): Promise<{ success: boolean; hasTransactions: boolean; count?: number; childCount?: number }> {
     const existing = await prisma.category.findFirst({ where: { id, userId } });
     if (!existing) return { success: false, hasTransactions: false };
 
-    // Check if there are any transactions using this category
+    // Check transactions in this category
     const transactionCount = await prisma.transaction.count({
       where: { userId, category: id }
     });
 
-    if (transactionCount > 0) {
-      if (!reassignCategoryId) {
-        return { success: false, hasTransactions: true, count: transactionCount };
-      }
+    // Check child categories under this parent
+    const childCount = await prisma.category.count({
+      where: { userId, parentId: id }
+    });
+
+    if (transactionCount > 0 && !reassignCategoryId) {
+      return { success: false, hasTransactions: true, count: transactionCount, childCount };
+    }
+
+    if (transactionCount > 0 && reassignCategoryId) {
       // Reassign all transactions
       await prisma.transaction.updateMany({
         where: { userId, category: id },
@@ -870,13 +951,30 @@ export class DbService {
       });
     }
 
-    // Reassign any recurring schedules using this category
+    // Reassign recurring schedules
     await prisma.recurringSchedule.updateMany({
       where: { userId, category: id },
       data: { category: reassignCategoryId || null }
     });
 
-    // Delete any budgets for this category
+    // Handle child subcategories if deleting a parent
+    if (childCount > 0) {
+      if (childAction === 'reassign_parent' && reassignCategoryId) {
+        // Move subcategories under new parent category
+        await prisma.category.updateMany({
+          where: { userId, parentId: id },
+          data: { parentId: reassignCategoryId }
+        });
+      } else {
+        // Promote subcategories to top-level parent categories
+        await prisma.category.updateMany({
+          where: { userId, parentId: id },
+          data: { parentId: null }
+        });
+      }
+    }
+
+    // Delete budgets for this category
     await prisma.budget.deleteMany({
       where: { userId, categoryId: id }
     });

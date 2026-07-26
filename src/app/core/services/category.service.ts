@@ -18,6 +18,10 @@ export class CategoryService {
     this.categories().filter(c => c.type === 'expense' || c.type === 'both')
   );
 
+  readonly parentCategories = computed(() =>
+    this.categories().filter(c => !c.parentId)
+  );
+
   getCategoryById(id: string): Category | undefined {
     return this.categories().find(c => c.id === id);
   }
@@ -28,6 +32,26 @@ export class CategoryService {
 
   getCategoryIcon(id: string): string {
     return this.getCategoryById(id)?.icon ?? '💰';
+  }
+
+  getSubcategories(parentId: string): Category[] {
+    return this.categories().filter(c => c.parentId === parentId);
+  }
+
+  getCategoryTree(typeFilter: 'all' | 'expense' | 'income' = 'all'): Category[] {
+    const all = this.categories();
+    const parentIdSet = new Set(all.map(c => c.id));
+    
+    // Top-level categories: no parentId OR parentId no longer exists
+    const parents = all.filter(c =>
+      (!c.parentId || !parentIdSet.has(c.parentId)) &&
+      (typeFilter === 'all' || c.type === typeFilter || c.type === 'both')
+    );
+
+    return parents.map(parent => ({
+      ...parent,
+      children: all.filter(child => child.parentId === parent.id && (typeFilter === 'all' || child.type === typeFilter || child.type === 'both'))
+    }));
   }
 
   loadCategories() {
@@ -69,10 +93,25 @@ export class CategoryService {
     );
   }
 
-  deleteCategory(id: string, reassignTo?: string) {
-    return this.api.deleteCategory(id, reassignTo).pipe(
+  deleteCategory(id: string, reassignTo?: string, childAction: 'promote' | 'reassign_parent' = 'promote') {
+    return this.api.deleteCategory(id, reassignTo, childAction).pipe(
       tap(res => {
-        if (res.success) this.categories.update(cats => cats.filter(c => c.id !== id));
+        if (res.success) {
+          this.loadCategories().subscribe();
+        }
+      })
+    );
+  }
+
+  executeCategorySplit(
+    parentCategoryId: string,
+    subcategories: Array<{ name: string; icon: string; color: string; transactionIds: string[] }>
+  ) {
+    return this.api.splitAndReassignCategory(parentCategoryId, subcategories).pipe(
+      tap(res => {
+        if (res.success) {
+          this.loadCategories().subscribe();
+        }
       })
     );
   }

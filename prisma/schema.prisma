@@ -86,11 +86,15 @@ model Category {
   icon      String  @default("💰")
   color     String  @default("#607D8B")
   budget    Float?
+  parentId  String? @map("parent_id")
   createdAt String  @map("created_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children Category[] @relation("CategoryHierarchy")
 
   @@index([userId])
+  @@index([parentId])
   @@map("categories")
 }
 
