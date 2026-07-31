@@ -1004,5 +1004,18 @@ Provide a concise, helpful, and friendly reply. Direct them to specific transact
     } catch (e) { fail(res, e); }
   });
 
+  router.get('/debt-planner', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const extraPayment = parseFloat((req.query['extraPayment'] as string) || '0');
+      const lumpSum = parseFloat((req.query['lumpSum'] as string) || '0');
+      const plan = await dbService.getDebtPayoffPlan(
+        getUserId(req),
+        isNaN(extraPayment) ? 0 : extraPayment,
+        isNaN(lumpSum) ? 0 : lumpSum
+      );
+      ok(res, plan);
+    } catch (e) { fail(res, e); }
+  });
+
   return router;
 }

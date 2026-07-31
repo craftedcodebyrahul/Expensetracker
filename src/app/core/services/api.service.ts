@@ -178,6 +178,13 @@ export class ApiService {
     return this.http.post<ApiResponse<any>>(`${this.baseUrl}/ai/audit-comprehensive`, {});
   }
 
+  getDebtPayoffPlan(extraPayment = 0, lumpSum = 0): Observable<ApiResponse<{ debts: any[]; avalanche: any; snowball: any; minimumOnly: any }>> {
+    let params = new HttpParams()
+      .set('extraPayment', extraPayment.toString())
+      .set('lumpSum', lumpSum.toString());
+    return this.http.get<ApiResponse<{ debts: any[]; avalanche: any; snowball: any; minimumOnly: any }>>(`${this.baseUrl}/debt-planner`, { params });
+  }
+
   // ── Accounts ──────────────────────────────────────────────────────────────
 
   getAccounts(): Observable<ApiResponse<Account[]>> {

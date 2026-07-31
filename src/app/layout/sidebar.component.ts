@@ -314,6 +314,7 @@ export class SidebarComponent {
     { path: '/budgets',        label: 'Budgets',        icon: 'track_changes' },
     { path: '/goals',          label: 'Goals',          icon: 'emoji_events' },
     { path: '/savings-simulator', label: 'Savings Simulator', icon: 'balance' },
+    { path: '/debt-planner',   label: 'Debt Planner',   icon: 'account_balance_wallet' },
     { path: '/bills-calendar', label: 'Upcoming Bills', icon: 'calendar_month' },
     { path: '/categories',     label: 'Categories',     icon: 'sell' },
     { path: '/reports',        label: 'Reports',        icon: 'show_chart' },

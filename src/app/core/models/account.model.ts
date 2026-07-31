@@ -27,6 +27,8 @@ export interface Account {
   currency?: string;
   initialBalance?: number;
   isInvestment?: boolean;
+  apr?: number;
+  minimumPayment?: number;
   stockHoldings?: StockHolding[];
   stockOrders?: StockOrder[];
   createdAt?: string;

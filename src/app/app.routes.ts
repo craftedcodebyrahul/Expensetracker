@@ -110,6 +110,12 @@ export const routes: Routes = [
     canActivate: [authGuard],
     title: 'Settings — TCFlow'
   },
+  {
+    path: 'debt-planner',
+    loadComponent: () => import('./features/debt-planner/debt-planner.component').then(m => m.DebtPlannerComponent),
+    canActivate: [authGuard],
+    title: 'Debt Payoff Planner — TCFlow'
+  },
 
   { path: '**', redirectTo: '' }
 ];

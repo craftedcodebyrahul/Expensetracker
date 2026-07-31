@@ -4,7 +4,6 @@ import { CommonModule } from '@angular/common';
 import { filter, map } from 'rxjs/operators';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { SidebarComponent } from './layout/sidebar.component';
-import { ToastComponent } from './shared/components/toast.component';
 import { AiCoachDrawerComponent } from './shared/components/ai-coach-drawer.component';
 import { AuthService } from './core/services/auth.service';
 import { LayoutService } from './core/services/layout.service';
@@ -15,7 +14,7 @@ const PUBLIC_ROUTES = ['', 'login', 'privacy', 'terms'];
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, SidebarComponent, ToastComponent, AiCoachDrawerComponent, CommonModule],
+  imports: [RouterOutlet, SidebarComponent, AiCoachDrawerComponent, CommonModule],
   template: `
     @if (showSidebar()) {
       <div class="app-layout">
@@ -29,7 +28,6 @@ const PUBLIC_ROUTES = ['', 'login', 'privacy', 'terms'];
       <router-outlet></router-outlet>
     }
     <app-ai-coach-drawer></app-ai-coach-drawer>
-    <app-toast></app-toast>
 
     @if (auth.isLoggedIn && showSidebar()) {
       <button class="btn-floating-coach" (click)="layout.toggleAiCoach()" aria-label="Toggle AI Coach">

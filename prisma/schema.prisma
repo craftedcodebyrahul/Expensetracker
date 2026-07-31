@@ -47,6 +47,8 @@ model Account {
   currency       String         @default("USD")
   initialBalance Float          @default(0) @map("initial_balance")
   isInvestment   Int            @default(0) @map("is_investment")
+  apr            Float?         @default(0)
+  minimumPayment Float?         @default(0) @map("minimum_payment")
   createdAt      String         @map("created_at")
 
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)

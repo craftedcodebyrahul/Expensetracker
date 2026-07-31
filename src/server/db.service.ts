@@ -115,6 +115,8 @@ export interface Account {
   currency?: string;
   initialBalance?: number;
   isInvestment?: boolean;
+  apr?: number;
+  minimumPayment?: number;
   stockHoldings?: StockHolding[];
   createdAt?: string;
 }
@@ -1059,6 +1061,8 @@ export class DbService {
       currency: r.currency || 'USD',
       initialBalance: r.initialBalance,
       isInvestment: r.isInvestment === 1,
+      apr: r.apr != null ? r.apr : undefined,
+      minimumPayment: r.minimumPayment != null ? r.minimumPayment : undefined,
       stockHoldings: (r.stockHoldings ?? []).map((h: PrismaStockHoldingRow) => ({
         id: h.id,
         accountId: h.accountId,
@@ -1468,10 +1472,12 @@ export class DbService {
         currency: data.currency ?? 'USD',
         initialBalance: data.initialBalance ?? 0,
         isInvestment: data.isInvestment ? 1 : 0,
+        apr: data.apr != null ? (isNaN(Number(data.apr)) ? 0 : Number(data.apr)) : 0,
+        minimumPayment: data.minimumPayment != null ? (isNaN(Number(data.minimumPayment)) ? 0 : Number(data.minimumPayment)) : 0,
         createdAt: now,
       },
     });
-    return { id: row.id, name: row.name, type: row.type as Account['type'], currency: row.currency, initialBalance: row.initialBalance, isInvestment: row.isInvestment === 1, stockHoldings: [], createdAt: row.createdAt };
+    return { id: row.id, name: row.name, type: row.type as Account['type'], currency: row.currency, initialBalance: row.initialBalance, isInvestment: row.isInvestment === 1, apr: row.apr ?? 0, minimumPayment: row.minimumPayment ?? 0, stockHoldings: [], createdAt: row.createdAt };
   }
 
   async updateAccount(
@@ -1488,6 +1494,8 @@ export class DbService {
         ...(data.type           !== undefined && { type: data.type }),
         ...(data.currency       !== undefined && { currency: data.currency }),
         ...(data.isInvestment   !== undefined && { isInvestment: data.isInvestment ? 1 : 0 }),
+        ...(data.apr            !== undefined && { apr: isNaN(Number(data.apr)) ? 0 : Number(data.apr) }),
+        ...(data.minimumPayment !== undefined && { minimumPayment: isNaN(Number(data.minimumPayment)) ? 0 : Number(data.minimumPayment) }),
       },
     });
     const holdings = await prisma.stockHolding.findMany({ where: { accountId: id } });
@@ -1495,6 +1503,8 @@ export class DbService {
       id: updated.id, name: updated.name, type: updated.type as Account['type'],
       currency: updated.currency, initialBalance: updated.initialBalance,
       isInvestment: updated.isInvestment === 1,
+      apr: updated.apr ?? 0,
+      minimumPayment: updated.minimumPayment ?? 0,
       stockHoldings: holdings.map((h: PrismaStockHoldingRow) => ({ id: h.id, accountId: h.accountId, ticker: h.ticker, shares: h.shares, price: h.price, updatedAt: h.updatedAt })),
       createdAt: updated.createdAt,
     };
@@ -3671,6 +3681,163 @@ Ensure the response contains ONLY the valid JSON matching the schema, with no ma
       .replace(/(?:[^a-zA-Z\s]|^)(?:com|co|net|org|edu|gov|io|app)(?:\b|$)/gi, '')
       .replace(/[^a-z\s]/gi, '')
       .trim();
+  }
+
+  // ── Debt Payoff Planner ───────────────────────────────────────────────────────
+
+  async getDebtPayoffPlan(
+    userId: string,
+    extraMonthlyPayment: number = 0,
+    lumpSumPayment: number = 0
+  ): Promise<{
+    debts: Array<{ id: string; name: string; balance: number; apr: number; minimumPayment: number }>;
+    avalanche: { months: number; totalInterest: number; schedule: any[] };
+    snowball: { months: number; totalInterest: number; schedule: any[] };
+    minimumOnly: { months: number; totalInterest: number; schedule: any[] };
+  }> {
+    const accounts = await this.getAccounts(userId);
+    const transactionsRows = await prisma.transaction.findMany({ where: { userId } });
+    const transactions = transactionsRows.map(rowToTransaction);
+
+    // Compute true running balance per account (initialBalance + net transactions)
+    const runningBalances: Record<string, number> = {};
+    accounts.forEach((a: any) => {
+      runningBalances[a.id] = a.initialBalance ?? 0;
+    });
+
+    transactions.forEach((t: any) => {
+      if (t.type === 'income') {
+        const acc = accounts.find((a: any) => a.id === t.accountId);
+        if (acc?.type === 'liability') {
+          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) - t.amount;
+        } else {
+          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) + t.amount;
+        }
+      } else if (t.type === 'expense') {
+        const acc = accounts.find((a: any) => a.id === t.accountId);
+        if (acc?.type === 'liability') {
+          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) + t.amount;
+        } else {
+          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) - t.amount;
+        }
+      } else if (t.type === 'transfer') {
+        const fromAcc = accounts.find((a: any) => a.id === t.accountId);
+        const toAcc = accounts.find((a: any) => a.id === t.toAccountId);
+        if (fromAcc?.type === 'liability') {
+          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) + t.amount;
+        } else {
+          runningBalances[t.accountId] = (runningBalances[t.accountId] || 0) - t.amount;
+        }
+        if (t.toAccountId) {
+          if (toAcc?.type === 'liability') {
+            runningBalances[t.toAccountId] = (runningBalances[t.toAccountId] || 0) - t.amount;
+          } else {
+            runningBalances[t.toAccountId] = (runningBalances[t.toAccountId] || 0) + t.amount;
+          }
+        }
+      }
+    });
+
+    const rawDebts = accounts.filter((a: Account) => {
+      const bal = runningBalances[a.id] ?? 0;
+      const apr = a.apr ?? 0;
+      return a.type === 'liability' || bal < 0 || apr > 0;
+    });
+
+    const debts = rawDebts.map((d: Account) => {
+      const bal = runningBalances[d.id] ?? 0;
+      const absBal = Math.abs(bal);
+      const userApr = (d.apr !== undefined && d.apr !== null) ? Number(d.apr) : 18.99;
+      const userMin = (d.minimumPayment !== undefined && d.minimumPayment !== null && Number(d.minimumPayment) > 0)
+        ? Number(d.minimumPayment)
+        : Math.max(25, Math.round(absBal * 0.025));
+
+      return {
+        id: d.id,
+        name: d.name,
+        balance: absBal,
+        apr: userApr,
+        minimumPayment: userMin
+      };
+    }).filter(d => d.balance > 0);
+
+    const runSimulation = (strategy: 'avalanche' | 'snowball' | 'minimumOnly') => {
+      let activeDebts = debts.map(d => ({ ...d }));
+
+      // Apply lump-sum payment to top priority debt immediately
+      if (lumpSumPayment > 0 && activeDebts.length > 0) {
+        if (strategy === 'avalanche') {
+          activeDebts.sort((a, b) => b.apr - a.apr);
+        } else if (strategy === 'snowball') {
+          activeDebts.sort((a, b) => a.balance - b.balance);
+        }
+        let pool = lumpSumPayment;
+        for (const debt of activeDebts) {
+          if (pool <= 0) break;
+          const paid = Math.min(debt.balance, pool);
+          debt.balance -= paid;
+          pool -= paid;
+        }
+      }
+
+      if (strategy === 'avalanche') {
+        activeDebts.sort((a, b) => b.apr - a.apr);
+      } else if (strategy === 'snowball') {
+        activeDebts.sort((a, b) => a.balance - b.balance);
+      }
+
+      let totalInterest = 0;
+      let monthCount = 0;
+      const maxMonths = 360; // 30-year safety cap
+      const schedule = [];
+
+      while (activeDebts.some(d => d.balance > 0.01) && monthCount < maxMonths) {
+        monthCount++;
+        let extraPool = strategy === 'minimumOnly' ? 0 : extraMonthlyPayment;
+        let monthInterest = 0;
+
+        for (const debt of activeDebts) {
+          if (debt.balance <= 0) continue;
+
+          const monthlyInterest = (debt.balance * (debt.apr / 100)) / 12;
+          monthInterest += monthlyInterest;
+          debt.balance += monthlyInterest;
+
+          let payment = Math.min(debt.balance, debt.minimumPayment);
+          debt.balance -= payment;
+
+          // Apply extra pool to highest priority remaining debt
+          if (extraPool > 0 && debt.balance > 0) {
+            const extraApplied = Math.min(debt.balance, extraPool);
+            debt.balance -= extraApplied;
+            extraPool -= extraApplied;
+          }
+        }
+
+        totalInterest += monthInterest;
+        schedule.push({
+          month: monthCount,
+          totalRemaining: activeDebts.reduce((sum, d) => sum + Math.max(0, d.balance), 0),
+          monthInterest
+        });
+
+        // Re-sort priority
+        if (strategy === 'avalanche') {
+          activeDebts.sort((a, b) => b.apr - a.apr);
+        } else if (strategy === 'snowball') {
+          activeDebts.sort((a, b) => (a.balance <= 0 ? 1 : 0) - (b.balance <= 0 ? 1 : 0) || a.balance - b.balance);
+        }
+      }
+
+      return { months: monthCount, totalInterest, schedule };
+    };
+
+    return {
+      debts,
+      avalanche: runSimulation('avalanche'),
+      snowball: runSimulation('snowball'),
+      minimumOnly: runSimulation('minimumOnly')
+    };
   }
 }
 
