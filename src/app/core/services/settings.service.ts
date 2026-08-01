@@ -33,6 +33,8 @@ export interface AppSettings {
   billRemindersEnabled: boolean;
   billReminderDaysBefore: number;
   apiKey?: string;
+  primaryIncomeAccountId?: string;
+  primaryExpenseAccountId?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -48,6 +50,8 @@ export class SettingsService {
   readonly billRemindersEnabled = signal(true);
   readonly billReminderDaysBefore = signal(2);
   readonly apiKey = signal('');
+  readonly primaryIncomeAccountId = signal<string>('');
+  readonly primaryExpenseAccountId = signal<string>('');
   readonly loaded = signal(false);
 
   // Extended visual settings signals
@@ -72,11 +76,11 @@ export class SettingsService {
     { code: 'USD', symbol: '$', name: 'US Dollar' },
     { code: 'EUR', symbol: '€', name: 'Euro' },
     { code: 'GBP', symbol: '£', name: 'British Pound' },
-    { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
-    { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
-    { code: 'KRW', symbol: '₩', name: 'Korean Won' },
-    { code: 'CAD', symbol: 'CAD$', name: 'Canadian Dollar' },
+    { code: 'CAD', symbol: 'CA$', name: 'Canadian Dollar' },
     { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+    { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+    { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+    { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
     { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
   ];
 
@@ -97,6 +101,8 @@ export class SettingsService {
           this.billRemindersEnabled.set(res.data.billRemindersEnabled !== false);
           this.billReminderDaysBefore.set(res.data.billReminderDaysBefore ?? 2);
           this.apiKey.set(res.data.apiKey ?? '');
+          this.primaryIncomeAccountId.set(res.data.primaryIncomeAccountId ?? '');
+          this.primaryExpenseAccountId.set(res.data.primaryExpenseAccountId ?? '');
           this.parseTheme(res.data.theme);
         }
         this.loaded.set(true);
@@ -143,6 +149,8 @@ export class SettingsService {
           this.monthlyReportEnabled.set(settings.monthlyReportEnabled);
           this.billRemindersEnabled.set(settings.billRemindersEnabled);
           this.billReminderDaysBefore.set(settings.billReminderDaysBefore ?? 2);
+          this.primaryIncomeAccountId.set(settings.primaryIncomeAccountId ?? '');
+          this.primaryExpenseAccountId.set(settings.primaryExpenseAccountId ?? '');
           this.applyVisualSettings();
           this.toast.success('Preferences saved!');
         } else {

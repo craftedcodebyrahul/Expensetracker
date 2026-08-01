@@ -6,6 +6,7 @@ import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
 import { AuthService } from '../../core/services/auth.service';
 import { SettingsService, DashboardWidgets } from '../../core/services/settings.service';
+import { AccountService } from '../../core/services/account.service';
 import { HeaderComponent } from '../../layout/header.component';
 
 @Component({
@@ -100,6 +101,30 @@ import { HeaderComponent } from '../../layout/header.component';
               <option value="dd/MM/yyyy">DD/MM/YYYY (EU)</option>
               <option value="yyyy-MM-dd">YYYY-MM-DD (ISO)</option>
             </select>
+          </div>
+        </div>
+
+        <div class="settings-grid" style="margin-top: 1rem;">
+          <div class="form-group">
+            <label class="form-label" for="primaryIncomeAcc">Default/Primary Deposit Account (Income)</label>
+            <select id="primaryIncomeAcc" class="form-control" [(ngModel)]="settings.primaryIncomeAccountId">
+              <option value="">-- Auto Select (First Account) --</option>
+              @for (acc of accountService.accounts(); track acc.id) {
+                <option [value]="acc.id">{{ acc.name }} ({{ acc.type | titlecase }})</option>
+              }
+            </select>
+            <span class="form-hint" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; display: block;">Pre-selected when logging income in Quick Log or Add Transaction modal.</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="primaryExpenseAcc">Default/Primary Payment Account (Expense)</label>
+            <select id="primaryExpenseAcc" class="form-control" [(ngModel)]="settings.primaryExpenseAccountId">
+              <option value="">-- Auto Select (First Account) --</option>
+              @for (acc of accountService.accounts(); track acc.id) {
+                <option [value]="acc.id">{{ acc.name }} ({{ acc.type | titlecase }})</option>
+              }
+            </select>
+            <span class="form-hint" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; display: block;">Pre-selected when logging expenses in Quick Log or Add Transaction modal.</span>
           </div>
         </div>
 
@@ -729,6 +754,7 @@ export class SettingsComponent implements OnInit {
   private api = inject(ApiService);
   private toast = inject(ToastService);
   public settingsService = inject(SettingsService);
+  public accountService = inject(AccountService);
   auth = inject(AuthService);
 
   syncStatus = signal<any>(null);
@@ -745,6 +771,8 @@ export class SettingsComponent implements OnInit {
     monthlyReportEnabled: true,
     billRemindersEnabled: true,
     billReminderDaysBefore: 2,
+    primaryIncomeAccountId: '',
+    primaryExpenseAccountId: '',
   };
 
   currencies = [
@@ -761,6 +789,7 @@ export class SettingsComponent implements OnInit {
 
   ngOnInit() {
     this.checkSync();
+    this.accountService.loadAccounts().subscribe();
     // Load current settings from database and pre-fill the form
     this.settingsService.load().subscribe(() => {
       this.settings.currency = this.settingsService.currency();
@@ -769,6 +798,8 @@ export class SettingsComponent implements OnInit {
       this.settings.monthlyReportEnabled = this.settingsService.monthlyReportEnabled();
       this.settings.billRemindersEnabled = this.settingsService.billRemindersEnabled();
       this.settings.billReminderDaysBefore = this.settingsService.billReminderDaysBefore();
+      this.settings.primaryIncomeAccountId = this.settingsService.primaryIncomeAccountId();
+      this.settings.primaryExpenseAccountId = this.settingsService.primaryExpenseAccountId();
     });
   }
 

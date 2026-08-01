@@ -14,7 +14,13 @@ export class TransactionService {
   readonly transactions = signal<Transaction[]>([]);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
-  readonly filter = signal<TransactionFilter>({ type: 'all' });
+  readonly filter = signal<TransactionFilter>({ type: 'all', page: 1, limit: 50 });
+  readonly pagination = signal<{ totalItems: number; totalPages: number; page: number; limit: number }>({
+    totalItems: 0,
+    totalPages: 1,
+    page: 1,
+    limit: 50
+  });
 
   readonly postedTransactions = computed(() => {
     const todayStr = new Date().toLocaleDateString('en-CA');
@@ -111,7 +117,7 @@ export class TransactionService {
       totalIncome: income,
       totalExpenses: expenses,
       netBalance: income - expenses,
-      transactionCount: normalizedTxns.length,
+      transactionCount: this.pagination().totalItems || normalizedTxns.length,
       avgTransaction,
       topCategory
     };
@@ -130,12 +136,26 @@ export class TransactionService {
       .slice(0, 10)
   );
 
-  loadTransactions(filter?: TransactionFilter) {
+  loadTransactions(filterOverride?: TransactionFilter) {
     this.loading.set(true);
     this.error.set(null);
-    return this.api.getTransactions(filter).pipe(
+    const activeFilter = filterOverride || this.filter();
+    return this.api.getTransactions(activeFilter).pipe(
       tap(res => {
-        if (res.success) this.transactions.set(res.data);
+        if (res.success) {
+          if (res.data && res.data.transactions && res.data.pagination) {
+            this.transactions.set(res.data.transactions);
+            this.pagination.set(res.data.pagination);
+          } else if (Array.isArray(res.data)) {
+            this.transactions.set(res.data);
+            this.pagination.set({
+              totalItems: res.data.length,
+              totalPages: 1,
+              page: 1,
+              limit: res.data.length || 50
+            });
+          }
+        }
         this.loading.set(false);
       }),
       catchError(err => {
@@ -231,28 +251,44 @@ export class TransactionService {
 
   setFilter(filter: TransactionFilter) {
     this.filter.set(filter);
+    this.loadTransactions().subscribe();
   }
 
   updateFilter(partial: Partial<TransactionFilter>) {
-    this.filter.update(f => ({ ...f, ...partial }));
+    // Reset page to 1 on filter changes unless explicitly page navigation
+    const newPage = partial.page !== undefined ? partial.page : 1;
+    this.filter.update(f => ({ ...f, ...partial, page: newPage }));
+    this.loadTransactions().subscribe();
+  }
+
+  setPage(page: number) {
+    const totalPages = this.pagination().totalPages || 1;
+    const validPage = Math.max(1, Math.min(page, totalPages));
+    this.updateFilter({ page: validPage });
+  }
+
+  setLimit(limit: number) {
+    this.updateFilter({ limit, page: 1 });
   }
 
   exportToCsv(): void {
-    const txns = this.filteredTransactions();
-    const headers = ['Date', 'Type', 'Category', 'Description', 'Amount', 'Account', 'Transfer To', 'Tags', 'Notes', 'Recurring', 'Frequency'];
-    const rows = txns.map(t => [
-      t.date, t.type, t.category || '', t.description,
-      t.amount.toString(), t.accountId, t.toAccountId || '',
-      (t.tags || []).join(';'), t.notes || '',
-      t.isRecurring ? 'Yes' : 'No', t.recurringFrequency || ''
-    ]);
-    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `transactions-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    this.api.getTransactions({ ...this.filter(), limit: 'all' }).subscribe(res => {
+      const txns = res.success ? (Array.isArray(res.data) ? res.data : (res.data.transactions || [])) : this.transactions();
+      const headers = ['Date', 'Type', 'Category', 'Description', 'Amount', 'Account', 'Transfer To', 'Tags', 'Notes', 'Recurring', 'Frequency'];
+      const rows = txns.map((t: Transaction) => [
+        t.date, t.type, t.category || '', t.description,
+        t.amount.toString(), t.accountId, t.toAccountId || '',
+        (t.tags || []).join(';'), t.notes || '',
+        t.isRecurring ? 'Yes' : 'No', t.recurringFrequency || ''
+      ]);
+      const csv = [headers, ...rows].map((r: string[]) => r.map((c: string) => `"${c}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `transactions-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
   }
 }

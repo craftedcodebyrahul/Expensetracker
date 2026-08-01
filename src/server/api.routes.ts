@@ -31,7 +31,7 @@ export function createApiRouter(): Router {
   router.get('/transactions', async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = getUserId(req);
-      const { type, category, dateFrom, dateTo, search, minAmount, maxAmount, clientDate } =
+      const { type, category, dateFrom, dateTo, search, minAmount, maxAmount, clientDate, page, limit } =
         req.query as Record<string, string>;
 
       let transactions = await dbService.getTransactions(userId, clientDate);
@@ -54,7 +54,27 @@ export function createApiRouter(): Router {
       // Already sorted desc by date from DB — but re-sort after filters
       transactions.sort((a, b) => b.date.localeCompare(a.date));
 
-      ok(res, transactions);
+      if (limit === 'all') {
+        ok(res, transactions);
+        return;
+      }
+
+      const pageNum = parseInt(page || '1', 10) || 1;
+      const limitNum = parseInt(limit || '50', 10) || 50;
+      const totalItems = transactions.length;
+      const totalPages = Math.ceil(totalItems / limitNum) || 1;
+      const startIndex = (pageNum - 1) * limitNum;
+      const paginatedTxns = transactions.slice(startIndex, startIndex + limitNum);
+
+      ok(res, {
+        transactions: paginatedTxns,
+        pagination: {
+          totalItems,
+          totalPages,
+          page: pageNum,
+          limit: limitNum
+        }
+      });
     } catch (e) { fail(res, e); }
   });
 

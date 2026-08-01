@@ -1215,11 +1215,11 @@ export class ReportsComponent implements OnInit, AfterViewInit {
         if (res.success && res.data) {
           let txns = res.data;
           if (accParam) {
-            txns = txns.filter(t => t.accountId === accParam || t.toAccountId === accParam);
+            txns = txns.filter((t: any) => t.accountId === accParam || t.toAccountId === accParam);
           }
           
           // Filter to expenses only, matching reports page breakdown
-          txns = txns.filter(t => t.type === 'expense');
+          txns = txns.filter((t: any) => t.type === 'expense');
 
           // Normalize currency to primary currency
           const primaryCurrency = this.settingsService.currency();
@@ -1241,11 +1241,11 @@ export class ReportsComponent implements OnInit, AfterViewInit {
           this.categoryTxns.set(normalizedTxns);
 
           if (normalizedTxns.length > 0) {
-            const total = normalizedTxns.reduce((sum, t) => sum + t.amount, 0);
+            const total = normalizedTxns.reduce((sum: number, t: any) => sum + t.amount, 0);
             const count = normalizedTxns.length;
             const avg = total / count;
-            const peak = Math.max(...normalizedTxns.map(t => t.amount));
-            const peakTxn = normalizedTxns.find(t => t.amount === peak);
+            const peak = Math.max(...normalizedTxns.map((t: any) => t.amount));
+            const peakTxn = normalizedTxns.find((t: any) => t.amount === peak);
 
             this.categoryStats.set({
               total,

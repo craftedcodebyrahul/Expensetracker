@@ -31,6 +31,18 @@ export interface TransactionFilter {
   minAmount?: number;
   maxAmount?: number;
   accountId?: string;
+  page?: number;
+  limit?: number | 'all';
+}
+
+export interface PaginatedTransactions {
+  transactions: Transaction[];
+  pagination: {
+    totalItems: number;
+    totalPages: number;
+    page: number;
+    limit: number;
+  };
 }
 
 export interface TransactionSummary {

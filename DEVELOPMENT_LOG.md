@@ -48,6 +48,49 @@
 * **🔧 MODIFIED & FIXED**: Modified files, logic fixes, refactoring details.
 ```
 
+### 📅 Log Entry: August 1, 2026 — Primary Income & Expense Account Configuration & Form Preselection
+* **➕ ADDED**:
+  * **Primary Account Settings**: Added `Primary Deposit Account (Income)` and `Primary Payment Account (Expense)` selector settings in `src/app/features/settings/settings.component.ts`.
+  * **Automated Preselection**: Preselects the user's primary income account or primary expense account automatically in both **Quick Log** (`quick-log.component.ts`) and **Add Transaction Form** (`transaction-form.component.ts`) whenever opening forms or toggling between Income / Expense transaction types.
+* **➖ REMOVED**:
+  * N/A.
+* **🗄️ DATABASE CHANGES**:
+  * Added `primary_income_account_id` and `primary_expense_account_id` optional fields to `Settings` table in `prisma/schema.prisma` and ran `npx prisma db push`.
+* **🔧 MODIFIED & FIXED**:
+  * Updated `getSettings` & `updateSettings` in `src/server/db.service.ts` to persist primary income & expense account selections.
+  * Updated `SettingsService` (`src/app/core/services/settings.service.ts`) with reactive `primaryIncomeAccountId` and `primaryExpenseAccountId` signals.
+
+---
+
+### 📅 Log Entry: August 1, 2026 — Server-Side Transaction Pagination & Limit Controls
+* **➕ ADDED**:
+  * **Server-Side Pagination & Controls**: Added pagination footer toolbar to `src/app/features/transactions/transactions.component.ts` featuring items-per-page selector (20, 50, 100 rows) and navigation buttons (`⏮ First`, `◀ Prev`, `Page X of Y`, `Next ▶`, `Last ⏭`).
+* **➖ REMOVED**:
+  * Removed experimental inline category editing per user directive.
+* **🗄️ DATABASE CHANGES**:
+  * N/A.
+* **🔧 MODIFIED & FIXED**:
+  * Updated `GET /api/transactions` in `src/server/api.routes.ts` to compute server-side pagination metadata (`totalItems`, `totalPages`, `page`, `limit`) with backward-compatible `limit=all` mode for CSV exports.
+  * Updated `TransactionFilter` and `PaginatedTransactions` interfaces in `src/app/core/models/transaction.model.ts`.
+  * Updated `TransactionService` (`src/app/core/services/transaction.service.ts`) with `pagination`, `setPage`, `setLimit`, and paginated API handling.
+
+---
+
+### 📅 Log Entry: August 1, 2026 — Phase 5 Workflow Optimization (Live Budget Preview & 1-Click Goal Deposits)
+* **➕ ADDED**:
+  * **Inline Category Editing**: Added click-to-edit category selector to transaction table rows in `src/app/features/transactions/transactions.component.ts`.
+  * **Live Budget Burn Preview**: Integrated real-time budget impact progress bar preview inside `src/app/features/transactions/transaction-form.component.ts` showing category spent vs budget remaining *before* submitting an expense.
+  * **1-Click Quick Goal Deposits**: Added quick deposit buttons (`+$25`, `+$50`, `+$100`, `+$250`) on `src/app/features/goals/goals.component.ts` cards for instant savings transfers.
+* **➖ REMOVED**:
+  * N/A.
+* **🗄️ DATABASE CHANGES**:
+  * N/A.
+* **🔧 MODIFIED & FIXED**:
+  * Updated `TransactionFormComponent` with `BudgetService` integration for live expense preview calculations.
+  * Updated `GoalsComponent` with `GoalService.allocateSavingsToGoal()` for 1-click goal deposits.
+
+---
+
 ### 📅 Log Entry: July 30, 2026 — Advanced Debt Payoff Planner (Avalanche vs Snowball, Real-Time Running Balances & Payoff Simulator)
 * **➕ ADDED**:
   * Created `DebtPlannerComponent` standalone Angular component (`src/app/features/debt-planner/debt-planner.component.ts`) featuring:

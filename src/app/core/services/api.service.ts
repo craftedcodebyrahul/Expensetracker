@@ -17,7 +17,7 @@ export class ApiService {
 
   // ── Transactions ──────────────────────────────────────────────────────────
 
-  getTransactions(filter?: TransactionFilter): Observable<ApiResponse<Transaction[]>> {
+  getTransactions(filter?: TransactionFilter): Observable<ApiResponse<any>> {
     let params = new HttpParams();
     if (filter) {
       if (filter.type && filter.type !== 'all') params = params.set('type', filter.type);
@@ -27,10 +27,12 @@ export class ApiService {
       if (filter.search) params = params.set('search', filter.search);
       if (filter.minAmount != null) params = params.set('minAmount', filter.minAmount.toString());
       if (filter.maxAmount != null) params = params.set('maxAmount', filter.maxAmount.toString());
+      if (filter.page != null) params = params.set('page', filter.page.toString());
+      if (filter.limit != null) params = params.set('limit', filter.limit.toString());
     }
     const clientDate = new Date().toLocaleDateString('en-CA');
     params = params.set('clientDate', clientDate);
-    return this.http.get<ApiResponse<Transaction[]>>(`${this.baseUrl}/transactions`, { params });
+    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/transactions`, { params });
   }
 
   getTransaction(id: string): Observable<ApiResponse<Transaction>> {

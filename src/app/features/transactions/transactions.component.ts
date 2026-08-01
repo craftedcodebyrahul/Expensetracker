@@ -261,6 +261,39 @@ import { RecurringService } from '../../core/services/recurring.service';
                 </tbody>
               </table>
             </div>
+
+            <!-- Server-Side Pagination Footer -->
+            @let pag = txnService.pagination();
+            <div class="pagination-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem;">
+              <div class="pagination-info" style="font-size: 0.8125rem; color: var(--text-muted);">
+                Showing <strong>{{ Math.min((pag.page - 1) * pag.limit + 1, pag.totalItems) }}</strong> – <strong>{{ Math.min(pag.page * pag.limit, pag.totalItems) }}</strong> of <strong>{{ pag.totalItems }}</strong> transactions
+              </div>
+
+              <div class="pagination-controls" style="display: flex; align-items: center; gap: 0.75rem;">
+                <!-- Per Page Limit Selector -->
+                <div style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8125rem; color: var(--text-muted);">
+                  <span>Rows per page:</span>
+                  <select class="form-control form-control-sm" style="width: 70px; padding: 0.2rem 0.4rem; font-size: 0.8125rem;"
+                          [ngModel]="pag.limit"
+                          (ngModelChange)="txnService.setLimit($event)">
+                    <option [value]="20">20</option>
+                    <option [value]="50">50</option>
+                    <option [value]="100">100</option>
+                  </select>
+                </div>
+
+                <!-- Page Buttons -->
+                <div style="display: flex; gap: 0.25rem; align-items: center;">
+                  <button class="btn btn-ghost btn-sm" [disabled]="pag.page <= 1" (click)="txnService.setPage(1)" title="First Page">⏮</button>
+                  <button class="btn btn-ghost btn-sm" [disabled]="pag.page <= 1" (click)="txnService.setPage(pag.page - 1)" title="Previous Page">◀ Prev</button>
+                  <span style="font-size: 0.8125rem; font-weight: 600; padding: 0 0.5rem; color: var(--text-secondary);">
+                    Page {{ pag.page }} of {{ pag.totalPages }}
+                  </span>
+                  <button class="btn btn-ghost btn-sm" [disabled]="pag.page >= pag.totalPages" (click)="txnService.setPage(pag.page + 1)" title="Next Page">Next ▶</button>
+                  <button class="btn btn-ghost btn-sm" [disabled]="pag.page >= pag.totalPages" (click)="txnService.setPage(pag.totalPages)" title="Last Page">⏭</button>
+                </div>
+              </div>
+            </div>
           }
         </div>
       } @else {
@@ -589,6 +622,8 @@ export class TransactionsComponent implements OnInit {
   accountService = inject(AccountService);
   private toast = inject(ToastService);
   recurringService = inject(RecurringService);
+
+  Math = Math;
 
   activeTab = signal<'all' | 'recurring'>('all');
   showForm = signal(false);

@@ -9,6 +9,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { ApiService } from '../../core/services/api.service';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { RecurringService } from '../../core/services/recurring.service';
+import { SettingsService } from '../../core/services/settings.service';
 
 @Component({
   selector: 'app-quick-log',
@@ -83,6 +84,7 @@ export class QuickLogComponent implements OnInit {
   txnService = inject(TransactionService);
   categoryService = inject(CategoryService);
   accountService = inject(AccountService);
+  private settingsService = inject(SettingsService);
   private toast = inject(ToastService);
   private api = inject(ApiService);
   recurringService = inject(RecurringService);
@@ -157,7 +159,22 @@ export class QuickLogComponent implements OnInit {
   ngOnInit() {
     this.categoryService.loadCategories().subscribe();
     this.txnService.loadTransactions().subscribe();
-    this.accountService.loadAccounts().subscribe();
+    this.accountService.loadAccounts().subscribe(() => this.setPreselectedAccount());
+    this.settingsService.load().subscribe(() => this.setPreselectedAccount());
+  }
+
+  private setPreselectedAccount() {
+    const accounts = this.accountService.accounts();
+    const firstAccId = accounts[0]?.id || '';
+    if (this.form.type === 'income') {
+      const primaryInc = this.settingsService.primaryIncomeAccountId();
+      const exists = accounts.some(a => a.id === primaryInc);
+      this.form.accountId = exists ? primaryInc : (primaryInc || firstAccId);
+    } else if (this.form.type === 'expense') {
+      const primaryExp = this.settingsService.primaryExpenseAccountId();
+      const exists = accounts.some(a => a.id === primaryExp);
+      this.form.accountId = exists ? primaryExp : (primaryExp || firstAccId);
+    }
   }
 
   setType(type: 'income' | 'expense' | 'transfer') {
@@ -171,6 +188,7 @@ export class QuickLogComponent implements OnInit {
       if (type === 'income' && !inIncome) this.form.category = '';
       if (type === 'expense' && !inExpense) this.form.category = '';
     }
+    this.setPreselectedAccount();
   }
 
   onDescriptionChange(desc: string) {

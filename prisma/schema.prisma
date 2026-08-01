@@ -202,6 +202,8 @@ model Settings {
   billRemindersEnabled Int    @default(1) @map("bill_reminders_enabled")
   billReminderDaysBefore Int  @default(2) @map("bill_reminder_days_before")
   apiKey               String? @map("api_key")
+  primaryIncomeAccountId  String? @map("primary_income_account_id")
+  primaryExpenseAccountId String? @map("primary_expense_account_id")
   updatedAt            String @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -173,6 +173,20 @@ import { RecurringService } from '../../core/services/recurring.service';
                   }
                 </span>
               </div>
+
+              <!-- 1-Click Quick Deposit Bar -->
+              @if (pct < 100) {
+                <div class="gc-quick-deposit" style="margin-top: 0.75rem; border-top: 1px dashed var(--border); padding-top: 0.625rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+                  <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">⚡ 1-Click Deposit:</span>
+                  <div style="display: flex; gap: 0.35rem;">
+                    <button class="btn btn-xs btn-outline-primary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" [disabled]="allocating()" (click)="quickDeposit(goal, 25)">+$25</button>
+                    <button class="btn btn-xs btn-outline-primary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" [disabled]="allocating()" (click)="quickDeposit(goal, 50)">+$50</button>
+                    <button class="btn btn-xs btn-outline-primary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" [disabled]="allocating()" (click)="quickDeposit(goal, 100)">+$100</button>
+                    <button class="btn btn-xs btn-outline-primary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" [disabled]="allocating()" (click)="quickDeposit(goal, 250)">+$250</button>
+                  </div>
+                </div>
+              }
+
               <div class="gc-completed-badge" *ngIf="pct >= 100">
                 🎉 Target achieved! Excellent savings discipline.
               </div>
@@ -548,6 +562,23 @@ export class GoalsComponent implements OnInit {
     } else {
       this.router.navigate(['/savings-simulator']);
     }
+  }
+
+  quickDeposit(goal: Goal, amount: number) {
+    const accs = this.accountService.accounts();
+    const primaryAcc = accs.find(a => a.type === 'asset') || accs[0];
+    const fromAccId = goal.accountId || (primaryAcc ? primaryAcc.id : '');
+    if (!fromAccId) return;
+
+    this.allocating.set(true);
+    this.goalService.allocateSavingsToGoal(goal.id, fromAccId, amount).subscribe({
+      next: () => {
+        this.allocating.set(false);
+        this.accountService.loadAccounts();
+        this.txnService.loadTransactions();
+      },
+      error: () => this.allocating.set(false)
+    });
   }
 
   protected Math = Math;

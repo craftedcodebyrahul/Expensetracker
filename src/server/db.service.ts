@@ -173,6 +173,8 @@ export interface AppSettings {
   billRemindersEnabled?: boolean;
   billReminderDaysBefore?: number;
   apiKey?: string;
+  primaryIncomeAccountId?: string;
+  primaryExpenseAccountId?: string;
 }
 
 export interface BankImport {
@@ -1658,6 +1660,8 @@ export class DbService {
       billRemindersEnabled: row.billRemindersEnabled !== 0,
       billReminderDaysBefore: row.billReminderDaysBefore ?? 2,
       apiKey: row.apiKey ?? undefined,
+      primaryIncomeAccountId: row.primaryIncomeAccountId ?? undefined,
+      primaryExpenseAccountId: row.primaryExpenseAccountId ?? undefined,
     };
   }
 
@@ -1683,6 +1687,8 @@ export class DbService {
         ...(data.monthlyReportEnabled !== undefined && { monthlyReportEnabled: data.monthlyReportEnabled ? 1 : 0 }),
         ...(data.billRemindersEnabled !== undefined && { billRemindersEnabled: data.billRemindersEnabled ? 1 : 0 }),
         ...(data.billReminderDaysBefore !== undefined && { billReminderDaysBefore: data.billReminderDaysBefore }),
+        ...(data.primaryIncomeAccountId  !== undefined && { primaryIncomeAccountId: data.primaryIncomeAccountId }),
+        ...(data.primaryExpenseAccountId !== undefined && { primaryExpenseAccountId: data.primaryExpenseAccountId }),
         updatedAt: now,
       },
       create: { 
@@ -1691,6 +1697,8 @@ export class DbService {
         monthlyReportEnabled: data.monthlyReportEnabled ? 1 : 0,
         billRemindersEnabled: data.billRemindersEnabled !== false ? 1 : 0,
         billReminderDaysBefore: data.billReminderDaysBefore ?? 2,
+        primaryIncomeAccountId: data.primaryIncomeAccountId ?? null,
+        primaryExpenseAccountId: data.primaryExpenseAccountId ?? null,
       },
     });
     return {
@@ -1703,6 +1711,8 @@ export class DbService {
       billRemindersEnabled: row.billRemindersEnabled !== 0,
       billReminderDaysBefore: row.billReminderDaysBefore ?? 2,
       apiKey: row.apiKey ?? undefined,
+      primaryIncomeAccountId: row.primaryIncomeAccountId ?? undefined,
+      primaryExpenseAccountId: row.primaryExpenseAccountId ?? undefined,
     };
   }
 

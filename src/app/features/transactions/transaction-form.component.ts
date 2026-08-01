@@ -7,6 +7,8 @@ import { TransactionService } from '../../core/services/transaction.service';
 import { AccountService } from '../../core/services/account.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ApiService } from '../../core/services/api.service';
+import { BudgetService } from '../../core/services/budget.service';
+import { SettingsService } from '../../core/services/settings.service';
 import { CategorySelectComponent } from '../../shared/components/category-select.component';
 
 @Component({
@@ -127,6 +129,31 @@ import { CategorySelectComponent } from '../../shared/components/category-select
                   [typeFilter]="form.type === 'income' ? 'income' : 'expense'">
                 </app-category-select>
               </div>
+
+              <!-- Live Budget Burn Preview -->
+              @if (form.type === 'expense' && categoryBudgetPreview(); as bPreview) {
+                <div class="budget-burn-card span-2" style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-top: -0.25rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; font-size: 0.8125rem;">
+                    <span style="font-weight: 600; color: var(--text-secondary);">
+                      📊 Budget Impact Preview ({{ bPreview.categoryName }})
+                    </span>
+                    <span [style.color]="bPreview.projectedPercentage >= 100 ? '#f43f5e' : bPreview.projectedPercentage >= 80 ? '#fbbf24' : '#10b981'" style="font-weight: 700;">
+                      {{ bPreview.projectedPercentage >= 100 ? '🚨 Over Budget!' : bPreview.projectedPercentage >= 80 ? '⚠️ High Usage' : '✅ Within Budget' }}
+                    </span>
+                  </div>
+
+                  <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 100px; overflow: hidden; margin-bottom: 0.4rem;">
+                    <div [style.width.%]="Math.min(100, bPreview.projectedPercentage)"
+                         [style.background]="bPreview.projectedPercentage >= 100 ? '#f43f5e' : bPreview.projectedPercentage >= 80 ? '#fbbf24' : '#10b981'"
+                         style="height: 100%; transition: width 0.3s ease;"></div>
+                  </div>
+
+                  <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
+                    <span>Spent so far: <strong>\${{ bPreview.currentSpent | number:'1.2-2' }}</strong></span>
+                    <span>After expense: <strong>\${{ bPreview.projectedSpent | number:'1.2-2' }} / \${{ bPreview.budgetAmount | number:'1.2-2' }}</strong> ({{ bPreview.projectedPercentage }}%)</span>
+                  </div>
+                </div>
+              }
             }
 
 
@@ -281,13 +308,35 @@ export class TransactionFormComponent implements OnInit {
   private categoryService = inject(CategoryService);
   private txnService = inject(TransactionService);
   accountService = inject(AccountService);
+  private settingsService = inject(SettingsService);
   private toast = inject(ToastService);
+  budgetService = inject(BudgetService);
+  Math = Math;
 
   submitting = signal(false);
   availableCategories = signal(this.categoryService.expenseCategories());
   tagInput = '';
   nlInput = '';
   nlParsing = signal(false);
+
+  categoryBudgetPreview() {
+    if (this.form.type !== 'expense' || !this.form.category) return null;
+    const b = this.budgetService.budgets().find(b => b.categoryId === this.form.category);
+    if (!b || b.amount <= 0) return null;
+
+    const currentSpent = b.spent || 0;
+    const newAmount = Number(this.form.amount) || 0;
+    const projectedSpent = currentSpent + newAmount;
+    const projectedPercentage = Math.round((projectedSpent / b.amount) * 100);
+
+    return {
+      categoryName: b.categoryName,
+      budgetAmount: b.amount,
+      currentSpent,
+      projectedSpent,
+      projectedPercentage
+    };
+  }
 
   form = {
     type: 'expense' as 'income' | 'expense' | 'transfer',
@@ -306,7 +355,16 @@ export class TransactionFormComponent implements OnInit {
   get editMode() { return !!this.transaction; }
 
   ngOnInit() {
-    this.accountService.loadAccounts().subscribe();
+    this.accountService.loadAccounts().subscribe(() => {
+      if (!this.transaction) {
+        this.setPreselectedAccount();
+      }
+    });
+    this.settingsService.load().subscribe(() => {
+      if (!this.transaction) {
+        this.setPreselectedAccount();
+      }
+    });
     if (this.transaction) {
       this.form = {
         type: this.transaction.type,
@@ -325,6 +383,21 @@ export class TransactionFormComponent implements OnInit {
     this.updateCategories();
   }
 
+  private setPreselectedAccount() {
+    if (this.transaction) return;
+    const accounts = this.accountService.accounts();
+    const firstAccId = accounts[0]?.id || '';
+    if (this.form.type === 'income') {
+      const primaryInc = this.settingsService.primaryIncomeAccountId();
+      const exists = accounts.some(a => a.id === primaryInc);
+      this.form.accountId = exists ? primaryInc : (primaryInc || firstAccId);
+    } else if (this.form.type === 'expense') {
+      const primaryExp = this.settingsService.primaryExpenseAccountId();
+      const exists = accounts.some(a => a.id === primaryExp);
+      this.form.accountId = exists ? primaryExp : (primaryExp || firstAccId);
+    }
+  }
+
   updateCategories() {
     const previousCategory = this.form.category;
     if (this.form.type === 'income') {
@@ -338,6 +411,7 @@ export class TransactionFormComponent implements OnInit {
     } else {
       this.availableCategories.set([]);
     }
+    this.setPreselectedAccount();
   }
 
   parentCategoriesForForm() {

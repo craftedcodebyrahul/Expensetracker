@@ -1157,12 +1157,12 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
           
           const sunburst = this.getSunburstData();
           if (isOtherIncome) {
-            txns = txns.filter(t => t.type === 'income' && !sunburst.topIncomeKeys.has(t.category));
+            txns = txns.filter((t: any) => t.type === 'income' && !sunburst.topIncomeKeys.has(t.category));
           } else if (isOtherExpense) {
-            txns = txns.filter(t => t.type === 'expense' && !sunburst.topExpenseKeys.has(t.category));
+            txns = txns.filter((t: any) => t.type === 'expense' && !sunburst.topExpenseKeys.has(t.category));
           } else {
             const isIncomeCat = categoryId.startsWith('in_cat_') || this.incomeSegments().some(s => s.id === categoryId);
-            txns = txns.filter(t => t.category === rawCategoryId && t.type === (isIncomeCat ? 'income' : 'expense'));
+            txns = txns.filter((t: any) => t.category === rawCategoryId && t.type === (isIncomeCat ? 'income' : 'expense'));
           }
 
           // Normalize currency to primary currency
@@ -1185,11 +1185,11 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
           this.categoryTxns.set(normalizedTxns);
 
           if (normalizedTxns.length > 0) {
-            const total = normalizedTxns.reduce((sum, t) => sum + t.amount, 0);
+            const total = normalizedTxns.reduce((sum: number, t: any) => sum + t.amount, 0);
             const count = normalizedTxns.length;
             const avg = total / count;
-            const peak = Math.max(...normalizedTxns.map(t => t.amount));
-            const peakTxn = normalizedTxns.find(t => t.amount === peak);
+            const peak = Math.max(...normalizedTxns.map((t: any) => t.amount));
+            const peakTxn = normalizedTxns.find((t: any) => t.amount === peak);
 
             this.categoryStats.set({
               total,
