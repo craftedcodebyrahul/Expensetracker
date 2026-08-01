@@ -208,54 +208,11 @@ export class AccountService {
   }
 
   readonly accountBalances = computed(() => {
-    const txns = this.txnService.postedTransactions();
     const accs = this.accounts();
-
     const balances: Record<string, number> = {};
 
-    // Initialize all accounts to their initial balance (always stored as positive)
-    // Assets: positive balance = money you have
-    // Liabilities: positive balance = money you OWE
-    accs.forEach(a => balances[a.id] = Math.abs(a.initialBalance ?? 0));
-
-    txns.forEach(t => {
-      if (t.type === 'income') {
-        // Income: adds to the credited account (asset gains value)
-        // If the account is a liability, it decreases the balance (what you owe)
-        const acc = accs.find(a => a.id === t.accountId);
-        if (acc?.type === 'liability') {
-          balances[t.accountId] = (balances[t.accountId] || 0) - t.amount; // you owe LESS
-        } else {
-          balances[t.accountId] = (balances[t.accountId] || 0) + t.amount; // you have MORE
-        }
-      } else if (t.type === 'expense') {
-        // Expense paid from an asset: asset loses value
-        // Expense paid from a liability (credit card charge): liability increases
-        const acc = accs.find(a => a.id === t.accountId);
-        if (acc?.type === 'liability') {
-          balances[t.accountId] = (balances[t.accountId] || 0) + t.amount; // you owe MORE
-        } else {
-          balances[t.accountId] = (balances[t.accountId] || 0) - t.amount; // you have LESS
-        }
-      } else if (t.type === 'transfer') {
-        // Transfer: subtract from source, add to destination
-        const fromAcc = accs.find(a => a.id === t.accountId);
-        const toAcc = accs.find(a => a.id === t.toAccountId);
-        if (fromAcc?.type === 'liability') {
-          // Transferring FROM a liability (e.g. cash advance): owe MORE
-          balances[t.accountId] = (balances[t.accountId] || 0) + t.amount;
-        } else {
-          balances[t.accountId] = (balances[t.accountId] || 0) - t.amount; // asset decreases
-        }
-        if (t.toAccountId) {
-          if (toAcc?.type === 'liability') {
-            // Transferring TO a liability (e.g. credit card payment): owe LESS
-            balances[t.toAccountId] = (balances[t.toAccountId] || 0) - t.amount;
-          } else {
-            balances[t.toAccountId] = (balances[t.toAccountId] || 0) + t.amount; // asset increases
-          }
-        }
-      }
+    accs.forEach(a => {
+      balances[a.id] = a.currentBalance ?? Math.abs(a.initialBalance ?? 0);
     });
 
     // For investment accounts, add the market value of holdings on top of cash balance

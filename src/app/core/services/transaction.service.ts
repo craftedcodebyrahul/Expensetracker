@@ -172,6 +172,7 @@ export class TransactionService {
       tap(res => {
         if (res.success) {
           this.transactions.update(txns => [res.data, ...txns]);
+          try { this.injector.get(AccountService).loadAccounts().subscribe(); } catch {}
         }
         this.loading.set(false);
       }),
@@ -190,6 +191,7 @@ export class TransactionService {
           this.transactions.update(txns =>
             txns.map(t => t.id === id ? res.data : t)
           );
+          try { this.injector.get(AccountService).loadAccounts().subscribe(); } catch {}
         }
       }),
       catchError(err => {
@@ -204,6 +206,7 @@ export class TransactionService {
       tap(res => {
         if (res.success) {
           this.transactions.update(txns => txns.filter(t => t.id !== id));
+          try { this.injector.get(AccountService).loadAccounts().subscribe(); } catch {}
         }
       }),
       catchError(err => {

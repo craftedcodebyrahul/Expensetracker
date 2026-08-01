@@ -1056,12 +1056,56 @@ export class DbService {
       });
     }
 
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const allTxns = await prisma.transaction.findMany({
+      where: { userId, date: { lte: todayStr } },
+      select: { type: true, amount: true, accountId: true, toAccountId: true }
+    });
+
+    const balanceMap: Record<string, number> = {};
+    rows.forEach((r: any) => {
+      balanceMap[r.id] = Math.abs(r.initialBalance ?? 0);
+    });
+
+    allTxns.forEach((t: any) => {
+      const fromAcc = rows.find((r: any) => r.id === t.accountId);
+      const toAcc = t.toAccountId ? rows.find((r: any) => r.id === t.toAccountId) : null;
+
+      if (t.type === 'income') {
+        if (fromAcc?.type === 'liability') {
+          balanceMap[t.accountId] = (balanceMap[t.accountId] || 0) - t.amount;
+        } else {
+          balanceMap[t.accountId] = (balanceMap[t.accountId] || 0) + t.amount;
+        }
+      } else if (t.type === 'expense') {
+        if (fromAcc?.type === 'liability') {
+          balanceMap[t.accountId] = (balanceMap[t.accountId] || 0) + t.amount;
+        } else {
+          balanceMap[t.accountId] = (balanceMap[t.accountId] || 0) - t.amount;
+        }
+      } else if (t.type === 'transfer') {
+        if (fromAcc?.type === 'liability') {
+          balanceMap[t.accountId] = (balanceMap[t.accountId] || 0) + t.amount;
+        } else {
+          balanceMap[t.accountId] = (balanceMap[t.accountId] || 0) - t.amount;
+        }
+        if (t.toAccountId) {
+          if (toAcc?.type === 'liability') {
+            balanceMap[t.toAccountId] = (balanceMap[t.toAccountId] || 0) - t.amount;
+          } else {
+            balanceMap[t.toAccountId] = (balanceMap[t.toAccountId] || 0) + t.amount;
+          }
+        }
+      }
+    });
+
     return rows.map((r: any) => ({
       id: r.id,
       name: r.name,
       type: r.type as Account['type'],
       currency: r.currency || 'USD',
       initialBalance: r.initialBalance,
+      currentBalance: balanceMap[r.id] ?? Math.abs(r.initialBalance ?? 0),
       isInvestment: r.isInvestment === 1,
       apr: r.apr != null ? r.apr : undefined,
       minimumPayment: r.minimumPayment != null ? r.minimumPayment : undefined,

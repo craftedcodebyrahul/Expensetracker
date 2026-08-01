@@ -48,6 +48,19 @@
 * **🔧 MODIFIED & FIXED**: Modified files, logic fixes, refactoring details.
 ```
 
+### 📅 Log Entry: August 1, 2026 — Server-Aggregated Account Balances & Pagination Independence
+* **➕ ADDED**:
+  * **Database-Level Balance Aggregation**: Updated `getAccounts()` in `src/server/db.service.ts` to compute real-time running balances across 100% of transactions directly in the database.
+  * **Paginated Account Balance Fix**: Updated `AccountService` (`src/app/core/services/account.service.ts`) to use server-aggregated `currentBalance`, ensuring account balances are 100% accurate regardless of transaction table pagination page/limit settings.
+* **➖ REMOVED**:
+  * N/A.
+* **🗄️ DATABASE CHANGES**:
+  * N/A.
+* **🔧 MODIFIED & FIXED**:
+  * Updated `TransactionService` (`src/app/core/services/transaction.service.ts`) to automatically trigger `AccountService.loadAccounts()` on transaction creation, update, and deletion for instant balance updates.
+
+---
+
 ### 📅 Log Entry: August 1, 2026 — Primary Income & Expense Account Configuration & Form Preselection
 * **➕ ADDED**:
   * **Primary Account Settings**: Added `Primary Deposit Account (Income)` and `Primary Payment Account (Expense)` selector settings in `src/app/features/settings/settings.component.ts`.
