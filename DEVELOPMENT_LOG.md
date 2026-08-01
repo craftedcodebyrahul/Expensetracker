@@ -48,6 +48,18 @@
 * **🔧 MODIFIED & FIXED**: Modified files, logic fixes, refactoring details.
 ```
 
+### 📅 Log Entry: August 1, 2026 — Account Currency Edit Enabled
+* **➕ ADDED**:
+  * **Editable Account Currency**: Removed the restrictive `[disabled]="!!editingAccount()"` flag from the Currency select field in `src/app/features/accounts/accounts.component.ts`. Users can now modify any existing account's currency directly from the Edit Account modal.
+* **➖ REMOVED**:
+  * Disabled attribute on account currency selector.
+* **🗄️ DATABASE CHANGES**:
+  * N/A (backend `updateAccount` in `db.service.ts` already supported updating `currency`).
+* **🔧 MODIFIED & FIXED**:
+  * Enabled currency selection in Edit Account modal.
+
+---
+
 ### 📅 Log Entry: August 1, 2026 — Reports & Insights Category Exploration Popup Fix
 * **➕ ADDED**:
   * **Array Unwrapping for Paginated API Payload**: Updated `selectCategory()`, `loadFallbackReport()`, and `loadCustomReport()` in `reports.component.ts` and `insights.component.ts` to unwrap the `{ transactions: [...], pagination: {...} }` API payload into an array cleanly via `Array.isArray(res.data) ? res.data : (res.data?.transactions ?? [])`.

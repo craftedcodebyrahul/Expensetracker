@@ -455,7 +455,7 @@ import { SettingsService } from '../../core/services/settings.service';
             </div>
             <div class="form-group">
               <label class="form-label">Currency *</label>
-              <select class="form-control" [(ngModel)]="form.currency" [disabled]="!!editingAccount()">
+              <select class="form-control" [(ngModel)]="form.currency">
                 @for (c of settingsService.currencies; track c.code) {
                   <option [value]="c.code">{{ c.code }} — {{ c.name }} ({{ c.symbol }})</option>
                 }
