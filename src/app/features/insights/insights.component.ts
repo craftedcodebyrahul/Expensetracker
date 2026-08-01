@@ -1143,7 +1143,8 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
     
     const queryParams: any = {
       dateFrom: startDate,
-      dateTo: endDate
+      dateTo: endDate,
+      limit: 'all'
     };
     if (!isOtherIncome && !isOtherExpense) {
       queryParams.category = rawCategoryId;
@@ -1153,7 +1154,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
       next: res => {
         this.categoryTxnsLoading.set(false);
         if (res.success && res.data) {
-          let txns = res.data;
+          let txns: any[] = Array.isArray(res.data) ? res.data : (res.data?.transactions ?? []);
           
           const sunburst = this.getSunburstData();
           if (isOtherIncome) {

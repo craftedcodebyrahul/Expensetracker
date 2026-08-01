@@ -48,6 +48,32 @@
 * **🔧 MODIFIED & FIXED**: Modified files, logic fixes, refactoring details.
 ```
 
+### 📅 Log Entry: August 1, 2026 — Reports & Insights Category Exploration Popup Fix
+* **➕ ADDED**:
+  * **Array Unwrapping for Paginated API Payload**: Updated `selectCategory()`, `loadFallbackReport()`, and `loadCustomReport()` in `reports.component.ts` and `insights.component.ts` to unwrap the `{ transactions: [...], pagination: {...} }` API payload into an array cleanly via `Array.isArray(res.data) ? res.data : (res.data?.transactions ?? [])`.
+  * **Unpaginated Drill-down Requests**: Passed `limit: 'all'` query parameter when fetching transaction details for category drill-downs to ensure all transactions in the selected date range are loaded into the category exploration modal.
+* **➖ REMOVED**:
+  * N/A.
+* **🗄️ DATABASE CHANGES**:
+  * N/A.
+* **🔧 MODIFIED & FIXED**:
+  * Fixed blank category exploration modal issue in both Reports and Insights features.
+
+---
+
+### 📅 Log Entry: August 1, 2026 — Dev Test User Direct Login Endpoint & UI Shortcut
+* **➕ ADDED**:
+  * **Dev Test User Endpoint**: Configured `GET /auth/dev-login` to accept optional `?userId=dev_test_user_id` query parameter (defaulting to `dev_test_user_id`), seeding test data and establishing session instantly without Google OAuth.
+  * **Local Dev Login Button**: Added `⚡ Dev Test Login` shortcut button on the home page (`home.component.html`) when running locally, calling `auth.loginAsDevUser('dev_test_user_id')`.
+* **➖ REMOVED**:
+  * N/A.
+* **🗄️ DATABASE CHANGES**:
+  * N/A.
+* **🔧 MODIFIED & FIXED**:
+  * Updated `AuthService` (`src/app/core/services/auth.service.ts`) with `loginAsDevUser()` method.
+
+---
+
 ### 📅 Log Entry: August 1, 2026 — Server-Aggregated Account Balances & Pagination Independence
 * **➕ ADDED**:
   * **Database-Level Balance Aggregation**: Updated `getAccounts()` in `src/server/db.service.ts` to compute real-time running balances across 100% of transactions directly in the database.

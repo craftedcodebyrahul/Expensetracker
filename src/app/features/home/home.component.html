@@ -62,6 +62,9 @@
             </svg>
             {{ signingIn() ? 'Redirecting...' : 'Get started free' }}
           </button>
+          <button type="button" class="btn-hero-ghost" (click)="devLogin()" style="border: 1px dashed var(--accent-blue); color: var(--accent-blue-light); cursor: pointer;" title="Instant test login with dev_test_user_id">
+            ⚡ Dev Test Login
+          </button>
           <a routerLink="/privacy" class="btn-hero-ghost">See how your data is protected →</a>
         }
       </div>

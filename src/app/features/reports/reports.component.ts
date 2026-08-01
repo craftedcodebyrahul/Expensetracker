@@ -984,10 +984,11 @@ export class ReportsComponent implements OnInit, AfterViewInit {
       if (type === 'custom') {
         const start = this.customStartDate();
         const end = this.customEndDate();
-        this.api.getTransactions({ dateFrom: start, dateTo: end }).subscribe(res => {
+        this.api.getTransactions({ dateFrom: start, dateTo: end, limit: 'all' }).subscribe(res => {
           this.loading.set(false);
           if (res.success && res.data) {
-            const clientRollup = this.buildClientReport(res.data, accParam);
+            const raw = Array.isArray(res.data) ? res.data : (res.data?.transactions ?? []);
+            const clientRollup = this.buildClientReport(raw, accParam);
             this.reportData.set(clientRollup);
             setTimeout(() => this.renderCharts(), 100);
           }
@@ -1032,11 +1033,12 @@ export class ReportsComponent implements OnInit, AfterViewInit {
       const start = this.customStartDate();
       const end = this.customEndDate();
 
-      this.api.getTransactions({ dateFrom: start, dateTo: end }).subscribe({
+      this.api.getTransactions({ dateFrom: start, dateTo: end, limit: 'all' }).subscribe({
         next: res => {
           this.loading.set(false);
           if (res.success && res.data) {
-            const clientRollup = this.buildClientReport(res.data, accParam);
+            const raw = Array.isArray(res.data) ? res.data : (res.data?.transactions ?? []);
+            const clientRollup = this.buildClientReport(raw, accParam);
             this.reportData.set(clientRollup);
             setTimeout(() => this.renderCharts(), 100);
           } else {
@@ -1143,7 +1145,8 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     }
   }
 
-  private buildClientReport(txns: any[], accountId?: string) {
+  private buildClientReport(txnsInput: any, accountId?: string) {
+    const txns: any[] = Array.isArray(txnsInput) ? txnsInput : (txnsInput?.transactions ?? []);
     let filtered = txns;
     if (accountId && accountId !== 'all') {
       filtered = txns.filter(t => t.accountId === accountId || t.toAccountId === accountId);
@@ -1208,12 +1211,13 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     this.api.getTransactions({
       dateFrom: startDate,
       dateTo: endDate,
-      category: categoryId
+      category: categoryId,
+      limit: 'all'
     }).subscribe({
       next: res => {
         this.categoryTxnsLoading.set(false);
         if (res.success && res.data) {
-          let txns = res.data;
+          let txns: any[] = Array.isArray(res.data) ? res.data : (res.data?.transactions ?? []);
           if (accParam) {
             txns = txns.filter((t: any) => t.accountId === accParam || t.toAccountId === accParam);
           }

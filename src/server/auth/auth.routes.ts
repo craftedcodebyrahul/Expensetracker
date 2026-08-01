@@ -19,10 +19,11 @@ export function createAuthRouter(): Router {
   if (process.env['NODE_ENV'] !== 'production') {
     router.get('/dev-login', async (req: Request, res: Response): Promise<void> => {
       try {
+        const targetUserId = (req.query['userId'] as string) || 'dev_test_user_id';
         const profile = {
-          id: 'dev_user_123',
-          email: 'dev@example.com',
-          name: 'Developer User',
+          id: targetUserId,
+          email: `${targetUserId}@example.com`,
+          name: 'Developer Test User',
           picture: '',
         };
         const now = new Date().toISOString();
@@ -60,7 +61,7 @@ export function createAuthRouter(): Router {
 
         res.status(200).send(`<!doctype html><html><head><meta charset="utf-8">
 <script>window.location.replace('/dashboard');</script>
-</head><body>Signing you in…</body></html>`);
+</head><body>Signing you in as ${user.userId}…</body></html>`);
       } catch (err: any) {
         console.error('Dev login error:', err.message);
         res.redirect(`/login?auth_error=${encodeURIComponent(err.message ?? 'unknown_error')}`);

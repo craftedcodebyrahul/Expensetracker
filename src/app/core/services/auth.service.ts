@@ -65,6 +65,13 @@ export class AuthService {
     }
   }
 
+  /** Direct instant dev bypass login for local testing */
+  loginAsDevUser(userId = '101278500117613125855') {
+    if (isPlatformBrowser(this.platformId)) {
+      window.location.href = `/auth/dev-login?userId=${encodeURIComponent(userId)}`;
+    }
+  }
+
   /** POST logout, clear state, go to home */
   logout() {
     this.http.post('/auth/logout', {}).subscribe(() => {
