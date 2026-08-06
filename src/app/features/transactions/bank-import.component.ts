@@ -636,7 +636,7 @@ export class BankImportComponent implements OnInit {
         if (res.success && res.data) {
           const results = res.data;
           const currentTxns = this.transactions();
-          
+
           currentTxns.forEach(t => {
             if (!t.category) {
               const matched = results.find(r => r.description === t.rawDescription);
@@ -646,7 +646,7 @@ export class BankImportComponent implements OnInit {
               }
             }
           });
-          
+
           this.transactions.set([...currentTxns]);
           this.isAiComplete.set(true);
           this.toast.success('Successfully suggested categories for remaining items!');
@@ -663,7 +663,7 @@ export class BankImportComponent implements OnInit {
 
   saveTransactions() {
     const txns = this.transactions();
-    
+
     // Validate required accounts & dates
     const invalid = txns.some(t => !t.date || !t.description || !t.accountId);
     if (invalid) {
@@ -672,7 +672,7 @@ export class BankImportComponent implements OnInit {
     }
 
     this.saving.set(true);
-    
+
     // Map to API structures
     const toSave = txns.map(t => ({
       type: t.type,

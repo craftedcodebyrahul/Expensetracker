@@ -652,7 +652,7 @@ export class TransactionsComponent implements OnInit {
     if (!acc) return {};
 
     // Get all transactions for this account (posted and future)
-    const allTxns = this.txnService.transactions().filter(t => 
+    const allTxns = this.txnService.transactions().filter(t =>
       t.accountId === accountId || t.toAccountId === accountId
     );
 

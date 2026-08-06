@@ -28,10 +28,12 @@ import { CategoryService } from '../../core/services/category.service';
               {{ cat.icon }}
             </span>
             <div class="cat-text">
-              <span class="cat-name">{{ cat.name }}</span>
-              @if (cat.parentId && getCategoryName(cat.parentId); as pName) {
-                <span class="cat-path">under {{ pName }}</span>
-              }
+              <div class="cat-title-row">
+                <span class="cat-name">{{ cat.name }}</span>
+                @if (cat.parentId && getCategoryName(cat.parentId); as pName) {
+                  <span class="parent-pill">in {{ pName }}</span>
+                }
+              </div>
             </div>
           </div>
         } @else {
@@ -47,9 +49,9 @@ import { CategoryService } from '../../core/services/category.service';
           <div class="search-wrap">
             <span class="search-icon">🔍</span>
             <input type="text" class="search-input" [(ngModel)]="searchQuery"
-                   placeholder="Search categories..." (click)="$event.stopPropagation()">
+                   placeholder="Search categories or subcategories..." (click)="$event.stopPropagation()">
             @if (searchQuery) {
-              <button class="clear-search" (click)="searchQuery = ''">✕</button>
+              <button type="button" class="clear-search" (click)="searchQuery = ''">✕</button>
             }
           </div>
 
@@ -57,47 +59,41 @@ import { CategoryService } from '../../core/services/category.service';
           <div class="options-list">
             <!-- Recommended Group (If applicable) -->
             @if (recommendedCategory(); as rec) {
-              <div class="group-header rec-header">
-                <span>⭐ Recommended Parent</span>
-              </div>
-              <div class="option-item rec-item" [class.selected]="value === rec.id" (click)="selectOption(rec.id)">
-                <span class="opt-icon" [style.background]="rec.color + '22'">{{ rec.icon }}</span>
-                <span class="opt-name">{{ rec.name }}</span>
-                <span class="opt-badge parent-badge">Parent</span>
+              <div class="rec-card" (click)="selectOption(rec.id)">
+                <span class="rec-star">⭐</span>
+                <span class="rec-icon">{{ rec.icon }}</span>
+                <div class="rec-info">
+                  <span class="rec-name">{{ rec.name }}</span>
+                  <span class="rec-sub">Recommended Parent Category</span>
+                </div>
+                @if (selectedValue() === rec.id) { <span class="check-mark">✓</span> }
               </div>
             }
 
             <!-- Filtered Category Groups -->
             @for (group of filteredCategoryTree(); track group.id) {
-              <div class="category-group">
-                <!-- Group Parent Header -->
-                <div class="group-header">
-                  <span class="group-icon">{{ group.icon }}</span>
-                  <span class="group-title">{{ group.name }}</span>
-                  <span class="group-type-badge" [class.expense]="group.type === 'expense'" [class.income]="group.type === 'income'">
-                    {{ group.type }}
-                  </span>
-                </div>
-
-                <!-- Main Parent Option -->
-                <div class="option-item parent-option" [class.selected]="value === group.id" (click)="selectOption(group.id)">
-                  <span class="opt-icon" [style.background]="group.color + '22'">{{ group.icon }}</span>
-                  <div class="opt-info">
-                    <span class="opt-name">{{ group.name }}</span>
-                    <span class="opt-sub-hint">Main Category</span>
+              <div class="category-group-card" [style.border-left-color]="group.color">
+                <!-- Group Parent Header / Main Option -->
+                <div class="group-parent-item" [class.selected]="selectedValue() === group.id" (click)="selectOption(group.id)">
+                  <span class="group-icon" [style.background]="group.color + '25'">{{ group.icon }}</span>
+                  <div class="group-info">
+                    <span class="group-title">{{ group.name }}</span>
+                    <span class="group-sub">Main Category</span>
                   </div>
-                  @if (value === group.id) { <span class="check-mark">✓</span> }
+                  @if (selectedValue() === group.id) { <span class="check-mark">✓</span> }
                 </div>
 
-                <!-- Child Subcategories -->
-                @for (child of group.children; track child.id) {
-                  <div class="option-item child-option" [class.selected]="value === child.id" (click)="selectOption(child.id)">
-                    <span class="tree-branch">└</span>
-                    <span class="opt-icon child-icon-wrap" [style.background]="child.color + '18'">{{ child.icon }}</span>
-                    <div class="opt-info">
-                      <span class="opt-name">{{ child.name }}</span>
-                    </div>
-                    @if (value === child.id) { <span class="check-mark">✓</span> }
+                <!-- Child Subcategories List -->
+                @if (group.children.length > 0) {
+                  <div class="subcategories-container">
+                    @for (child of group.children; track child.id; let last = $last) {
+                      <div class="child-item" [class.selected]="selectedValue() === child.id" (click)="selectOption(child.id)">
+                        <span class="tree-line">└─</span>
+                        <span class="child-icon" [style.background]="child.color + '20'">{{ child.icon }}</span>
+                        <span class="child-name">{{ child.name }}</span>
+                        @if (selectedValue() === child.id) { <span class="check-mark">✓</span> }
+                      </div>
+                    }
                   </div>
                 }
               </div>
@@ -105,7 +101,7 @@ import { CategoryService } from '../../core/services/category.service';
 
             @if (filteredCategoryTree().length === 0 && !recommendedCategory()) {
               <div class="no-results">
-                <span>No matching categories found</span>
+                <span>🔍 No categories found matching "{{ searchQuery }}"</span>
               </div>
             }
           </div>
@@ -123,17 +119,17 @@ import { CategoryService } from '../../core/services/category.service';
 
     .select-trigger {
       width: 100%;
-      min-height: 44px;
+      min-height: 46px;
       padding: 0.5rem 0.875rem;
-      background: var(--bg-input, #1e2538);
-      border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
-      border-radius: var(--radius-md, 8px);
+      background: var(--bg-input, #1b2133);
+      border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+      border-radius: 10px;
       color: var(--text-primary, #ffffff);
       display: flex;
       align-items: center;
       justify-content: space-between;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       text-align: left;
     }
 
@@ -144,7 +140,7 @@ import { CategoryService } from '../../core/services/category.service';
 
     .custom-category-select.open .select-trigger {
       border-color: var(--accent-blue, #5c6bc0);
-      box-shadow: 0 0 0 3px rgba(92, 107, 192, 0.2);
+      box-shadow: 0 0 0 3px rgba(92, 107, 192, 0.22);
     }
 
     .selected-content {
@@ -155,14 +151,14 @@ import { CategoryService } from '../../core/services/category.service';
     }
 
     .cat-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
       border: 1px solid;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.95rem;
+      font-size: 1rem;
       flex-shrink: 0;
     }
 
@@ -170,6 +166,13 @@ import { CategoryService } from '../../core/services/category.service';
       display: flex;
       flex-direction: column;
       min-width: 0;
+    }
+
+    .cat-title-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
     }
 
     .cat-name {
@@ -181,9 +184,15 @@ import { CategoryService } from '../../core/services/category.service';
       text-overflow: ellipsis;
     }
 
-    .cat-path {
-      font-size: 0.7rem;
-      color: var(--accent-blue-light, #7986cb);
+    .parent-pill {
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 0.1rem 0.45rem;
+      border-radius: 6px;
+      background: rgba(92, 107, 192, 0.2);
+      color: var(--accent-blue-light, #9fa8da);
+      border: 1px solid rgba(92, 107, 192, 0.3);
+      white-space: nowrap;
     }
 
     .placeholder-text {
@@ -192,7 +201,7 @@ import { CategoryService } from '../../core/services/category.service';
     }
 
     .chevron {
-      font-size: 0.8rem;
+      font-size: 0.85rem;
       color: var(--text-muted, #8a94a6);
       transition: transform 0.2s ease;
       margin-left: 0.5rem;
@@ -203,36 +212,37 @@ import { CategoryService } from '../../core/services/category.service';
       color: var(--accent-blue-light, #7986cb);
     }
 
-    /* ── Dropdown Popup ────────────────────────────────────────── */
+    /* Dropdown Popup */
     .dropdown-menu {
       position: absolute;
-      top: calc(100% + 4px);
+      top: calc(100% + 6px);
       left: 0;
       right: 0;
       z-index: 1000;
-      background: var(--bg-card, #161b2c);
-      border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
-      border-radius: var(--radius-md, 10px);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      background: var(--bg-card, #141927);
+      border: 1px solid var(--border-light, rgba(255, 255, 255, 0.15));
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
       overflow: hidden;
-      animation: fadeInDown 0.15s ease-out;
+      animation: popupSlide 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+      backdrop-filter: blur(12px);
     }
 
-    @keyframes fadeInDown {
-      from { opacity: 0; transform: translateY(-6px); }
-      to { opacity: 1; transform: translateY(0); }
+    @keyframes popupSlide {
+      from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
     }
 
     .search-wrap {
-      padding: 0.625rem;
+      padding: 0.75rem;
       border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      background: rgba(0, 0, 0, 0.15);
+      background: rgba(0, 0, 0, 0.25);
     }
 
-    .search-icon { font-size: 0.8rem; opacity: 0.6; }
+    .search-icon { font-size: 0.85rem; opacity: 0.6; }
 
     .search-input {
       flex: 1;
@@ -240,7 +250,7 @@ import { CategoryService } from '../../core/services/category.service';
       border: none;
       outline: none;
       color: var(--text-primary, #fff);
-      font-size: 0.8125rem;
+      font-size: 0.85rem;
       font-family: inherit;
     }
 
@@ -250,89 +260,153 @@ import { CategoryService } from '../../core/services/category.service';
       color: var(--text-muted);
       cursor: pointer;
       font-size: 0.75rem;
+      padding: 0.125rem 0.375rem;
+      border-radius: 4px;
     }
+    .clear-search:hover { color: #fff; background: rgba(255,255,255,0.1); }
 
     .options-list {
-      max-height: 260px;
+      max-height: 340px;
       overflow-y: auto;
-      padding: 0.375rem;
+      padding: 0.5rem;
       display: flex;
       flex-direction: column;
-      gap: 0.25rem;
+      gap: 0.5rem;
     }
 
     .options-list::-webkit-scrollbar {
       width: 6px;
     }
     .options-list::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.2);
       border-radius: 3px;
     }
 
-    .group-header {
-      padding: 0.5rem 0.625rem 0.25rem;
-      font-size: 0.725rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--accent-blue-light, #9fa8da);
+    /* Recommended Card */
+    .rec-card {
+      padding: 0.625rem 0.75rem;
+      border-radius: 8px;
+      background: rgba(255, 213, 79, 0.08);
+      border: 1px solid rgba(255, 213, 79, 0.25);
       display: flex;
       align-items: center;
-      gap: 0.375rem;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
-      margin-top: 0.25rem;
+      gap: 0.625rem;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.15s ease;
     }
-    .category-group:first-child .group-header { border-top: none; margin-top: 0; }
-
-    .rec-header { color: #ffd54f; }
-
-    .group-type-badge {
-      font-size: 0.65rem;
-      padding: 0.1rem 0.35rem;
-      border-radius: 4px;
-      margin-left: auto;
-      text-transform: capitalize;
+    .rec-card:hover {
+      background: rgba(255, 213, 79, 0.15);
+      transform: translateY(-1px);
     }
-    .group-type-badge.expense { background: rgba(255, 99, 132, 0.15); color: #ff6384; }
-    .group-type-badge.income { background: rgba(76, 175, 80, 0.15); color: #4caf50; }
+    .rec-star { font-size: 0.9rem; }
+    .rec-icon { font-size: 1.1rem; }
+    .rec-info { flex: 1; display: flex; flex-direction: column; }
+    .rec-name { font-size: 0.85rem; font-weight: 600; color: #ffd54f; }
+    .rec-sub { font-size: 0.7rem; color: var(--text-muted); }
 
-    .option-item {
-      padding: 0.5rem 0.625rem;
+    /* Category Group Card */
+    .category-group-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-left: 4px solid var(--accent-blue, #5c6bc0);
+      border-radius: 8px;
+      overflow: hidden;
+      flex-shrink: 0;
+      transition: background 0.15s ease;
+    }
+
+    .group-parent-item {
+      padding: 0.625rem 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      background: rgba(255, 255, 255, 0.015);
+    }
+
+    .group-parent-item:hover {
+      background: rgba(92, 107, 192, 0.12);
+    }
+
+    .group-parent-item.selected {
+      background: rgba(92, 107, 192, 0.22);
+    }
+
+    .group-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      flex-shrink: 0;
+    }
+
+    .group-info {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .group-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-primary, #fff);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .group-sub {
+      font-size: 0.68rem;
+      color: var(--text-muted, #8a94a6);
+    }
+
+    /* Subcategories Container */
+    .subcategories-container {
+      padding: 0.25rem 0 0.375rem 0.75rem;
+      border-top: 1px dashed rgba(255, 255, 255, 0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 0.125rem;
+    }
+
+    .child-item {
+      padding: 0.45rem 0.75rem;
       border-radius: 6px;
       display: flex;
       align-items: center;
       gap: 0.5rem;
       cursor: pointer;
-      transition: background 0.15s ease;
+      transition: all 0.15s ease;
+      position: relative;
     }
 
-    .option-item:hover {
+    .child-item:hover {
       background: rgba(92, 107, 192, 0.15);
+      transform: translateX(3px);
     }
 
-    .option-item.selected {
+    .child-item.selected {
       background: rgba(92, 107, 192, 0.25);
-      border-left: 3px solid var(--accent-blue, #5c6bc0);
-    }
-
-    .parent-option {
       font-weight: 600;
     }
 
-    .child-option {
-      padding-left: 1.5rem;
-    }
-
-    .tree-branch {
-      color: var(--text-muted, rgba(255, 255, 255, 0.3));
-      font-size: 0.85rem;
+    .tree-line {
       font-family: monospace;
+      font-size: 0.8rem;
+      color: var(--accent-blue-light, rgba(121, 134, 203, 0.5));
+      flex-shrink: 0;
     }
 
-    .opt-icon {
-      width: 24px;
-      height: 24px;
-      border-radius: 4px;
+    .child-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -340,40 +414,23 @@ import { CategoryService } from '../../core/services/category.service';
       flex-shrink: 0;
     }
 
-    .opt-info {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      min-width: 0;
-    }
-
-    .opt-name {
+    .child-name {
       font-size: 0.8125rem;
-      color: var(--text-primary, #fff);
+      color: var(--text-secondary, #e1e7f0);
+      flex: 1;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    .opt-sub-hint {
-      font-size: 0.68rem;
-      color: var(--text-muted, #8a94a6);
-      font-weight: normal;
-    }
-
-    .opt-badge {
-      font-size: 0.68rem;
-      padding: 0.1rem 0.4rem;
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--text-secondary);
-      margin-left: auto;
+    .child-item:hover .child-name {
+      color: var(--text-primary, #ffffff);
     }
 
     .check-mark {
-      color: var(--accent-blue-light, #7986cb);
+      color: var(--accent-green, #4caf50);
       font-weight: bold;
-      font-size: 0.85rem;
+      font-size: 0.9rem;
       margin-left: auto;
     }
 
@@ -396,16 +453,20 @@ export class CategorySelectComponent implements ControlValueAccessor {
 
   @Output() categorySelected = new EventEmitter<Category>();
 
-  value: string | null = null;
+  readonly selectedValue = signal<string | null>(null);
   disabled = false;
   isOpen = signal(false);
   searchQuery = '';
 
-  onChange: (value: any) => void = () => {};
-  onTouched: () => void = () => {};
+  onChange: (value: any) => void = () => { };
+  onTouched: () => void = () => { };
+
+  get value(): string | null {
+    return this.selectedValue();
+  }
 
   writeValue(val: any): void {
-    this.value = val;
+    this.selectedValue.set(val || null);
   }
 
   registerOnChange(fn: any): void {
@@ -421,8 +482,9 @@ export class CategorySelectComponent implements ControlValueAccessor {
   }
 
   selectedCategory = computed(() => {
-    if (!this.value) return null;
-    return this.categoryService.getCategoryById(this.value) || null;
+    const id = this.selectedValue();
+    if (!id) return null;
+    return this.categoryService.getCategoryById(id) || null;
   });
 
   recommendedCategory = computed(() => {
@@ -440,18 +502,34 @@ export class CategorySelectComponent implements ControlValueAccessor {
     const filter = this.typeFilter;
     const all = this.categoryService.categories();
 
-    let eligible = all.filter(c => {
+    const eligible = all.filter(c => {
       if (exclude && c.id === exclude) return false;
       if (filter !== 'all' && c.type !== filter && c.type !== 'both') return false;
       return true;
     });
 
-    if (query) {
-      eligible = eligible.filter(c => c.name.toLowerCase().includes(query));
-    }
-
     const parentIdSet = new Set(all.map(c => c.id));
     const parents = eligible.filter(c => !c.parentId || !parentIdSet.has(c.parentId));
+
+    if (query) {
+      return parents
+        .map(parent => {
+          const parentMatches = parent.name.toLowerCase().includes(query);
+          const children = eligible.filter(child => child.parentId === parent.id);
+          const matchingChildren = children.filter(child => child.name.toLowerCase().includes(query));
+
+          const finalChildren = parentMatches ? children : matchingChildren;
+
+          if (parentMatches || finalChildren.length > 0) {
+            return {
+              ...parent,
+              children: finalChildren
+            };
+          }
+          return null;
+        })
+        .filter((group): group is (Category & { children: Category[] }) => group !== null);
+    }
 
     return parents.map(parent => ({
       ...parent,
@@ -468,7 +546,7 @@ export class CategorySelectComponent implements ControlValueAccessor {
   }
 
   selectOption(id: string) {
-    this.value = id;
+    this.selectedValue.set(id);
     this.onChange(id);
     this.isOpen.set(false);
     const cat = this.categoryService.getCategoryById(id);

@@ -11,20 +11,24 @@
     </div>
 
     <!-- Natural Language Logging -->
-    <div class="nl-log-container" style="border: 1px dashed var(--border-light); border-radius: var(--radius-md); padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; background: rgba(255, 255, 255, 0.01);">
-      <label style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.375rem;">
+    <div class="nl-log-container"
+      style="border: 1px dashed var(--border-light); border-radius: var(--radius-md); padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; background: rgba(255, 255, 255, 0.01);">
+      <label
+        style="font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.375rem;">
         <span>⚡</span> Natural Language Auto-Fill
       </label>
       <div style="display: flex; gap: 0.5rem; width: 100%;">
-        <textarea class="form-control" style="flex: 1; resize: vertical; min-height: 48px; font-size: 0.8125rem; padding: 0.5rem 0.75rem;" 
-                  placeholder='Try: "Salary of $2500 received today" or "Paid rent of $1200 on 1st June" or "Walmart groceries $45 yesterday"'
-                  [(ngModel)]="nlInput" (keydown.enter)="$event.preventDefault(); parseNlInput()"></textarea>
-        <button class="btn btn-primary" type="button" style="padding: 0 1rem; font-size: 0.8125rem; display: flex; align-items: center; gap: 0.375rem;" 
-                [disabled]="nlParsing() || !nlInput.trim()" (click)="parseNlInput()">
+        <textarea class="form-control"
+          style="flex: 1; resize: vertical; min-height: 48px; font-size: 0.8125rem; padding: 0.5rem 0.75rem;"
+          placeholder='Try: "Salary of $2500 received today" or "Paid rent of $1200 on 1st June" or "Walmart groceries $45 yesterday"'
+          [(ngModel)]="nlInput" (keydown.enter)="$event.preventDefault(); parseNlInput()"></textarea>
+        <button class="btn btn-primary" type="button"
+          style="padding: 0 1rem; font-size: 0.8125rem; display: flex; align-items: center; gap: 0.375rem;"
+          [disabled]="nlParsing() || !nlInput.trim()" (click)="parseNlInput()">
           @if (nlParsing()) {
-            <span class="btn-spinner-sm" style="width: 14px; height: 14px;"></span>
+          <span class="btn-spinner-sm" style="width: 14px; height: 14px;"></span>
           } @else {
-            <span>✨ Fill</span>
+          <span>✨ Fill</span>
           }
         </button>
       </div>
@@ -32,23 +36,23 @@
 
     <!-- Success flash -->
     @if (justSaved()) {
-      <div class="success-flash" role="status" aria-live="polite">
-        <span class="success-icon">✅</span>
-        <div>
-          <span class="success-title">Logged!</span>
-          <span class="success-sub">{{ lastSavedDesc() }} — {{ lastSavedAmount() }}</span>
-        </div>
+    <div class="success-flash" role="status" aria-live="polite">
+      <span class="success-icon">✅</span>
+      <div>
+        <span class="success-title">Logged!</span>
+        <span class="success-sub">{{ lastSavedDesc() }} — {{ lastSavedAmount() }}</span>
       </div>
+    </div>
     }
 
     <!-- Type toggle -->
     <div class="type-toggle">
       <button type="button" class="type-btn" [class.active-income]="form.type === 'income'"
-              (click)="setType('income')">📈 Income</button>
+        (click)="setType('income')">📈 Income</button>
       <button type="button" class="type-btn" [class.active-expense]="form.type === 'expense'"
-              (click)="setType('expense')">📉 Expense</button>
+        (click)="setType('expense')">📉 Expense</button>
       <button type="button" class="type-btn" [class.active-transfer]="form.type === 'transfer'"
-              (click)="setType('transfer')">🔄 Transfer</button>
+        (click)="setType('transfer')">🔄 Transfer</button>
     </div>
 
     <form class="quick-form" (ngSubmit)="submit()">
@@ -58,8 +62,8 @@
         <label for="amount">Amount *</label>
         <div class="input-prefix">
           <span class="prefix">$</span>
-          <input id="amount" type="number" min="0" step="0.01" class="form-control"
-                 [(ngModel)]="form.amount" name="amount" placeholder="0.00" required>
+          <input id="amount" type="number" min="0" step="0.01" class="form-control" [(ngModel)]="form.amount"
+            name="amount" placeholder="0.00" required>
         </div>
       </div>
 
@@ -67,65 +71,68 @@
       <div class="form-group">
         <label for="description">Description *</label>
         <input id="description" type="text" class="form-control" [ngModel]="form.description"
-               (ngModelChange)="form.description = $event; onDescriptionChange($event)"
-               name="description" placeholder="What was this for?" required>
+          (ngModelChange)="form.description = $event; onDescriptionChange($event)" name="description"
+          placeholder="What was this for?" required>
       </div>
 
       <!-- Account Selection (Non-Transfer) -->
       @if (form.type !== 'transfer') {
-        <div class="form-group">
-          <label for="accountId">{{ form.type === 'income' ? 'Deposit To *' : 'Pay From *' }}</label>
-          <select id="accountId" class="form-control" [(ngModel)]="form.accountId" name="accountId" required>
-            <option value="">Select account...</option>
-            @for (acc of accountService.accounts(); track acc.id) {
-              <option [value]="acc.id">{{ acc.name }} ({{ acc.type | titlecase }})</option>
-            }
-          </select>
-        </div>
+      <div class="form-group">
+        <label for="accountId">{{ form.type === 'income' ? 'Deposit To *' : 'Pay From *' }}</label>
+        <select id="accountId" class="form-control" [(ngModel)]="form.accountId" name="accountId" required>
+          <option value="">Select account...</option>
+          @for (acc of accountService.accounts(); track acc.id) {
+          <option [value]="acc.id">{{ acc.name }} ({{ acc.type | titlecase }})</option>
+          }
+        </select>
+      </div>
       }
 
       <!-- Transfer Account Selection -->
       @if (form.type === 'transfer') {
-        <div class="form-row">
-          <div class="form-group">
-            <label for="accountId">From Account *</label>
-            <select id="accountId" class="form-control" [(ngModel)]="form.accountId" name="accountId" required>
-              <option value="">Select source...</option>
-              @for (acc of accountService.accounts(); track acc.id) {
-                <option [value]="acc.id">{{ acc.name }} ({{ acc.type | titlecase }})</option>
-              }
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="toAccountId">To Account *</label>
-            <select id="toAccountId" class="form-control" [(ngModel)]="form.toAccountId" name="toAccountId" required>
-              <option value="">Select destination...</option>
-              @for (acc of accountService.accounts(); track acc.id) {
-                <option [value]="acc.id" [disabled]="acc.id === form.accountId">{{ acc.name }} ({{ acc.type | titlecase }})</option>
-              }
-            </select>
-          </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="accountId">From Account *</label>
+          <select id="accountId" class="form-control" [(ngModel)]="form.accountId" name="accountId" required>
+            <option value="">Select source...</option>
+            @for (acc of accountService.accounts(); track acc.id) {
+            <option [value]="acc.id">{{ acc.name }} ({{ acc.type | titlecase }})</option>
+            }
+          </select>
         </div>
+        <div class="form-group">
+          <label for="toAccountId">To Account *</label>
+          <select id="toAccountId" class="form-control" [(ngModel)]="form.toAccountId" name="toAccountId" required>
+            <option value="">Select destination...</option>
+            @for (acc of accountService.accounts(); track acc.id) {
+            <option [value]="acc.id" [disabled]="acc.id === form.accountId">{{ acc.name }} ({{ acc.type | titlecase }})
+            </option>
+            }
+          </select>
+        </div>
+      </div>
       }
 
       <!-- Category (Only for non-transfers) -->
       @if (form.type !== 'transfer') {
-        <div class="form-group">
-          <div class="category-label-row">
-            <label for="category">Category *</label>
-            @if (aiCategorizing()) {
-              <span class="ai-categorize-badge loading">✨ Thinking...</span>
-            } @else if (aiSuggested()) {
-              <span class="ai-categorize-badge success">✨ AI Classified</span>
-            }
-          </div>
-          <select id="category" class="form-control" [(ngModel)]="form.category" name="category" required (change)="aiSuggested.set(false)">
-            <option value="">Choose a category</option>
-            @for (cat of (form.type === 'income' ? categoryService.incomeCategories() : categoryService.expenseCategories()); track cat.id) {
-              <option [value]="cat.id">{{ cat.icon }} {{ cat.name }}</option>
-            }
-          </select>
+      <div class="form-group">
+        <div class="category-label-row">
+          <label for="category">Category *</label>
+          @if (aiCategorizing()) {
+          <span class="ai-categorize-badge loading">✨ Thinking...</span>
+          } @else if (aiSuggested()) {
+          <span class="ai-categorize-badge success">✨ AI Classified</span>
+          }
         </div>
+        <app-category-select
+          [(ngModel)]="form.category"
+          name="category"
+          [typeFilter]="form.type"
+          placeholder="Choose a category..."
+          (categorySelected)="aiSuggested.set(false)"
+        >
+        </app-category-select>
+      </div>
       }
 
       <!-- Date -->
@@ -137,43 +144,45 @@
       <!-- Notes -->
       <div class="form-group">
         <label for="notes">Notes <span class="optional">(optional)</span></label>
-        <input id="notes" type="text" class="form-control" [(ngModel)]="form.notes"
-               name="notes" placeholder="Any extra details...">
+        <input id="notes" type="text" class="form-control" [(ngModel)]="form.notes" name="notes"
+          placeholder="Any extra details...">
       </div>
 
       <!-- Recurring Options -->
       <div class="form-group">
-        <label class="recurring-toggle" style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none; margin-top: 0.25rem;">
+        <label class="recurring-toggle"
+          style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none; margin-top: 0.25rem;">
           <input type="checkbox" [(ngModel)]="form.isRecurring" name="isRecurring">
-          <span style="font-size: 0.8125rem; font-weight: 500; color: var(--text-secondary);">🔄 Repeat automatically</span>
+          <span style="font-size: 0.8125rem; font-weight: 500; color: var(--text-secondary);">🔄 Repeat
+            automatically</span>
         </label>
         @if (form.isRecurring) {
-          <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
-            <select class="form-control" [(ngModel)]="form.recurringFrequency" name="recurringFrequency" style="font-size: 0.8125rem;">
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="biweekly">Biweekly (every 2 weeks)</option>
-              <option value="monthly">Monthly (same date each month)</option>
-              <option value="yearly">Yearly</option>
-            </select>
-            <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.25rem 0 0;">
-              The app will automatically add this transaction next {{ form.recurringFrequency }} on the same date.
-            </p>
-          </div>
+        <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
+          <select class="form-control" [(ngModel)]="form.recurringFrequency" name="recurringFrequency"
+            style="font-size: 0.8125rem;">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="biweekly">Biweekly (every 2 weeks)</option>
+            <option value="monthly">Monthly (same date each month)</option>
+            <option value="yearly">Yearly</option>
+          </select>
+          <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.25rem 0 0;">
+            The app will automatically add this transaction next {{ form.recurringFrequency }} on the same date.
+          </p>
+        </div>
         }
       </div>
 
       <!-- Submit -->
-      <button class="btn btn-lg" type="submit"
-              [disabled]="submitting() || !isValid()"
-              [class.btn-success]="form.type === 'income'"
-              [class.btn-danger]="form.type === 'expense'"
-              [class.btn-primary]="form.type === 'transfer'">
+      <button class="btn btn-lg" type="submit" [disabled]="submitting() || !isValid()"
+        [class.btn-success]="form.type === 'income'" [class.btn-danger]="form.type === 'expense'"
+        [class.btn-primary]="form.type === 'transfer'">
         @if (submitting()) {
-          <span class="btn-spinner-sm"></span>
-          <span>Saving...</span>
+        <span class="btn-spinner-sm"></span>
+        <span>Saving...</span>
         } @else {
-          <span>{{ form.type === 'income' ? '📈 Log Income' : form.type === 'expense' ? '📉 Log Expense' : '🔄 Log Transfer' }}</span>
+        <span>{{ form.type === 'income' ? '📈 Log Income' : form.type === 'expense' ? '📉 Log Expense' : '🔄 Log
+          Transfer' }}</span>
         }
       </button>
 
@@ -181,26 +190,24 @@
 
     <!-- Recent entries -->
     @if (recentLogs().length > 0) {
-      <div class="recent-section">
-        <p class="recent-label">Recent entries</p>
-        <div class="recent-list">
-          @for (txn of recentLogs().slice(0, 5); track txn.id) {
-            <div class="recent-item">
-              <span class="recent-icon">{{ txn.type === 'transfer' ? '🔄' : getCategoryIcon(txn.category) }}</span>
-              <div class="recent-info">
-                <span class="recent-desc">{{ txn.description }}</span>
-                <span class="recent-cat">{{ txn.type === 'transfer' ? 'Transfer' : getCategoryName(txn.category) }}</span>
-              </div>
-              <span class="recent-amount"
-                    [class.text-income]="txn.type === 'income'"
-                    [class.text-expense]="txn.type === 'expense'"
-                    [class.text-accent]="txn.type === 'transfer'">
-                {{ txn.type === 'income' ? '+' : txn.type === 'expense' ? '-' : '' }}{{ txn.amount | currencyFormat }}
-              </span>
-            </div>
-          }
+    <div class="recent-section">
+      <p class="recent-label">Recent entries</p>
+      <div class="recent-list">
+        @for (txn of recentLogs().slice(0, 5); track txn.id) {
+        <div class="recent-item">
+          <span class="recent-icon">{{ txn.type === 'transfer' ? '🔄' : getCategoryIcon(txn.category) }}</span>
+          <div class="recent-info">
+            <span class="recent-desc">{{ txn.description }}</span>
+            <span class="recent-cat">{{ txn.type === 'transfer' ? 'Transfer' : getCategoryName(txn.category) }}</span>
+          </div>
+          <span class="recent-amount" [class.text-income]="txn.type === 'income'"
+            [class.text-expense]="txn.type === 'expense'" [class.text-accent]="txn.type === 'transfer'">
+            {{ txn.type === 'income' ? '+' : txn.type === 'expense' ? '-' : '' }}{{ txn.amount | currencyFormat }}
+          </span>
         </div>
+        }
       </div>
+    </div>
     }
 
   </div>

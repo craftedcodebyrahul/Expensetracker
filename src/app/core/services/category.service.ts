@@ -41,7 +41,7 @@ export class CategoryService {
   getCategoryTree(typeFilter: 'all' | 'expense' | 'income' = 'all'): Category[] {
     const all = this.categories();
     const parentIdSet = new Set(all.map(c => c.id));
-    
+
     // Top-level categories: no parentId OR parentId no longer exists
     const parents = all.filter(c =>
       (!c.parentId || !parentIdSet.has(c.parentId)) &&

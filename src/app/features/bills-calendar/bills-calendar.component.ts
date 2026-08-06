@@ -714,7 +714,7 @@ export class BillsCalendarComponent implements OnInit {
   lastDismissedDescription = signal<string | null>(null);
   showAdvisorDetails = signal(true);
   executingTransfer = signal(false);
- 
+
   filterIncome = signal(true);
   filterExpense = signal(true);
   filterTransfer = signal(true);
@@ -722,9 +722,9 @@ export class BillsCalendarComponent implements OnInit {
   currentYear = signal<number>(new Date().getFullYear());
   currentMonth = signal<number>(new Date().getMonth()); // 0-indexed
   calendarCells = signal<CalendarCell[]>([]);
- 
+
   monthsList = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
- 
+
   form = {
     type: 'expense' as RecurringSchedule['type'],
     description: '',
@@ -777,11 +777,11 @@ export class BillsCalendarComponent implements OnInit {
       }
     });
   }
- 
+
   monthName() {
     return this.monthsList[this.currentMonth()];
   }
- 
+
   ngOnInit() {
     this.recurringService.loadSchedules().subscribe();
     this.recurringService.loadDetectedBills().subscribe();
@@ -790,11 +790,11 @@ export class BillsCalendarComponent implements OnInit {
     this.accountService.loadAccounts().subscribe();
     this.generateCalendarCells();
   }
- 
+
   toggleDetectorExpanded() {
     this.showDetectorDetails.update(v => !v);
   }
- 
+
   syncDetectedBill(bill: DetectedBill) {
     this.form = {
       type: bill.type,
@@ -888,13 +888,13 @@ export class BillsCalendarComponent implements OnInit {
   generateCalendarCells() {
     const year = this.currentYear();
     const month = this.currentMonth();
-    
+
     const firstDayIndex = new Date(year, month, 1).getDay();
     const totalDays = new Date(year, month + 1, 0).getDate();
     const prevMonthTotalDays = new Date(year, month, 0).getDate();
-    
+
     const cells: CalendarCell[] = [];
-    
+
     // Trailing days from previous month
     for (let i = firstDayIndex - 1; i >= 0; i--) {
       const day = prevMonthTotalDays - i;
@@ -902,12 +902,12 @@ export class BillsCalendarComponent implements OnInit {
       const y = month === 0 ? year - 1 : year;
       cells.push({ day, month: m, year: y, isCurrentMonth: false, dateStr: this.toDateString(y, m, day) });
     }
-    
+
     // Current month days
     for (let day = 1; day <= totalDays; day++) {
       cells.push({ day, month, year, isCurrentMonth: true, dateStr: this.toDateString(year, month, day) });
     }
-    
+
     // Leading days from next month
     const remainingCells = 42 - cells.length;
     for (let day = 1; day <= remainingCells; day++) {
@@ -915,7 +915,7 @@ export class BillsCalendarComponent implements OnInit {
       const y = month === 11 ? year + 1 : year;
       cells.push({ day, month: m, year: y, isCurrentMonth: false, dateStr: this.toDateString(y, m, day) });
     }
-    
+
     this.calendarCells.set(cells);
   }
 
@@ -931,7 +931,7 @@ export class BillsCalendarComponent implements OnInit {
   getSchedulesForDate(dateStr: string): RecurringSchedule[] {
     const d = new Date(dateStr + 'T00:00:00');
     const cellTime = d.getTime();
-    
+
     return this.recurringService.schedules().filter(s => {
       if (s.type === 'income' && !this.filterIncome()) return false;
       if (s.type === 'expense' && !this.filterExpense()) return false;
@@ -939,9 +939,9 @@ export class BillsCalendarComponent implements OnInit {
 
       const start = new Date(s.startDate + 'T00:00:00');
       const startTime = start.getTime();
-      
+
       if (cellTime < startTime) return false;
-      
+
       if (s.frequency === 'daily') return true;
       if (s.frequency === 'weekly') return d.getDay() === start.getDay();
       if (s.frequency === 'biweekly') {
@@ -949,7 +949,7 @@ export class BillsCalendarComponent implements OnInit {
         const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
         return diffDays >= 0 && diffDays % 14 === 0;
       }
-      
+
       if (s.frequency === 'monthly') {
         const targetDay = start.getDate();
         const currentMonthLastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
@@ -958,7 +958,7 @@ export class BillsCalendarComponent implements OnInit {
         }
         return d.getDate() === targetDay;
       }
-      
+
       if (s.frequency === 'yearly') {
         return d.getDate() === start.getDate() && d.getMonth() === start.getMonth();
       }

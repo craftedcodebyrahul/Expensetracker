@@ -10,11 +10,12 @@ import { ApiService } from '../../core/services/api.service';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { RecurringService } from '../../core/services/recurring.service';
 import { SettingsService } from '../../core/services/settings.service';
+import { CategorySelectComponent } from '../../shared/components/category-select.component';
 
 @Component({
   selector: 'app-quick-log',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, CurrencyFormatPipe],
+  imports: [CommonModule, FormsModule, RouterLink, CurrencyFormatPipe, CategorySelectComponent],
   templateUrl: './quick-log.component.html',
   styles: [`
     :host {
@@ -71,7 +72,9 @@ import { SettingsService } from '../../core/services/settings.service';
     .recent-item { display: flex; align-items: center; gap: 0.625rem; padding: 0.5rem 0.625rem; border-radius: var(--radius-sm); transition: var(--transition); }
     .recent-item:hover { background: var(--bg-card-hover); }
     .recent-icon { font-size: 1rem; flex-shrink: 0; width: 24px; text-align: center; }
-    .recent-desc { flex: 1; font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .recent-info { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 0.125rem; }
+    .recent-desc { font-size: 0.8125rem; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .recent-cat { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .recent-amount { font-size: 0.8125rem; font-weight: 600; flex-shrink: 0; }
     .category-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.125rem; }
     .ai-categorize-badge { font-size: 0.7rem; font-weight: 600; padding: 0.125rem 0.375rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.25rem; }
@@ -88,7 +91,7 @@ export class QuickLogComponent implements OnInit {
   private toast = inject(ToastService);
   private api = inject(ApiService);
   recurringService = inject(RecurringService);
- 
+
   submitting = signal(false);
   justSaved = signal(false);
   lastSavedDesc = signal('');
@@ -208,7 +211,7 @@ export class QuickLogComponent implements OnInit {
             const categories = this.form.type === 'income'
               ? this.categoryService.incomeCategories()
               : this.categoryService.expenseCategories();
-            
+
             const exists = categories.some(c => c.id === catId);
             if (exists) {
               this.form.category = catId;
@@ -227,7 +230,7 @@ export class QuickLogComponent implements OnInit {
   isValid() {
     const hasAmount = !!this.form.amount && this.form.amount > 0;
     const hasDesc = !!this.form.description.trim();
-    
+
     if (this.form.type === 'transfer') {
       return hasAmount && hasDesc && !!this.form.accountId && !!this.form.toAccountId && this.form.accountId !== this.form.toAccountId;
     }
