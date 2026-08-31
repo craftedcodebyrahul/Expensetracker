@@ -27,6 +27,7 @@ export class ApiService {
       if (filter.search) params = params.set('search', filter.search);
       if (filter.minAmount != null) params = params.set('minAmount', filter.minAmount.toString());
       if (filter.maxAmount != null) params = params.set('maxAmount', filter.maxAmount.toString());
+      if (filter.accountId) params = params.set('accountId', filter.accountId);
       if (filter.page != null) params = params.set('page', filter.page.toString());
       if (filter.limit != null) params = params.set('limit', filter.limit.toString());
     }
@@ -391,5 +392,32 @@ export class ApiService {
 
   getAnomalies(): Observable<ApiResponse<any[]>> {
     return this.http.get<ApiResponse<any[]>>(`${this.baseUrl}/anomalies`);
+  }
+
+  // ── Page-Specific Aggregation APIs ──────────────────────────────────────────
+
+  getDashboardStats(): Observable<ApiResponse<any>> {
+    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/dashboard/stats`);
+  }
+
+  getBudgetSummary(year?: number, month?: number): Observable<ApiResponse<any>> {
+    let params = new HttpParams();
+    if (year) params = params.set('year', year.toString());
+    if (month) params = params.set('month', month.toString());
+    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/budgets/summary`, { params });
+  }
+
+  getInsightsStats(options?: { periodType?: string; year?: number; month?: number; quarter?: number; half?: number }): Observable<ApiResponse<any>> {
+    let params = new HttpParams();
+    if (options?.periodType) params = params.set('periodType', options.periodType);
+    if (options?.year) params = params.set('year', options.year.toString());
+    if (options?.month != null) params = params.set('month', options.month.toString());
+    if (options?.quarter) params = params.set('quarter', options.quarter.toString());
+    if (options?.half) params = params.set('half', options.half.toString());
+    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/insights/stats`, { params });
+  }
+
+  getRunwayStats(): Observable<ApiResponse<any>> {
+    return this.http.get<ApiResponse<any>>(`${this.baseUrl}/runway/stats`);
   }
 }

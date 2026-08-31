@@ -2,7 +2,7 @@ import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AccountService } from '../../core/services/account.service';
-import { TransactionService } from '../../core/services/transaction.service';
+import { ApiService } from '../../core/services/api.service';
 import { CategoryService } from '../../core/services/category.service';
 import { ToastService } from '../../core/services/toast.service';
 import { HeaderComponent } from '../../layout/header.component';
@@ -1013,7 +1013,7 @@ import { SettingsService } from '../../core/services/settings.service';
 export class AccountsComponent implements OnInit {
   accountService  = inject(AccountService);
   settingsService = inject(SettingsService);
-  private txnService  = inject(TransactionService);
+  private api         = inject(ApiService);
   private catService  = inject(CategoryService);
   private toast       = inject(ToastService);
 
@@ -1033,6 +1033,7 @@ export class AccountsComponent implements OnInit {
   selectedAccount = signal<Account | undefined>(undefined);
   drilldownType   = signal<'all' | 'income' | 'expense' | 'transfer'>('all');
   ddMainTab       = signal<'transactions' | 'portfolio'>('transactions');
+  accountTransactions = signal<Transaction[]>([]);
 
   // Default date range: start of current year → today
   private today = new Date().toLocaleDateString('en-CA');
@@ -1064,6 +1065,15 @@ export class AccountsComponent implements OnInit {
   holdingForm      = { ticker: '', shares: null as number | null };
   savingHolding    = signal(false);
 
+  loadAccountTransactions(accountId: string) {
+    this.api.getTransactions({ accountId, limit: 'all' }).subscribe(res => {
+      if (res.success && res.data) {
+        const txns = Array.isArray(res.data) ? res.data : (res.data.transactions || []);
+        this.accountTransactions.set(txns);
+      }
+    });
+  }
+
   // ── Computed: transactions for selected account within date range ──
   drilldownTxns = computed<Transaction[]>(() => {
     const acc = this.selectedAccount();
@@ -1072,7 +1082,7 @@ export class AccountsComponent implements OnInit {
     const to   = this.drilldownTo();
     const type = this.drilldownType();
 
-    return this.txnService.postedTransactions()
+    return this.accountTransactions()
       .filter(t => {
         const forThisAccount =
           t.accountId === acc.id ||
@@ -1100,7 +1110,7 @@ export class AccountsComponent implements OnInit {
     const to   = this.drilldownTo();
 
     // All txns for this account regardless of type filter (stats always show all)
-    const all = this.txnService.postedTransactions().filter(t => {
+    const all = this.accountTransactions().filter(t => {
       const forThisAccount = t.accountId === acc.id || (t.type === 'transfer' && t.toAccountId === acc.id);
       return forThisAccount && t.date >= from && t.date <= to;
     });
@@ -1164,7 +1174,6 @@ export class AccountsComponent implements OnInit {
   // ── Lifecycle ─────────────────────────────────────────────────────
   ngOnInit() {
     this.accountService.loadAccounts().subscribe();
-    this.txnService.loadTransactions().subscribe();
     this.catService.loadCategories().subscribe();
   }
 
@@ -1176,6 +1185,7 @@ export class AccountsComponent implements OnInit {
       this.selectedAccount.set(acc);
       this.drilldownType.set('all');
       this.ddMainTab.set(acc.isInvestment ? 'portfolio' : 'transactions');
+      this.loadAccountTransactions(acc.id);
       if (acc.isInvestment) {
         this.loadAccountOrders(acc.id);
       }

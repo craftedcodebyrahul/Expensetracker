@@ -925,128 +925,38 @@ export class DashboardComponent implements OnInit, AfterViewInit {
 
   // ── Current month summary — always current month regardless of any filter ──
 
+  dashboardStats = signal<any>(null);
+
   currentMonthSummary = computed(() => {
-    const txns = this.txnService.postedNormalizedTransactions();
-    const y = new Date().getFullYear();
-    const m = new Date().getMonth();
-    const monthTxns = txns.filter(t => {
-      const d = parseLocalDate(t.date);
-      return d.getFullYear() === y && d.getMonth() === m;
-    });
-    const income   = monthTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const expenses = monthTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    // avgTransaction excludes transfers — only income and expense transactions are meaningful for averages
-    const incomeExpenseTxns = monthTxns.filter(t => t.type !== 'transfer');
-    const avgTransaction = incomeExpenseTxns.length ? incomeExpenseTxns.reduce((s, t) => s + t.amount, 0) / incomeExpenseTxns.length : 0;
-    return { totalIncome: income, totalExpenses: expenses, netBalance: income - expenses, transactionCount: monthTxns.length, avgTransaction };
+    const stats = this.dashboardStats()?.currentMonthSummary;
+    if (stats) return stats;
+    return { totalIncome: 0, totalExpenses: 0, netBalance: 0, transactionCount: 0, avgTransaction: 0 };
   });
 
   recentTransactions = computed(() => {
-    const txns = this.txnService.postedNormalizedTransactions();
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
-    return [...txns]
-      .filter(t => {
-        const d = parseLocalDate(t.date);
-        return d.getFullYear() === y && d.getMonth() === m;
-      })
-      .sort((a, b) => {
-        if (a.date !== b.date) {
-          return b.date.localeCompare(a.date);
-        }
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return timeB - timeA;
-      })
-      .slice(0, 10);
+    return this.dashboardStats()?.recentTransactions ?? [];
   });
 
-  private get thisMonth() { return new Date().getMonth(); }
-  private get thisYear() { return new Date().getFullYear(); }
-
-  thisMonthIncome = computed(() =>
-    this.txnService.postedNormalizedTransactions()
-      .filter(t => { const d = parseLocalDate(t.date); return t.type === 'income' && d.getMonth() === this.thisMonth && d.getFullYear() === this.thisYear; })
-      .reduce((s, t) => s + t.amount, 0)
-  );
-
-  thisMonthExpenses = computed(() =>
-    this.txnService.postedNormalizedTransactions()
-      .filter(t => { const d = parseLocalDate(t.date); return t.type === 'expense' && d.getMonth() === this.thisMonth && d.getFullYear() === this.thisYear; })
-      .reduce((s, t) => s + t.amount, 0)
-  );
-
-  lastMonthIncome = computed(() => {
-    const lm = this.thisMonth === 0 ? 11 : this.thisMonth - 1;
-    const ly = this.thisMonth === 0 ? this.thisYear - 1 : this.thisYear;
-    return this.txnService.postedNormalizedTransactions()
-      .filter(t => { const d = parseLocalDate(t.date); return t.type === 'income' && d.getMonth() === lm && d.getFullYear() === ly; })
-      .reduce((s, t) => s + t.amount, 0);
-  });
-
-  lastMonthExpenses = computed(() => {
-    const lm = this.thisMonth === 0 ? 11 : this.thisMonth - 1;
-    const ly = this.thisMonth === 0 ? this.thisYear - 1 : this.thisYear;
-    return this.txnService.postedNormalizedTransactions()
-      .filter(t => { const d = parseLocalDate(t.date); return t.type === 'expense' && d.getMonth() === lm && d.getFullYear() === ly; })
-      .reduce((s, t) => s + t.amount, 0);
-  });
-
-  expenseChange = computed(() => {
-    const last = this.lastMonthExpenses();
-    const curr = this.thisMonthExpenses();
-    if (last === 0) return 0;
-    return Math.round(((curr - last) / last) * 100);
-  });
-
-  savingsRate = computed(() => {
-    const s = this.currentMonthSummary();
-    if (s.totalIncome === 0 && s.totalExpenses === 0) return 0;
-    if (s.totalIncome === 0) return -100;
-    const rate = ((s.totalIncome - s.totalExpenses) / s.totalIncome) * 100;
-    return Math.round(Math.max(rate, -100));
-  });
-
-  // Financial health score 0–100
-  healthScore = computed(() => {
-    const sr = this.savingsRate();
-    const ec = this.expenseChange();
-    const alerts = this.budgetService.budgetAlerts();
-    const exceeded = alerts.filter(a => a.status === 'exceeded').length;
-
-    let score = 50;
-
-    // Savings rate contribution (±30 points)
-    if (sr >= 30)      score += 30;
-    else if (sr >= 20) score += 20;
-    else if (sr >= 10) score += 10;
-    else if (sr >= 0)  score += 0;
-    else if (sr >= -20) score -= 15;
-    else if (sr >= -50) score -= 25;
-    else               score -= 35; // deeply in deficit
-
-    // Expense trend contribution (±15 points)
-    if (ec < -10)      score += 15;  // expenses dropping — great
-    else if (ec < 0)   score += 8;
-    else if (ec > 30)  score -= 15;  // expenses spiking — bad
-    else if (ec > 10)  score -= 8;
-
-    // Budget overruns (−8 per exceeded budget)
-    score -= exceeded * 8;
-
-    return Math.max(0, Math.min(100, score));
-  });
+  thisMonthIncome = computed(() => this.currentMonthSummary().totalIncome);
+  thisMonthExpenses = computed(() => this.currentMonthSummary().totalExpenses);
+  lastMonthIncome = computed(() => this.dashboardStats()?.lastMonthSummary?.totalIncome ?? 0);
+  lastMonthExpenses = computed(() => this.dashboardStats()?.lastMonthSummary?.totalExpenses ?? 0);
+  expenseChange = computed(() => this.dashboardStats()?.lastMonthSummary?.expenseChange ?? 0);
+  savingsRate = computed(() => this.dashboardStats()?.savingsRate ?? 0);
+  healthScore = computed(() => this.dashboardStats()?.healthScore ?? 50);
 
   ngOnInit() {
     const now = new Date();
     const y = now.getFullYear();
     const m = now.getMonth();
-    // Load full year so monthly bar chart works, but summary cards show current month only
-    this.txnService.loadTransactions({
-      dateFrom: `${y}-01-01`,
-      dateTo: `${y}-12-31`
-    }).subscribe(() => this.updateCharts());
+
+    this.api.getDashboardStats().subscribe(res => {
+      if (res.success) {
+        this.dashboardStats.set(res.data);
+        this.updateCharts();
+      }
+    });
+
     this.categoryService.loadCategories().subscribe();
     this.budgetService.loadBudgets(y, m + 1).subscribe();
     this.accountService.loadAccounts().subscribe();
@@ -1146,12 +1056,12 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   private getMonthlyData() {
     const incomeData = Array(12).fill(0);
     const expenseData = Array(12).fill(0);
-    this.txnService.postedNormalizedTransactions().forEach(t => {
-      const m = parseLocalDate(t.date).getMonth();
-      if (t.type === 'income') {
-        incomeData[m] += t.amount;
-      } else if (t.type === 'expense') {
-        expenseData[m] += t.amount;
+    const breakdown = this.dashboardStats()?.monthlyBreakdown || [];
+    breakdown.forEach((item: any) => {
+      const idx = item.monthIndex - 1;
+      if (idx >= 0 && idx < 12) {
+        incomeData[idx] = item.income;
+        expenseData[idx] = item.expense;
       }
     });
     return { incomeData, expenseData };
@@ -1178,22 +1088,12 @@ export class DashboardComponent implements OnInit, AfterViewInit {
   }
 
   private getCategoryData() {
-    const byCategory: Record<string, number> = {};
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
-    // Use postedNormalizedTransactions so future-dated recurring expenses don't appear in the current month pie chart
-    this.txnService.postedNormalizedTransactions()
-      .filter(t => {
-        const d = parseLocalDate(t.date);
-        return t.type === 'expense' && d.getFullYear() === y && d.getMonth() === m;
-      })
-      .forEach(t => { byCategory[t.category] = (byCategory[t.category] || 0) + t.amount; });
-    const sorted = Object.entries(byCategory).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    const breakdown = this.dashboardStats()?.categoryBreakdown || [];
+    const sorted = breakdown.slice(0, 6);
     return {
-      labels: sorted.map(([cat]) => this.categoryService.getCategoryById(cat)?.name ?? cat),
-      data: sorted.map(([, v]) => v),
-      colors: sorted.map(([cat]) => this.categoryService.getCategoryColor(cat))
+      labels: sorted.map((c: any) => c.categoryName),
+      data: sorted.map((c: any) => c.amount),
+      colors: sorted.map((c: any) => c.color)
     };
   }
 }

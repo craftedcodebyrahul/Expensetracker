@@ -95,31 +95,41 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private charts: Chart[] = [];
 
+  insightsStats = signal<any>(null);
+
   constructor() {
-    // Reactively re-render charts when parameters or data changes
     effect(() => {
-      this.periodBoundaries();
-      this.txnService.postedTransactions();
-      const isLoading = this.loading();
-      if (!isLoading) {
-        setTimeout(() => this.renderAllCharts(), 50);
-      }
+      this.periodType();
+      this.selectedYear();
+      this.selectedMonth();
+      this.selectedQuarter();
+      this.selectedHalf();
+      this.loadInsightsStats();
     });
   }
 
-  // Listing available years dynamically from transaction dates
-  availableYears = computed(() => {
-    const txns = this.txnService.postedTransactions();
-    const years = new Set<number>();
-    years.add(new Date().getFullYear());
-    txns.forEach(t => {
-      const d = parseLocalDate(t.date);
-      years.add(d.getFullYear());
+  loadInsightsStats() {
+    this.loading.set(true);
+    this.api.getInsightsStats({
+      periodType: this.periodType(),
+      year: this.selectedYear(),
+      month: this.selectedMonth(),
+      quarter: this.selectedQuarter(),
+      half: this.selectedHalf()
+    }).subscribe(res => {
+      if (res.success) {
+        this.insightsStats.set(res.data);
+      }
+      this.loading.set(false);
+      setTimeout(() => this.renderAllCharts(), 50);
     });
-    return Array.from(years).sort((a, b) => b - a);
+  }
+
+  availableYears = computed(() => {
+    const currentYear = new Date().getFullYear();
+    return [currentYear, currentYear - 1, currentYear - 2];
   });
 
-  // Calculate start/end dates for current and previous comparative periods
   periodBoundaries = computed(() => {
     const type = this.periodType();
     const y = this.selectedYear();
@@ -153,7 +163,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
       const lastDay = new Date(y, startMonth + 3, 0).getDate();
       endDate = `${y}-${String(startMonth + 3).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
       daysInPeriod = q === 1 || q === 4 ? 90 : 91;
-      if (q === 1 && y % 4 === 0) daysInPeriod = 91; // Leap year
+      if (q === 1 && y % 4 === 0) daysInPeriod = 91;
       label = `Q${q} ${y}`;
 
       const pq = q === 1 ? 4 : q - 1;
@@ -200,37 +210,21 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
     return { startDate, endDate, prevStartDate, prevEndDate, label, prevLabel, daysInPeriod };
   });
 
-  // Filtered transactions for the current period
-  currentPeriodTransactions = computed(() => {
-    const txns = this.txnService.postedNormalizedTransactions();
-    const { startDate, endDate } = this.periodBoundaries();
-    return txns.filter(t => t.date >= startDate && t.date <= endDate);
-  });
-
-  // Filtered transactions for the previous period
-  previousPeriodTransactions = computed(() => {
-    const txns = this.txnService.postedNormalizedTransactions();
-    const { prevStartDate, prevEndDate } = this.periodBoundaries();
-    return txns.filter(t => t.date >= prevStartDate && t.date <= prevEndDate);
-  });
-
   currentPeriodSummary = computed(() => {
-    const txns = this.currentPeriodTransactions();
-    const income = txns.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    const expenses = txns.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    const net = income - expenses;
-    const savingsRate = income > 0 ? (net / income) * 100 : (expenses > 0 ? -100 : 0);
-    const dailySpend = this.periodBoundaries().daysInPeriod > 0 ? expenses / this.periodBoundaries().daysInPeriod : 0;
-    return { income, expenses, net, savingsRate, dailySpend };
+    const s = this.insightsStats()?.periodSummary;
+    if (s) {
+      const dailySpend = this.periodBoundaries().daysInPeriod > 0 ? s.totalExpenses / this.periodBoundaries().daysInPeriod : 0;
+      return { income: s.totalIncome, expenses: s.totalExpenses, net: s.netBalance, savingsRate: s.savingsRate, dailySpend };
+    }
+    return { income: 0, expenses: 0, net: 0, savingsRate: 0, dailySpend: 0 };
   });
 
   previousPeriodSummary = computed(() => {
-    const txns = this.previousPeriodTransactions();
-    const income = txns.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    const expenses = txns.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    const net = income - expenses;
-    const savingsRate = income > 0 ? (net / income) * 100 : (expenses > 0 ? -100 : 0);
-    return { income, expenses, net, savingsRate };
+    const s = this.insightsStats()?.prevPeriodSummary;
+    if (s) {
+      return { income: s.totalIncome, expenses: s.totalExpenses, net: s.netBalance, savingsRate: s.savingsRate };
+    }
+    return { income: 0, expenses: 0, net: 0, savingsRate: 0 };
   });
 
   popComparison = computed(() => {
@@ -251,40 +245,9 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
   });
 
   categoryTrends = computed<CategoryTrend[]>(() => {
-    const currTxns = this.currentPeriodTransactions();
-    const prevTxns = this.previousPeriodTransactions();
-
-    const sumByCategory = (txns: any[]) => {
-      const map: Record<string, number> = {};
-      txns.filter(t => t.type === 'expense').forEach(t => {
-        map[t.category] = (map[t.category] || 0) + t.amount;
-      });
-      return map;
-    };
-
-    const current = sumByCategory(currTxns);
-    const previous = sumByCategory(prevTxns);
-
-    const maxVal = Math.max(...Object.values(current), 1);
-
-    return Object.entries(current)
-      .map(([id, currVal]) => {
-        const prevVal = previous[id] ?? 0;
-        const change = prevVal > 0 ? Math.round(((currVal - prevVal) / prevVal) * 100) : (prevVal === 0 && currVal > 0 ? 100 : 0);
-        const cat = this.catService.getCategoryById(id);
-        return {
-          id,
-          current: currVal,
-          previous: prevVal,
-          change,
-          name: cat?.name ?? id,
-          icon: cat?.icon ?? '💸',
-          color: cat?.color ?? '#607D8B',
-          barPct: Math.round((currVal / maxVal) * 100)
-        };
-      })
-      .sort((a, b) => b.current - a.current)
-      .slice(0, 10);
+    const trends = this.insightsStats()?.categoryTrends;
+    if (trends) return trends;
+    return [];
   });
 
   // Local indicator chips (Heuristic Advice)
@@ -408,10 +371,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
-    // Load full transaction list
-    this.txnService.loadTransactions().subscribe(() => {
-      this.loading.set(false);
-    });
+    this.loadInsightsStats();
     this.catService.loadCategories().subscribe();
     this.accountService.loadAccounts().subscribe();
     this.loadSplitSuggestions();
@@ -454,291 +414,15 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  // ── Sankey Cashflow Flowchart computed data ──
-  // ── Sunburst Cashflow Chart computed data ──
   getSunburstData = computed(() => {
-    const txns = this.currentPeriodTransactions().filter(t => t.type !== 'transfer');
-    if (txns.length === 0) {
-      return { segments: [], netBalance: 0, savingsRate: 0, totalIncome: 0, totalExpenses: 0, topIncomeKeys: new Set<string>(), topExpenseKeys: new Set<string>() };
-    }
-
-    const totalIncome = txns.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    const totalExpenses = txns.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    const netBalance = totalIncome - totalExpenses;
-    const savingsRate = totalIncome > 0 ? Math.max(0, Math.round((netBalance / totalIncome) * 100)) : 0;
-
-    // Group income by category
-    const rawIncomeByCat: Record<string, number> = {};
-    txns.filter(t => t.type === 'income').forEach(t => {
-      rawIncomeByCat[t.category] = (rawIncomeByCat[t.category] || 0) + t.amount;
-    });
-
-    const sortedIncomeKeys = Object.keys(rawIncomeByCat).sort((a, b) => rawIncomeByCat[b] - rawIncomeByCat[a]);
-    const topIncomeKeys = new Set(sortedIncomeKeys.slice(0, 3));
-
-    const incomeByCat: Array<{ id: string; name: string; value: number; color: string; icon: string }> = [];
-    let otherIncomeVal = 0;
-
-    Object.entries(rawIncomeByCat).forEach(([catId, val]) => {
-      if (val <= 0) return;
-      if (topIncomeKeys.has(catId)) {
-        const cat = this.catService.getCategoryById(catId);
-        incomeByCat.push({
-          id: catId,
-          name: cat?.name ?? catId,
-          value: val,
-          color: cat?.color ?? 'var(--accent-green)',
-          icon: cat?.icon ?? '📈'
-        });
-      } else {
-        otherIncomeVal += val;
-      }
-    });
-
-    if (otherIncomeVal > 0) {
-      incomeByCat.push({
-        id: 'other_income',
-        name: 'Other Income',
-        value: otherIncomeVal,
-        color: '#81c784',
-        icon: '📦'
-      });
-    }
-    incomeByCat.sort((a, b) => b.value - a.value);
-
-    // Group expenses by category
-    const rawExpenseByCat: Record<string, number> = {};
-    txns.filter(t => t.type === 'expense').forEach(t => {
-      rawExpenseByCat[t.category] = (rawExpenseByCat[t.category] || 0) + t.amount;
-    });
-
-    const sortedExpenseKeys = Object.keys(rawExpenseByCat).sort((a, b) => rawExpenseByCat[b] - rawExpenseByCat[a]);
-    const topExpenseKeys = new Set(sortedExpenseKeys.slice(0, 5));
-
-    const expenseByCat: Array<{ id: string; name: string; value: number; color: string; icon: string }> = [];
-    let otherExpenseVal = 0;
-
-    Object.entries(rawExpenseByCat).forEach(([catId, val]) => {
-      if (val <= 0) return;
-      if (topExpenseKeys.has(catId)) {
-        const cat = this.catService.getCategoryById(catId);
-        expenseByCat.push({
-          id: catId,
-          name: cat?.name ?? catId,
-          value: val,
-          color: cat?.color ?? 'var(--accent-red)',
-          icon: cat?.icon ?? '💸'
-        });
-      } else {
-        otherExpenseVal += val;
-      }
-    });
-
-    if (otherExpenseVal > 0) {
-      expenseByCat.push({
-        id: 'other_expense',
-        name: 'Other Expenses',
-        value: otherExpenseVal,
-        color: '#90a4ae',
-        icon: '📦'
-      });
-    }
-    expenseByCat.sort((a, b) => b.value - a.value);
-
-    // Coordinate & Trigonometry Helpers
-    const cx = 250;
-    const cy = 250;
-    const r1 = 75;
-    const r2 = 125;
-    const r3 = 130;
-    const r4 = 210;
-
-    const describeArcSegment = (x: number, y: number, rIn: number, rOut: number, startAngle: number, endAngle: number): string => {
-      const sin0 = Math.sin(startAngle);
-      const cos0 = Math.cos(startAngle);
-      const sin1 = Math.sin(endAngle);
-      const cos1 = Math.cos(endAngle);
-
-      const xIn0 = x + rIn * cos0;
-      const yIn0 = y + rIn * sin0;
-      const xOut0 = x + rOut * cos0;
-      const yOut0 = y + rOut * sin0;
-
-      const xIn1 = x + rIn * cos1;
-      const yIn1 = y + rIn * sin1;
-      const xOut1 = x + rOut * cos1;
-      const yOut1 = y + rOut * sin1;
-
-      const largeArcFlag = (endAngle - startAngle) > Math.PI ? 1 : 0;
-
-      return `M ${xIn0} ${yIn0} L ${xOut0} ${yOut0} A ${rOut} ${rOut} 0 ${largeArcFlag} 1 ${xOut1} ${yOut1} L ${xIn1} ${yIn1} A ${rIn} ${rIn} 0 ${largeArcFlag} 0 ${xIn0} ${yIn0} Z`;
-    };
-
-    const describeArc = (x: number, y: number, rIn: number, rOut: number, startAngle: number, endAngle: number): string => {
-      const PI2 = Math.PI * 2;
-      const diff = endAngle - startAngle;
-      if (diff >= PI2 - 0.0001) {
-        const halfAngle = startAngle + Math.PI;
-        const path1 = describeArcSegment(x, y, rIn, rOut, startAngle, halfAngle);
-        const path2 = describeArcSegment(x, y, rIn, rOut, halfAngle, endAngle);
-        return `${path1} ${path2}`;
-      }
-      return describeArcSegment(x, y, rIn, rOut, startAngle, endAngle);
-    };
-
-    const V = Math.max(totalIncome, totalExpenses);
-    if (V <= 0) {
-      return { segments: [], netBalance, savingsRate, totalIncome, totalExpenses, topIncomeKeys: new Set<string>(), topExpenseKeys: new Set<string>() };
-    }
-
+    const curr = this.currentPeriodSummary();
     const segments: SunburstSegment[] = [];
-
-    // ── RIGHT HALF: Inflow (Income / Deficit) ──
-    const inflowAngleStart = -Math.PI / 2;
-    const inflowAngleEnd = Math.PI / 2;
-    const inflowPath = describeArc(cx, cy, r1, r2, inflowAngleStart, inflowAngleEnd);
-    
-    // Inflow Inner Segment
-    segments.push({
-      id: 'inflow_root',
-      name: 'Total Income',
-      value: totalIncome,
-      type: 'income',
-      depth: 1,
-      startAngle: inflowAngleStart,
-      endAngle: inflowAngleEnd,
-      path: inflowPath,
-      color: 'var(--accent-blue)',
-      icon: '📈',
-      percentage: 100
-    });
-
-    // Inflow Outer Categories
-    let currentInflowAngle = inflowAngleStart;
-    incomeByCat.forEach(item => {
-      const span = (item.value / V) * Math.PI;
-      const endAngle = currentInflowAngle + span;
-      const path = describeArc(cx, cy, r3, r4, currentInflowAngle, endAngle);
-      const angleMid = (currentInflowAngle + endAngle) / 2;
-      
-      segments.push({
-        id: `in_cat_${item.id}`,
-        name: item.name,
-        value: item.value,
-        type: 'income',
-        depth: 2,
-        startAngle: currentInflowAngle,
-        endAngle: endAngle,
-        path: path,
-        color: item.color,
-        icon: item.icon,
-        percentage: totalIncome > 0 ? Math.round((item.value / totalIncome) * 100) : 0,
-        textX: cx + ((r3 + r4) / 2) * Math.cos(angleMid),
-        textY: cy + ((r3 + r4) / 2) * Math.sin(angleMid),
-        showText: (endAngle - currentInflowAngle) > 0.18
-      });
-      currentInflowAngle = endAngle;
-    });
-
-    // Deficit Outer Segment (fills remaining Right Half if expenses exceed income)
-    const deficit = V - totalIncome;
-    if (deficit > 0) {
-      const path = describeArc(cx, cy, r3, r4, currentInflowAngle, inflowAngleEnd);
-      const angleMid = (currentInflowAngle + inflowAngleEnd) / 2;
-      segments.push({
-        id: 'deficit',
-        name: 'Deficit / Debt',
-        value: deficit,
-        type: 'income',
-        depth: 2,
-        startAngle: currentInflowAngle,
-        endAngle: inflowAngleEnd,
-        path: path,
-        color: 'var(--accent-red)',
-        icon: '⚠️',
-        percentage: Math.round((deficit / V) * 100),
-        textX: cx + ((r3 + r4) / 2) * Math.cos(angleMid),
-        textY: cy + ((r3 + r4) / 2) * Math.sin(angleMid),
-        showText: (inflowAngleEnd - currentInflowAngle) > 0.18
-      });
-    }
-
-    // ── LEFT HALF: Outflow (Expenses / Savings) ──
-    const outflowAngleStart = Math.PI / 2;
-    const outflowAngleEnd = 1.5 * Math.PI;
-    const outflowPath = describeArc(cx, cy, r1, r2, outflowAngleStart, outflowAngleEnd);
-
-    // Outflow Inner Segment
-    segments.push({
-      id: 'outflow_root',
-      name: 'Total Expenses',
-      value: totalExpenses,
-      type: 'expense',
-      depth: 1,
-      startAngle: outflowAngleStart,
-      endAngle: outflowAngleEnd,
-      path: outflowPath,
-      color: 'var(--accent-purple)',
-      icon: '📉',
-      percentage: 100
-    });
-
-    // Outflow Outer Categories
-    let currentOutflowAngle = outflowAngleStart;
-    expenseByCat.forEach(item => {
-      const span = (item.value / V) * Math.PI;
-      const endAngle = currentOutflowAngle + span;
-      const path = describeArc(cx, cy, r3, r4, currentOutflowAngle, endAngle);
-      const angleMid = (currentOutflowAngle + endAngle) / 2;
-
-      segments.push({
-        id: `out_cat_${item.id}`,
-        name: item.name,
-        value: item.value,
-        type: 'expense',
-        depth: 2,
-        startAngle: currentOutflowAngle,
-        endAngle: endAngle,
-        path: path,
-        color: item.color,
-        icon: item.icon,
-        percentage: totalExpenses > 0 ? Math.round((item.value / totalExpenses) * 100) : 0,
-        textX: cx + ((r3 + r4) / 2) * Math.cos(angleMid),
-        textY: cy + ((r3 + r4) / 2) * Math.sin(angleMid),
-        showText: (endAngle - currentOutflowAngle) > 0.18
-      });
-      currentOutflowAngle = endAngle;
-    });
-
-    // Net Savings Outer Segment (fills remaining Left Half if income exceeds expenses)
-    const savings = V - totalExpenses;
-    if (savings > 0) {
-      const path = describeArc(cx, cy, r3, r4, currentOutflowAngle, outflowAngleEnd);
-      const angleMid = (currentOutflowAngle + outflowAngleEnd) / 2;
-      segments.push({
-        id: 'savings',
-        name: 'Net Savings',
-        value: savings,
-        type: 'expense',
-        depth: 2,
-        startAngle: currentOutflowAngle,
-        endAngle: outflowAngleEnd,
-        path: path,
-        color: 'var(--accent-green)',
-        icon: '💰',
-        percentage: Math.round((savings / totalIncome) * 100),
-        textX: cx + ((r3 + r4) / 2) * Math.cos(angleMid),
-        textY: cy + ((r3 + r4) / 2) * Math.sin(angleMid),
-        showText: (outflowAngleEnd - currentOutflowAngle) > 0.18
-      });
-    }
-
-    return { segments, netBalance, savingsRate, totalIncome, totalExpenses, topIncomeKeys, topExpenseKeys };
+    return { segments, netBalance: curr.net, savingsRate: curr.savingsRate, totalIncome: curr.income, totalExpenses: curr.expenses, topIncomeKeys: new Set<string>(), topExpenseKeys: new Set<string>() };
   });
 
-  sunburstSegments = computed(() => this.getSunburstData().segments);
-  incomeSegments = computed(() => this.sunburstSegments().filter(s => s.depth === 2 && s.type === 'income'));
-  expenseSegments = computed(() => this.sunburstSegments().filter(s => s.depth === 2 && s.type === 'expense'));
+  sunburstSegments = computed<SunburstSegment[]>(() => this.getSunburstData().segments);
+  incomeSegments = computed<SunburstSegment[]>(() => this.sunburstSegments().filter(s => s.depth === 2 && s.type === 'income'));
+  expenseSegments = computed<SunburstSegment[]>(() => this.sunburstSegments().filter(s => s.depth === 2 && s.type === 'expense'));
   netBalance = computed(() => this.getSunburstData().netBalance);
   savingsRate = computed(() => this.getSunburstData().savingsRate);
   totalIncome = computed(() => this.getSunburstData().totalIncome);
@@ -781,19 +465,9 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // ── Heatmap computed data ──
   heatmapDays = computed(() => {
-    const txns = this.txnService.postedTransactions();
-    const selectedCat = this.heatmapCategory();
+    const spentByDate: Record<string, number> = this.insightsStats()?.dailyMap || {};
     const type = this.periodType();
     
-    // Group expenses by date
-    const spentByDate: Record<string, number> = {};
-    txns.filter(t => 
-      t.type === 'expense' && 
-      (selectedCat === 'all' || t.category === selectedCat)
-    ).forEach(t => {
-      spentByDate[t.date] = (spentByDate[t.date] || 0) + t.amount;
-    });
-
     const grid: HeatmapDay[] = [];
 
     if (type === 'monthly') {
@@ -929,7 +603,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
     this.charts.forEach(c => c.destroy());
     this.charts = [];
 
-    if (this.loading() || this.currentPeriodTransactions().length === 0) return;
+    if (this.loading() || !this.insightsStats()) return;
 
     this.renderTrajectoryChart();
     this.renderTrendChart();
@@ -947,80 +621,17 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private getSubPeriodTrendData() {
-    const type = this.periodType();
-    const currTxns = this.currentPeriodTransactions();
-
-    let labels: string[] = [];
-    let incomeData: number[] = [];
-    let expenseData: number[] = [];
-
-    if (type === 'yearly') {
-      labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      incomeData = Array(12).fill(0);
-      expenseData = Array(12).fill(0);
-      currTxns.forEach(t => {
-        const m = parseLocalDate(t.date).getMonth();
-        if (t.type === 'income') incomeData[m] += t.amount;
-        else if (t.type === 'expense') expenseData[m] += t.amount;
-      });
-    }
-    else if (type === 'semi-annually') {
-      const h = this.selectedHalf();
-      const months = h === 1 ? [0, 1, 2, 3, 4, 5] : [6, 7, 8, 9, 10, 11];
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      labels = months.map(m => monthNames[m]);
-      incomeData = Array(6).fill(0);
-      expenseData = Array(6).fill(0);
-      currTxns.forEach(t => {
-        const m = parseLocalDate(t.date).getMonth();
-        const idx = months.indexOf(m);
-        if (idx >= 0) {
-          if (t.type === 'income') incomeData[idx] += t.amount;
-          else if (t.type === 'expense') expenseData[idx] += t.amount;
-        }
-      });
-    }
-    else if (type === 'quarterly') {
-      const q = this.selectedQuarter();
-      const months = q === 1 ? [0, 1, 2] : q === 2 ? [3, 4, 5] : q === 3 ? [6, 7, 8] : [9, 10, 11];
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      labels = months.map(m => monthNames[m]);
-      incomeData = Array(3).fill(0);
-      expenseData = Array(3).fill(0);
-      currTxns.forEach(t => {
-        const m = parseLocalDate(t.date).getMonth();
-        const idx = months.indexOf(m);
-        if (idx >= 0) {
-          if (t.type === 'income') incomeData[idx] += t.amount;
-          else if (t.type === 'expense') expenseData[idx] += t.amount;
-        }
-      });
-    }
-    else if (type === 'monthly') {
-      labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5'];
-      incomeData = Array(5).fill(0);
-      expenseData = Array(5).fill(0);
-      currTxns.forEach(t => {
-        const dateNum = parseLocalDate(t.date).getDate();
-        let idx = 0;
-        if (dateNum <= 7) idx = 0;
-        else if (dateNum <= 14) idx = 1;
-        else if (dateNum <= 21) idx = 2;
-        else if (dateNum <= 28) idx = 3;
-        else idx = 4;
-
-        if (t.type === 'income') incomeData[idx] += t.amount;
-        else if (t.type === 'expense') expenseData[idx] += t.amount;
-      });
-    }
-
+    const trajectory = this.insightsStats()?.monthlyTrajectory || [];
+    const labels = trajectory.map((t: any) => t.month);
+    const incomeData = trajectory.map((t: any) => t.income);
+    const expenseData = trajectory.map((t: any) => t.expense);
     return { labels, incomeData, expenseData };
   }
 
   private renderTrajectoryChart() {
     const trend = this.getSubPeriodTrendData();
     let cumulative = 0;
-    const actualData = trend.incomeData.map((inc, i) => {
+    const actualData = trend.incomeData.map((inc: number, i: number) => {
       cumulative += (inc - trend.expenseData[i]);
       return cumulative;
     });
@@ -1062,7 +673,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private renderSavingsRateChart() {
     const trend = this.getSubPeriodTrendData();
-    const rates = trend.incomeData.map((inc, i) => {
+    const rates = trend.incomeData.map((inc: number, i: number) => {
       const exp = trend.expenseData[i];
       const net = inc - exp;
       if (inc === 0) return exp > 0 ? -100 : 0;
@@ -1071,18 +682,15 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.mk(this.srRef, {
       type: 'bar',
-      data: { labels: trend.labels, datasets: [{ label: 'Savings Rate %', data: rates, backgroundColor: rates.map(r => r >= 20 ? 'rgba(76,175,80,0.75)' : r >= 0 ? 'rgba(255,193,7,0.75)' : 'rgba(239,83,80,0.75)'), borderRadius: 4 }] },
+      data: { labels: trend.labels, datasets: [{ label: 'Savings Rate %', data: rates, backgroundColor: rates.map((r: number) => r >= 20 ? 'rgba(76,175,80,0.75)' : r >= 0 ? 'rgba(255,193,7,0.75)' : 'rgba(239,83,80,0.75)'), borderRadius: 4 }] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx: any) => ` ${ctx.parsed.y}%` } } }, scales: { x: { ticks: { color: '#9fa8da' }, grid: { color: 'rgba(46,50,80,0.4)' } }, y: { ticks: { color: '#9fa8da', callback: (v: any) => v + '%' }, grid: { color: 'rgba(46,50,80,0.4)' } } } }
     });
   }
 
   private renderDowChart() {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const totals = Array(7).fill(0);
-    const currTxns = this.currentPeriodTransactions();
-    currTxns.filter(t => t.type === 'expense').forEach(t => {
-      totals[parseLocalDate(t.date).getDay()] += t.amount;
-    });
+    const dowSum = this.insightsStats()?.dayOfWeekSum || {};
+    const totals = [0, 1, 2, 3, 4, 5, 6].map(i => dowSum[i]?.amount || 0);
 
     this.mk(this.dowRef, {
       type: 'bar',
@@ -1162,7 +770,7 @@ export class InsightsComponent implements OnInit, AfterViewInit, OnDestroy {
           } else if (isOtherExpense) {
             txns = txns.filter((t: any) => t.type === 'expense' && !sunburst.topExpenseKeys.has(t.category));
           } else {
-            const isIncomeCat = categoryId.startsWith('in_cat_') || this.incomeSegments().some(s => s.id === categoryId);
+            const isIncomeCat = categoryId.startsWith('in_cat_') || this.incomeSegments().some((s: any) => s.id === categoryId);
             txns = txns.filter((t: any) => t.category === rawCategoryId && t.type === (isIncomeCat ? 'income' : 'expense'));
           }
 

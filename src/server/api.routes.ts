@@ -31,13 +31,14 @@ export function createApiRouter(): Router {
   router.get('/transactions', async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = getUserId(req);
-      const { type, category, dateFrom, dateTo, search, minAmount, maxAmount, clientDate, page, limit } =
+      const { type, category, accountId, dateFrom, dateTo, search, minAmount, maxAmount, clientDate, page, limit } =
         req.query as Record<string, string>;
 
       let transactions = await dbService.getTransactions(userId, clientDate);
 
       if (type && type !== 'all')   transactions = transactions.filter(t => t.type === type);
       if (category)                 transactions = transactions.filter(t => t.category === category);
+      if (accountId)                transactions = transactions.filter(t => t.accountId === accountId || (t.type === 'transfer' && t.toAccountId === accountId));
       if (dateFrom)                 transactions = transactions.filter(t => t.date >= dateFrom);
       if (dateTo)                   transactions = transactions.filter(t => t.date <= dateTo);
       if (search) {
@@ -54,8 +55,25 @@ export function createApiRouter(): Router {
       // Already sorted desc by date from DB — but re-sort after filters
       transactions.sort((a, b) => b.date.localeCompare(a.date));
 
+      const totalIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      const categoryCount: Record<string, number> = {};
+      transactions.filter(t => t.type === 'expense').forEach(t => { categoryCount[t.category] = (categoryCount[t.category] || 0) + t.amount; });
+      const topCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+      const incomeExpenseTxns = transactions.filter(t => t.type !== 'transfer');
+      const avgTransaction = incomeExpenseTxns.length ? incomeExpenseTxns.reduce((s, t) => s + t.amount, 0) / incomeExpenseTxns.length : 0;
+
+      const summary = {
+        totalIncome,
+        totalExpenses,
+        netBalance: totalIncome - totalExpenses,
+        transactionCount: transactions.length,
+        avgTransaction,
+        topCategory
+      };
+
       if (limit === 'all') {
-        ok(res, transactions);
+        ok(res, { transactions, summary });
         return;
       }
 
@@ -73,7 +91,8 @@ export function createApiRouter(): Router {
           totalPages,
           page: pageNum,
           limit: limitNum
-        }
+        },
+        summary
       });
     } catch (e) { fail(res, e); }
   });
@@ -304,7 +323,45 @@ export function createApiRouter(): Router {
     } catch (e) { fail(res, e); }
   });
 
+  // ── Dashboard & Aggregations ────────────────────────────────────────────────
+  router.get('/dashboard/stats', async (req: Request, res: Response): Promise<void> => {
+    try {
+      ok(res, await dbService.getDashboardStats(getUserId(req)));
+    } catch (e) { fail(res, e); }
+  });
+
+  router.get('/insights/stats', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { periodType, year, month, quarter, half } = req.query as Record<string, string>;
+      ok(res, await dbService.getInsightsStats(
+        getUserId(req),
+        periodType ?? 'monthly',
+        year ? parseInt(year) : undefined,
+        month ? parseInt(month) : undefined,
+        quarter ? parseInt(quarter) : undefined,
+        half ? parseInt(half) : undefined
+      ));
+    } catch (e) { fail(res, e); }
+  });
+
+  router.get('/runway/stats', async (req: Request, res: Response): Promise<void> => {
+    try {
+      ok(res, await dbService.getRunwayStats(getUserId(req)));
+    } catch (e) { fail(res, e); }
+  });
+
   // ── Budgets ─────────────────────────────────────────────────────────────────
+
+  router.get('/budgets/summary', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { year, month } = req.query as Record<string, string>;
+      ok(res, await dbService.getBudgetSummary(
+        getUserId(req),
+        year  ? parseInt(year)  : undefined,
+        month ? parseInt(month) : undefined,
+      ));
+    } catch (e) { fail(res, e); }
+  });
 
   router.get('/budgets', async (req: Request, res: Response): Promise<void> => {
     try {

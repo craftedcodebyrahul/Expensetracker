@@ -1,6 +1,5 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { ApiService } from './api.service';
-import { TransactionService } from './transaction.service';
 import { SettingsService } from './settings.service';
 import { Account, StockHolding, StockOrder } from '../models';
 import { tap, catchError, of } from 'rxjs';
@@ -8,7 +7,6 @@ import { tap, catchError, of } from 'rxjs';
 @Injectable({ providedIn: 'root' })
 export class AccountService {
   api = inject(ApiService);
-  private txnService = inject(TransactionService);
   private settingsService = inject(SettingsService);
 
   readonly accounts = signal<Account[]>([]);
@@ -152,7 +150,6 @@ export class AccountService {
       tap(res => {
         if (res.success) {
           this.loadAccounts().subscribe();
-          this.txnService.loadTransactions().subscribe();
         }
       })
     );
@@ -169,7 +166,6 @@ export class AccountService {
       tap(res => {
         if (res.success) {
           this.loadAccounts().subscribe();
-          this.txnService.loadTransactions().subscribe();
         }
       })
     );
@@ -180,7 +176,6 @@ export class AccountService {
       tap(res => {
         if (res.success) {
           this.loadAccounts().subscribe();
-          this.txnService.loadTransactions().subscribe();
         }
       })
     );

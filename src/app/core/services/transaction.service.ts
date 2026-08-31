@@ -15,6 +15,7 @@ export class TransactionService {
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
   readonly filter = signal<TransactionFilter>({ type: 'all', page: 1, limit: 50 });
+  readonly serverSummary = signal<TransactionSummary | null>(null);
   readonly pagination = signal<{ totalItems: number; totalPages: number; page: number; limit: number }>({
     totalItems: 0,
     totalPages: 1,
@@ -84,6 +85,9 @@ export class TransactionService {
   });
 
   readonly summary = computed<TransactionSummary>(() => {
+    if (this.serverSummary()) {
+      return this.serverSummary()!;
+    }
     const txns = this.filteredTransactions();
     const settingsService = this.injector.get(SettingsService);
     const accountService = this.injector.get(AccountService);
@@ -105,11 +109,9 @@ export class TransactionService {
 
     const income   = normalizedTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const expenses = normalizedTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    // topCategory: only count expense transactions for a meaningful spending breakdown
     const categoryCount: Record<string, number> = {};
     normalizedTxns.filter(t => t.type === 'expense').forEach(t => { categoryCount[t.category] = (categoryCount[t.category] || 0) + t.amount; });
     const topCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
-    // avgTransaction: exclude transfers since they are not real income/expense events
     const incomeExpenseTxns = normalizedTxns.filter(t => t.type !== 'transfer');
     const avgTransaction = incomeExpenseTxns.length ? incomeExpenseTxns.reduce((s, t) => s + t.amount, 0) / incomeExpenseTxns.length : 0;
 
@@ -146,6 +148,14 @@ export class TransactionService {
           if (res.data && res.data.transactions && res.data.pagination) {
             this.transactions.set(res.data.transactions);
             this.pagination.set(res.data.pagination);
+            if (res.data.summary) {
+              this.serverSummary.set(res.data.summary);
+            }
+          } else if (res.data && Array.isArray(res.data.transactions)) {
+            this.transactions.set(res.data.transactions);
+            if (res.data.summary) {
+              this.serverSummary.set(res.data.summary);
+            }
           } else if (Array.isArray(res.data)) {
             this.transactions.set(res.data);
             this.pagination.set({

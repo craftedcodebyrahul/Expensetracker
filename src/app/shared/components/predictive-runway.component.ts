@@ -154,44 +154,18 @@ export class PredictiveRunwayComponent implements OnInit, AfterViewInit {
 
     if (accounts.length === 0) return;
 
-    // 1. Calculate Net Worth
-    let startBalance = 0;
-    accounts.forEach(a => {
-      const bal = balances[a.id] || 0;
-      const accCurrency = a.currency || 'USD';
-      let converted = bal;
-      if (accCurrency.toUpperCase() !== primaryCurrency.toUpperCase() && Object.keys(rates).length > 0) {
-        const fromRate = rates[accCurrency.toUpperCase()] || 1.0;
-        const toRate = rates[primaryCurrency.toUpperCase()] || 1.0;
-        converted = (bal / fromRate) * toRate;
-      }
-      if (a.type === 'asset') {
-        startBalance += converted;
-      } else if (a.type === 'liability') {
-        startBalance -= converted;
-      }
-    });
+    this.api.getRunwayStats().subscribe(runwayRes => {
+      const stats = runwayRes.success ? runwayRes.data : null;
+      const startBalance = stats ? stats.startBalance : 0;
+      const dailyAverageNet = stats ? stats.dailyAverageNet : 0;
+      const today = new Date();
 
-    // 2. Calculate average daily cashflow over last 90 days
-    const txns = this.txnService.postedNormalizedTransactions();
-    const today = new Date();
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(today.getDate() - 90);
-    const limitStr = ninetyDaysAgo.toISOString().split('T')[0];
-
-    const recent = txns.filter(t => t.date >= limitStr);
-    const income = recent.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const expense = recent.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    const netCashflow = income - expense;
-    const dailyAverageNet = netCashflow / 90;
-
-    // 3. Load schedules and map projection
-    this.api.getRecurringSchedules().subscribe(res => {
-      const schedules = res.success ? (res.data || []) : [];
-      const labels: string[] = [];
-      const dataPoints: number[] = [];
-      
-      let currentBalance = startBalance;
+      this.api.getRecurringSchedules().subscribe(res => {
+        const schedules = res.success ? (res.data || []) : [];
+        const labels: string[] = [];
+        const dataPoints: number[] = [];
+        
+        let currentBalance = startBalance;
       
       for (let i = 0; i <= 90; i++) {
         const projectionDate = new Date();
@@ -234,6 +208,7 @@ export class PredictiveRunwayComponent implements OnInit, AfterViewInit {
       });
 
       this.renderChart(labels, dataPoints);
+    });
     });
   }
 

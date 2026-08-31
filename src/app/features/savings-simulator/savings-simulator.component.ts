@@ -144,19 +144,13 @@ export class SavingsSimulatorComponent implements OnInit, OnDestroy, AfterViewIn
 
   ngOnInit() {
     this.accountService.loadAccounts().subscribe();
-    this.txnService.loadTransactions().subscribe({
-      next: () => {
-        this.computeLocalAverages();
-        this.recalcAll();
-      }
-    });
+    this.computeLocalAverages();
     this.budgetService.loadBudgets().subscribe();
     this.catService.loadCategories().subscribe();
 
     this.route.queryParams.subscribe(params => {
       const goalId = params['goalId'];
       if (goalId) {
-        // If query param is provided, trigger AI audit immediately
         this.runAiDiagnostics();
       }
     });
@@ -175,49 +169,16 @@ export class SavingsSimulatorComponent implements OnInit, OnDestroy, AfterViewIn
   }
 
   computeLocalAverages() {
-    const txns = this.txnService.postedTransactions();
-    const now = new Date();
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(now.getMonth() - 6);
-    const dateLimit = sixMonthsAgo.toISOString().split('T')[0];
-
-    const rates = this.accountService.exchangeRates();
-    const primaryCurrency = this.settingsService.currency() || 'USD';
-    const accounts = this.accountService.accounts();
-
-    // Filter last 6 months
-    const rangeTxns = txns.filter(t => t.date >= dateLimit);
-
-    // Convert transaction amount to primary currency
-    const normalizedTxns = rangeTxns.map(t => {
-      const acc = accounts.find(a => a.id === t.accountId);
-      const accCurrency = acc?.currency || 'USD';
-      let amt = t.amount;
-      if (accCurrency.toUpperCase() !== primaryCurrency.toUpperCase() && Object.keys(rates).length > 0) {
-        const fromRate = rates[accCurrency.toUpperCase()] || 1.0;
-        const toRate = rates[primaryCurrency.toUpperCase()] || 1.0;
-        amt = (t.amount / fromRate) * toRate;
+    this.api.getDashboardStats().subscribe(res => {
+      if (res.success && res.data) {
+        const inc = res.data.currentMonthSummary?.totalIncome || 0;
+        const exp = res.data.currentMonthSummary?.totalExpenses || 0;
+        this.avgIncome.set(inc);
+        this.avgExpense.set(exp);
+        this.avgDiscretionary.set(Math.round(exp * 0.4));
+        this.recalcAll();
       }
-      return { ...t, amount: amt };
     });
-
-    const income = normalizedTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const expense = normalizedTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-
-    this.avgIncome.set(Math.round(income / 6));
-    this.avgExpense.set(Math.round(expense / 6));
-
-    // Calculate discretionary spending
-    const fixedCats = ['housing', 'utilities', 'insurance', 'healthcare', 'taxes'];
-    const discretionarySpend = normalizedTxns.filter(t => {
-      if (t.type !== 'expense') return false;
-      const cId = (t.category || '').toLowerCase();
-      const desc = (t.description || '').toLowerCase();
-      const isFixed = fixedCats.includes(cId) || desc.includes('rent') || desc.includes('insurance') || desc.includes('utility');
-      return !isFixed;
-    }).reduce((s, t) => s + t.amount, 0);
-
-    this.avgDiscretionary.set(Math.round(discretionarySpend / 6));
   }
 
   // Checked opportunities total savings

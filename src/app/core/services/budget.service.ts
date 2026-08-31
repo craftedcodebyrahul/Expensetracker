@@ -15,6 +15,8 @@ export class BudgetService {
   private categoryService = inject(CategoryService);
 
   readonly budgets = signal<Budget[]>([]);
+  readonly unbudgetedSpentCategories = signal<Array<Budget & { isUnbudgeted: boolean }>>([]);
+  readonly serverTotalActualExpenses = signal<number | null>(null);
   readonly loading = signal(false);
   readonly loadedYear = signal<number>(new Date().getFullYear());
   readonly loadedMonth = signal<number>(new Date().getMonth() + 1);
@@ -41,49 +43,7 @@ export class BudgetService {
     this.budgets().reduce((s, b) => s + b.spent, 0)
   );
 
-  readonly unbudgetedSpentCategories = computed(() => {
-    const explicitBudgets = this.budgets();
-    const txns = this.txnService.postedNormalizedTransactions();
-    const y = this.loadedYear();
-    const m = this.loadedMonth() - 1; // 0-indexed for Date
 
-    // Group actual expenses by category
-    const spentByCategory: Record<string, number> = {};
-    txns.filter(t => {
-      const d = parseLocalDate(t.date);
-      return t.type === 'expense' && d.getFullYear() === y && d.getMonth() === m;
-    }).forEach(t => {
-      if (t.category) {
-        spentByCategory[t.category] = (spentByCategory[t.category] || 0) + t.amount;
-      }
-    });
-
-    const budgetedCategoryIds = new Set(explicitBudgets.map(b => b.categoryId));
-    const items: Array<Budget & { isUnbudgeted: boolean }> = [];
-
-    // For any category with spending but no set budget, create a virtual budget item
-    for (const [catId, spent] of Object.entries(spentByCategory)) {
-      if (!budgetedCategoryIds.has(catId)) {
-        const cat = this.categoryService.getCategoryById(catId);
-        items.push({
-          id: `unbudgeted_${catId}`,
-          categoryId: catId,
-          categoryName: cat?.name ?? catId,
-          amount: 0,
-          period: 'monthly',
-          month: this.loadedMonth(),
-          year: this.loadedYear(),
-          spent,
-          remaining: 0,
-          percentage: 0,
-          createdAt: new Date().toISOString(),
-          isUnbudgeted: true
-        });
-      }
-    }
-
-    return items.sort((a, b) => b.spent - a.spent);
-  });
 
   readonly totalUnplannedExpenses = computed(() =>
     this.unbudgetedSpentCategories().reduce((s, c) => s + c.spent, 0)
@@ -217,9 +177,12 @@ export class BudgetService {
   );
 
   readonly totalActualExpenses = computed(() => {
+    if (this.serverTotalActualExpenses() !== null) {
+      return this.serverTotalActualExpenses()!;
+    }
     const txns = this.txnService.postedNormalizedTransactions();
     const y = this.loadedYear();
-    const m = this.loadedMonth() - 1; // 0-indexed for Date
+    const m = this.loadedMonth() - 1;
     return txns
       .filter(t => {
         const d = parseLocalDate(t.date);
@@ -236,12 +199,11 @@ export class BudgetService {
     const targetMonth = this.loadedMonth();
 
     if (targetYear < currentYear || (targetYear === currentYear && targetMonth < currentMonth)) {
-      return 100; // Past month is fully elapsed
+      return 100;
     }
     if (targetYear > currentYear || (targetYear === currentYear && targetMonth > currentMonth)) {
-      return 0; // Future month has not started
+      return 0;
     }
-    // Current month
     const day = now.getDate();
     const totalDays = new Date(currentYear, currentMonth, 0).getDate();
     return Math.round((day / totalDays) * 100);
@@ -279,7 +241,6 @@ export class BudgetService {
       };
     }
 
-    // Pacing comparison
     const diff = spentPct - timePct;
     if (diff > 15) {
       return {
@@ -314,9 +275,13 @@ export class BudgetService {
     const m = month ?? (new Date().getMonth() + 1);
     this.loadedYear.set(y);
     this.loadedMonth.set(m);
-    return this.api.getBudgets(y, m).pipe(
+    return this.api.getBudgetSummary(y, m).pipe(
       tap(res => {
-        if (res.success) this.budgets.set(res.data);
+        if (res.success && res.data) {
+          this.budgets.set(res.data.budgets || []);
+          this.unbudgetedSpentCategories.set(res.data.unbudgetedCategories || []);
+          this.serverTotalActualExpenses.set(res.data.totalActualExpenses ?? 0);
+        }
         this.loading.set(false);
       }),
       catchError(() => {

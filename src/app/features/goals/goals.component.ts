@@ -594,20 +594,7 @@ export class GoalsComponent implements OnInit {
 
   form = { name: '', targetAmount: null as number | null, currentAmount: 0, targetDate: '', accountId: '' };
 
-  // Calculate net monthly savings based on past transactions to give custom forecasts
-  monthlySavingsRate = computed(() => {
-    const txns = this.txnService.postedNormalizedTransactions();
-    const now = new Date();
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(now.getMonth() - 3);
-    const dateLimit = threeMonthsAgo.toISOString().split('T')[0];
-
-    const rangeTxns = txns.filter(t => t.date >= dateLimit);
-    const income = rangeTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const expense = rangeTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    // return average net monthly savings over 3 months
-    return Math.max(0, (income - expense) / 3);
-  });
+  monthlySavingsRate = signal(0);
 
   totalTargetAmount = computed(() => this.goalService.goals().reduce((sum, g) => sum + g.targetAmount, 0));
   totalSavedAmount = computed(() => this.goalService.goals().reduce((sum, g) => sum + g.currentAmount, 0));
@@ -644,8 +631,13 @@ export class GoalsComponent implements OnInit {
   ngOnInit() {
     this.goalService.loadGoals().subscribe();
     this.accountService.loadAccounts().subscribe();
-    this.txnService.loadTransactions().subscribe();
     this.recurringService.loadAdvisorData().subscribe();
+    this.api.getDashboardStats().subscribe(res => {
+      if (res.success && res.data) {
+        const net = res.data.currentMonthSummary?.netBalance || 0;
+        this.monthlySavingsRate.set(Math.max(0, net));
+      }
+    });
   }
 
   allocateSurplus(goalId: string, fromAccountId: string, amount: number) {

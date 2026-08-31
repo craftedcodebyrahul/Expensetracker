@@ -3893,6 +3893,381 @@ Ensure the response contains ONLY the valid JSON matching the schema, with no ma
       minimumOnly: runSimulation('minimumOnly')
     };
   }
+
+  // ── Page-Specific Aggregation APIs ──────────────────────────────────────────
+
+  async getDashboardStats(userId: string) {
+    const today = new Date();
+    const todayStr = today.toLocaleDateString('en-CA');
+    const thisYear = today.getFullYear();
+    const thisMonth = today.getMonth() + 1;
+
+    const lastMonthDate = new Date(thisYear, today.getMonth() - 1, 1);
+    const lastYear = lastMonthDate.getFullYear();
+    const lastMonth = lastMonthDate.getMonth() + 1;
+
+    const thisMonthPrefix = `${thisYear}-${String(thisMonth).padStart(2, '0')}`;
+    const lastMonthPrefix = `${lastYear}-${String(lastMonth).padStart(2, '0')}`;
+
+    const categories = await this.getCategories(userId);
+    const catMap = new Map(categories.map(c => [c.id, c]));
+
+    const allTxns = await this.getTransactions(userId, todayStr);
+    const postedTxns = allTxns.filter(t => t.date <= todayStr);
+
+    const thisMonthTxns = postedTxns.filter(t => t.date.startsWith(thisMonthPrefix));
+    const thisMonthIncome = thisMonthTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const thisMonthExpenses = thisMonthTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const thisMonthIncomeExpenseCount = thisMonthTxns.filter(t => t.type !== 'transfer').length;
+    const thisMonthAvgTransaction = thisMonthIncomeExpenseCount ? (thisMonthIncome + thisMonthExpenses) / thisMonthIncomeExpenseCount : 0;
+
+    const lastMonthTxns = postedTxns.filter(t => t.date.startsWith(lastMonthPrefix));
+    const lastMonthIncome = lastMonthTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const lastMonthExpenses = lastMonthTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+    const expenseChange = lastMonthExpenses === 0 ? 0 : Math.round(((thisMonthExpenses - lastMonthExpenses) / lastMonthExpenses) * 100);
+    const incomeChange = lastMonthIncome === 0 ? 0 : Math.round(((thisMonthIncome - lastMonthIncome) / lastMonthIncome) * 100);
+
+    let savingsRate = 0;
+    if (thisMonthIncome > 0 || thisMonthExpenses > 0) {
+      if (thisMonthIncome === 0) savingsRate = -100;
+      else savingsRate = Math.round(Math.max(((thisMonthIncome - thisMonthExpenses) / thisMonthIncome) * 100, -100));
+    }
+
+    const budgets = await this.getBudgets(userId, thisYear, thisMonth);
+    const exceededCount = budgets.filter(b => b.amount > 0 && b.spent > b.amount).length;
+
+    let healthScore = 50;
+    if (savingsRate >= 30) healthScore += 30;
+    else if (savingsRate >= 20) healthScore += 20;
+    else if (savingsRate >= 10) healthScore += 10;
+    else if (savingsRate >= 0) healthScore += 0;
+    else if (savingsRate >= -20) healthScore -= 15;
+    else if (savingsRate >= -50) healthScore -= 25;
+    else healthScore -= 35;
+
+    if (expenseChange < -10) healthScore += 15;
+    else if (expenseChange < 0) healthScore += 8;
+    else if (expenseChange > 30) healthScore -= 15;
+    else if (expenseChange > 10) healthScore -= 8;
+
+    healthScore -= exceededCount * 8;
+    healthScore = Math.max(0, Math.min(100, healthScore));
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthlyBreakdown = monthNames.map((name, i) => {
+      const mStr = `${thisYear}-${String(i + 1).padStart(2, '0')}`;
+      const mTxns = postedTxns.filter(t => t.date.startsWith(mStr));
+      const inc = mTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const exp = mTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      return { month: name, monthIndex: i + 1, income: inc, expense: exp };
+    });
+
+    const categorySum: Record<string, number> = {};
+    thisMonthTxns.filter(t => t.type === 'expense').forEach(t => {
+      categorySum[t.category] = (categorySum[t.category] || 0) + t.amount;
+    });
+
+    const categoryBreakdown = Object.entries(categorySum)
+      .map(([catId, amount]) => {
+        const cat = catMap.get(catId);
+        return {
+          categoryId: catId,
+          categoryName: cat?.name ?? catId,
+          icon: cat?.icon ?? '💰',
+          color: cat?.color ?? '#607D8B',
+          amount,
+          percentage: thisMonthExpenses > 0 ? Math.round((amount / thisMonthExpenses) * 100) : 0
+        };
+      })
+      .sort((a, b) => b.amount - a.amount);
+
+    const recentTransactions = [...postedTxns]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 10);
+
+    return {
+      currentMonthSummary: {
+        totalIncome: thisMonthIncome,
+        totalExpenses: thisMonthExpenses,
+        netBalance: thisMonthIncome - thisMonthExpenses,
+        transactionCount: thisMonthTxns.length,
+        avgTransaction: thisMonthAvgTransaction
+      },
+      lastMonthSummary: {
+        totalIncome: lastMonthIncome,
+        totalExpenses: lastMonthExpenses,
+        incomeChange,
+        expenseChange
+      },
+      savingsRate,
+      healthScore,
+      monthlyBreakdown,
+      categoryBreakdown,
+      recentTransactions
+    };
+  }
+
+  async getBudgetSummary(userId: string, year?: number, month?: number) {
+    const filterYear = year ?? new Date().getFullYear();
+    const filterMonth = month ?? new Date().getMonth() + 1;
+    const monthStr = String(filterMonth).padStart(2, '0');
+    const monthPrefix = `${filterYear}-${monthStr}`;
+
+    const budgets = await this.getBudgets(userId, filterYear, filterMonth);
+    const categories = await this.getCategories(userId);
+    const catMap = new Map(categories.map(c => [c.id, c]));
+
+    const monthTxns = await prisma.transaction.findMany({
+      where: {
+        userId,
+        type: 'expense',
+        date: { startsWith: monthPrefix }
+      }
+    });
+
+    const spentByCategory: Record<string, number> = {};
+    let totalActualExpenses = 0;
+    monthTxns.forEach((t: any) => {
+      totalActualExpenses += t.amount;
+      if (t.category) {
+        spentByCategory[t.category] = (spentByCategory[t.category] || 0) + t.amount;
+      }
+    });
+
+    const budgetedCategoryIds = new Set(budgets.map(b => b.categoryId));
+    const unbudgetedCategories: Array<Budget & { isUnbudgeted: boolean }> = [];
+
+    for (const [catId, spent] of Object.entries(spentByCategory)) {
+      if (!budgetedCategoryIds.has(catId)) {
+        const cat = catMap.get(catId);
+        unbudgetedCategories.push({
+          id: `unbudgeted_${catId}`,
+          categoryId: catId,
+          categoryName: cat?.name ?? catId,
+          amount: 0,
+          period: 'monthly',
+          month: filterMonth,
+          year: filterYear,
+          spent,
+          remaining: 0,
+          percentage: 0,
+          createdAt: new Date().toISOString(),
+          isUnbudgeted: true
+        });
+      }
+    }
+    unbudgetedCategories.sort((a, b) => b.spent - a.spent);
+
+    const totalBudgeted = budgets.reduce((s, b) => s + b.amount, 0);
+    const totalUnplannedExpenses = unbudgetedCategories.reduce((s, c) => s + c.spent, 0);
+
+    return {
+      budgets,
+      unbudgetedCategories,
+      totalActualExpenses,
+      totalBudgeted,
+      totalUnplannedExpenses
+    };
+  }
+
+  async getInsightsStats(
+    userId: string,
+    periodType: string = 'monthly',
+    year?: number,
+    month?: number,
+    quarter?: number,
+    half?: number
+  ) {
+    const selYear = year ?? new Date().getFullYear();
+    const selMonth = month ?? new Date().getMonth();
+    const selQuarter = quarter ?? (Math.floor(selMonth / 3) + 1);
+    const selHalf = half ?? (selMonth < 6 ? 1 : 2);
+
+    let startDateStr = '';
+    let endDateStr = '';
+    let prevStartDateStr = '';
+    let prevEndDateStr = '';
+
+    if (periodType === 'monthly') {
+      const m1 = String(selMonth + 1).padStart(2, '0');
+      const lastDay = new Date(selYear, selMonth + 1, 0).getDate();
+      startDateStr = `${selYear}-${m1}-01`;
+      endDateStr = `${selYear}-${m1}-${String(lastDay).padStart(2, '0')}`;
+
+      const prevMonthDate = new Date(selYear, selMonth - 1, 1);
+      const pmYear = prevMonthDate.getFullYear();
+      const pmMonth = prevMonthDate.getMonth();
+      const pm1 = String(pmMonth + 1).padStart(2, '0');
+      const pmLastDay = new Date(pmYear, pmMonth + 1, 0).getDate();
+      prevStartDateStr = `${pmYear}-${pm1}-01`;
+      prevEndDateStr = `${pmYear}-${pm1}-${String(pmLastDay).padStart(2, '0')}`;
+    } else if (periodType === 'quarterly') {
+      const startM = (selQuarter - 1) * 3;
+      const endM = startM + 2;
+      const smStr = String(startM + 1).padStart(2, '0');
+      const emStr = String(endM + 1).padStart(2, '0');
+      const lastDay = new Date(selYear, endM + 1, 0).getDate();
+      startDateStr = `${selYear}-${smStr}-01`;
+      endDateStr = `${selYear}-${emStr}-${String(lastDay).padStart(2, '0')}`;
+
+      const prevQYear = selQuarter === 1 ? selYear - 1 : selYear;
+      const prevQ = selQuarter === 1 ? 4 : selQuarter - 1;
+      const pStartM = (prevQ - 1) * 3;
+      const pEndM = pStartM + 2;
+      const psmStr = String(pStartM + 1).padStart(2, '0');
+      const pemStr = String(pEndM + 1).padStart(2, '0');
+      const pLastDay = new Date(prevQYear, pEndM + 1, 0).getDate();
+      prevStartDateStr = `${prevQYear}-${psmStr}-01`;
+      prevEndDateStr = `${prevQYear}-${pemStr}-${String(pLastDay).padStart(2, '0')}`;
+    } else if (periodType === 'semi-annually') {
+      if (selHalf === 1) {
+        startDateStr = `${selYear}-01-01`;
+        endDateStr = `${selYear}-06-30`;
+        prevStartDateStr = `${selYear - 1}-07-01`;
+        prevEndDateStr = `${selYear - 1}-12-31`;
+      } else {
+        startDateStr = `${selYear}-07-01`;
+        endDateStr = `${selYear}-12-31`;
+        prevStartDateStr = `${selYear}-01-01`;
+        prevEndDateStr = `${selYear}-06-30`;
+      }
+    } else {
+      startDateStr = `${selYear}-01-01`;
+      endDateStr = `${selYear}-12-31`;
+      prevStartDateStr = `${selYear - 1}-01-01`;
+      prevEndDateStr = `${selYear - 1}-12-31`;
+    }
+
+    const categories = await this.getCategories(userId);
+    const catMap = new Map(categories.map(c => [c.id, c]));
+
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const allTxns = await this.getTransactions(userId, todayStr);
+    const posted = allTxns.filter(t => t.date <= todayStr);
+
+    const currTxns = posted.filter(t => t.date >= startDateStr && t.date <= endDateStr);
+    const prevTxns = posted.filter(t => t.date >= prevStartDateStr && t.date <= prevEndDateStr);
+
+    const currIncome = currTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const currExpenses = currTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const currSavingsRate = currIncome > 0 ? Math.round(((currIncome - currExpenses) / currIncome) * 100) : 0;
+
+    const prevIncome = prevTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const prevExpenses = prevTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const prevSavingsRate = prevIncome > 0 ? Math.round(((prevIncome - prevExpenses) / prevIncome) * 100) : 0;
+
+    const currCatExp: Record<string, number> = {};
+    currTxns.filter(t => t.type === 'expense').forEach(t => {
+      currCatExp[t.category] = (currCatExp[t.category] || 0) + t.amount;
+    });
+    const prevCatExp: Record<string, number> = {};
+    prevTxns.filter(t => t.type === 'expense').forEach(t => {
+      prevCatExp[t.category] = (prevCatExp[t.category] || 0) + t.amount;
+    });
+
+    const allCatKeys = new Set([...Object.keys(currCatExp), ...Object.keys(prevCatExp)]);
+    const maxVal = Math.max(1, ...Object.values(currCatExp), ...Object.values(prevCatExp));
+
+    const categoryTrends = Array.from(allCatKeys).map(catId => {
+      const cat = catMap.get(catId);
+      const curr = currCatExp[catId] || 0;
+      const prev = prevCatExp[catId] || 0;
+      const change = prev === 0 ? (curr > 0 ? 100 : 0) : Math.round(((curr - prev) / prev) * 100);
+      const barPct = Math.round((Math.max(curr, prev) / maxVal) * 100);
+      return {
+        id: catId,
+        name: cat?.name ?? catId,
+        icon: cat?.icon ?? '💰',
+        color: cat?.color ?? '#607D8B',
+        current: curr,
+        previous: prev,
+        change,
+        barPct
+      };
+    }).sort((a, b) => b.current - a.current);
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthlyTrajectory = monthNames.map((mName, idx) => {
+      const prefix = `${selYear}-${String(idx + 1).padStart(2, '0')}`;
+      const mTxns = posted.filter(t => t.date.startsWith(prefix));
+      const inc = mTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const exp = mTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      return { month: mName, income: inc, expense: exp, net: inc - exp };
+    });
+
+    const dailyMap: Record<string, number> = {};
+    currTxns.filter(t => t.type === 'expense').forEach(t => {
+      dailyMap[t.date] = (dailyMap[t.date] || 0) + t.amount;
+    });
+
+    const dayOfWeekSum: Record<number, { amount: number; count: number }> = { 0: { amount: 0, count: 0 }, 1: { amount: 0, count: 0 }, 2: { amount: 0, count: 0 }, 3: { amount: 0, count: 0 }, 4: { amount: 0, count: 0 }, 5: { amount: 0, count: 0 }, 6: { amount: 0, count: 0 } };
+    currTxns.filter(t => t.type === 'expense').forEach(t => {
+      const dow = new Date(t.date + 'T00:00:00').getDay();
+      dayOfWeekSum[dow].amount += t.amount;
+      dayOfWeekSum[dow].count += 1;
+    });
+
+    return {
+      periodSummary: {
+        totalIncome: currIncome,
+        totalExpenses: currExpenses,
+        netBalance: currIncome - currExpenses,
+        savingsRate: currSavingsRate,
+        transactionCount: currTxns.length
+      },
+      prevPeriodSummary: {
+        totalIncome: prevIncome,
+        totalExpenses: prevExpenses,
+        netBalance: prevIncome - prevExpenses,
+        savingsRate: prevSavingsRate
+      },
+      categoryTrends,
+      monthlyTrajectory,
+      dailyMap,
+      dayOfWeekSum
+    };
+  }
+
+  async getRunwayStats(userId: string) {
+    const today = new Date();
+    const todayStr = today.toLocaleDateString('en-CA');
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(today.getDate() - 90);
+    const limitStr = ninetyDaysAgo.toISOString().split('T')[0];
+
+    const accounts = await this.getAccounts(userId);
+    const rates = await getExchangeRates();
+
+    let startBalance = 0;
+    accounts.forEach((a: any) => {
+      const bal = a.currentBalance ?? Math.abs(a.initialBalance ?? 0);
+      let converted = bal;
+      if (a.currency && a.currency.toUpperCase() !== 'USD' && Object.keys(rates).length > 0) {
+        const fromRate = rates[a.currency.toUpperCase()] || 1.0;
+        const toRate = rates['USD'] || 1.0;
+        converted = (bal / fromRate) * toRate;
+      }
+      if (a.isInvestment && a.stockHoldings?.length) {
+        const mktVal = a.stockHoldings.reduce((sum: number, h: any) => sum + h.shares * h.price, 0);
+        converted += mktVal;
+      }
+      if (a.type === 'asset') startBalance += converted;
+      else startBalance -= converted;
+    });
+
+    const txns = await this.getTransactions(userId, todayStr);
+    const posted = txns.filter(t => t.date <= todayStr && t.date >= limitStr);
+    const income = posted.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expense = posted.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const dailyAverageNet = (income - expense) / 90;
+
+    return {
+      startBalance,
+      dailyAverageNet,
+      endBalance: startBalance + (dailyAverageNet * 90)
+    };
+  }
 }
 
 // Singleton instance — shared across all API routes
