@@ -47,7 +47,7 @@ export async function checkAndSendBillReminders(targetUserId?: string): Promise<
         // Skip if per-schedule emailReminder is explicitly turned off (0)
         if (schedule.emailReminder === 0) continue;
 
-        const effectiveDaysBefore = schedule.reminderDaysBefore || globalDaysBefore;
+        const effectiveDaysBefore = userSetting.billReminderDaysBefore || 2;
         const targetDateStr = getFutureDateString(effectiveDaysBefore);
 
         if (schedule.nextDueDate === targetDateStr) {

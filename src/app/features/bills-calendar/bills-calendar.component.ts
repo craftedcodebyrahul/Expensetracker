@@ -218,28 +218,16 @@ interface CalendarCell {
               </div>
             </div>
 
-            <!-- Email Reminder Config -->
+            <!-- Email Reminder Checkbox -->
             <div class="form-group" style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid var(--border); margin-top: 1rem;">
-              <div style="display: flex; align-items: center; justify-content: space-between;">
-                <label class="form-label" style="margin-bottom: 0; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
-                  <input type="checkbox" [(ngModel)]="form.emailReminder" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-blue);">
-                  ✉️ Enable Email Reminders
-                </label>
-              </div>
+              <label class="form-label" style="margin-bottom: 0; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                <input type="checkbox" [(ngModel)]="form.emailReminder" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-blue);">
+                ✉️ Send Email Reminder for this bill
+              </label>
               @if (form.emailReminder) {
-                <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 4px;">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 0.85rem; color: var(--text-secondary);">Remind me:</span>
-                    <select class="form-control" [(ngModel)]="form.reminderDaysBefore" style="width: auto; padding: 4px 8px; font-size: 0.85rem; height: auto;">
-                      <option [value]="1">1 day before due date</option>
-                      <option [value]="2">2 days before due date</option>
-                      <option [value]="3">3 days before due date</option>
-                      <option [value]="5">5 days before due date</option>
-                      <option [value]="7">7 days before due date</option>
-                    </select>
-                  </div>
-                  <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Default days prior can also be configured globally in Settings.</span>
-                </div>
+                <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 6px; display: block;">
+                  Will send email {{ settingsService.billReminderDaysBefore() }} day(s) before due date (configured in Settings).
+                </span>
               }
             </div>
           </div>
@@ -301,27 +289,23 @@ interface CalendarCell {
                 <span class="detail-value">{{ selectedEvent()!.nextDueDate }}</span>
               </div>
               <div class="detail-row" style="align-items: center;">
-                <span class="detail-label">Email Reminders:</span>
+                <span class="detail-label">Email Reminder:</span>
                 <span class="detail-value" style="display: flex; align-items: center; gap: 8px;">
                   <input type="checkbox" 
                          [ngModel]="selectedEvent()!.emailReminder" 
                          (ngModelChange)="toggleReminderForSelected($event)" 
                          style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-blue);">
-                  @if (selectedEvent()!.emailReminder) {
-                    <select [ngModel]="selectedEvent()!.reminderDaysBefore" 
-                            (ngModelChange)="updateReminderDaysForSelected($event)"
-                            style="padding: 2px 4px; font-size: 0.8rem; border-radius: 4px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);">
-                      <option [value]="1">1 day before</option>
-                      <option [value]="2">2 days before</option>
-                      <option [value]="3">3 days before</option>
-                      <option [value]="5">5 days before</option>
-                      <option [value]="7">7 days before</option>
-                    </select>
-                  } @else {
-                    <span style="font-size: 0.85rem; color: var(--text-muted);">Disabled</span>
-                  }
+                  <span style="font-size: 0.85rem; font-weight: 500;" [style.color]="selectedEvent()!.emailReminder ? 'var(--accent-green)' : 'var(--text-muted)'">
+                    {{ selectedEvent()!.emailReminder ? ('ON (' + settingsService.billReminderDaysBefore() + ' days prior)') : 'OFF' }}
+                  </span>
                 </span>
               </div>
+              @if (selectedEvent()!.emailReminder && !settingsService.billRemindersEnabled()) {
+                <div class="detail-row">
+                  <span class="detail-label"></span>
+                  <span style="font-size: 0.75rem; color: #ffb300;">⚠️ Note: Master switch is OFF in Settings.</span>
+                </div>
+              }
             </div>
           </div>
           <div class="modal-footer" style="justify-content: space-between;">

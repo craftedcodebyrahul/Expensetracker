@@ -5,6 +5,7 @@ import { ApiService } from '../../core/services/api.service';
 import { CategoryService } from '../../core/services/category.service';
 import { AccountService } from '../../core/services/account.service';
 import { SettingsService } from '../../core/services/settings.service';
+import { ToastService } from '../../core/services/toast.service';
 import { HeaderComponent } from '../../layout/header.component';
 import { CurrencyFormatPipe } from '../../shared/pipes/currency-format.pipe';
 import { toLocalDateString } from '../../shared/utils/date.utils';
@@ -18,6 +19,9 @@ Chart.register(...registerables);
   imports: [CommonModule, FormsModule, HeaderComponent, CurrencyFormatPipe],
   template: `
     <app-header title="Reports & Analytics" subtitle="Deep insights into your financial patterns">
+      <button class="btn btn-outline btn-sm" (click)="emailMonthlyReport()" [disabled]="sendingEmailReport()">
+        {{ sendingEmailReport() ? 'Sending Email...' : '✉️ Send Monthly Report Email' }}
+      </button>
     </app-header>
 
     <div class="reports-page">
@@ -824,6 +828,26 @@ export class ReportsComponent implements OnInit, AfterViewInit {
   aiCategoryAudit = signal('');
   aiError = signal('');
   isAiGenerated = signal(false);
+  sendingEmailReport = signal(false);
+  private toast = inject(ToastService);
+
+  emailMonthlyReport() {
+    this.sendingEmailReport.set(true);
+    this.api.sendTestReport().subscribe({
+      next: res => {
+        this.sendingEmailReport.set(false);
+        if (res.success) {
+          this.toast.success('✉️ Monthly audit report email sent! Check your inbox.');
+        } else {
+          this.toast.error(res.error || 'Failed to send monthly report email.');
+        }
+      },
+      error: err => {
+        this.sendingEmailReport.set(false);
+        this.toast.error(err?.error?.error || err?.message || 'SMTP Email delivery error.');
+      }
+    });
+  }
 
   // Local AI cache to prevent duplicate Gemini hits in the same session
   private aiCache = new Map<string, any>();

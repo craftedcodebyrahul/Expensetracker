@@ -139,19 +139,22 @@ import { HeaderComponent } from '../../layout/header.component';
 
             <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.625rem; font-size: 0.875rem; color: var(--text-primary); cursor: pointer; user-select: none;">
               <input type="checkbox" [(ngModel)]="settings.billRemindersEnabled" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-blue);">
-              <span><strong>Upcoming Bill Email Reminders:</strong> Send email reminders for all upcoming bills & recurring schedules.</span>
+              <span><strong>Master Bill Reminders Switch:</strong> Master ON/OFF toggle for all upcoming bill email notifications.</span>
             </label>
 
             @if (settings.billRemindersEnabled) {
-              <div class="form-group" style="margin-left: 2rem; max-width: 320px;">
-                <label class="form-label" style="font-size: 0.8125rem;">Remind Me (Days Prior)</label>
+              <div class="form-group" style="margin-left: 2rem; max-width: 480px;">
+                <label class="form-label" style="font-size: 0.8125rem;">Default Reminder Window (App Default)</label>
                 <select class="form-control" [(ngModel)]="settings.billReminderDaysBefore">
                   <option [ngValue]="1">1 day before due date</option>
-                  <option [ngValue]="2">2 days before due date</option>
+                  <option [ngValue]="2">2 days before due date (Default)</option>
                   <option [ngValue]="3">3 days before due date</option>
                   <option [ngValue]="5">5 days before due date</option>
                   <option [ngValue]="7">7 days before due date</option>
                 </select>
+                <span class="form-hint" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; display: block;">
+                  App default lead time for new recurring schedules. You can also turn reminders ON/OFF per-bill in the Upcoming Bills calendar.
+                </span>
               </div>
             }
           </div>
@@ -161,12 +164,12 @@ import { HeaderComponent } from '../../layout/header.component';
           <button class="btn btn-primary" (click)="saveSettings()" [disabled]="saving()">
             {{ saving() ? 'Saving...' : '💾 Save Preferences' }}
           </button>
-          <!-- <button class="btn btn-ghost btn-sm" (click)="sendTestReport()" [disabled]="sendingTestReport()">
-            {{ sendingTestReport() ? 'Sending Audit Email...' : '✉️ Test Monthly Audit Email' }}
-          </button> -->
-          <!-- <button class="btn btn-ghost btn-sm" (click)="sendTestBillReminder()" [disabled]="sendingTestBillReminder()">
+          <button class="btn btn-outline btn-sm" (click)="sendTestReport()" [disabled]="sendingTestReport()">
+            {{ sendingTestReport() ? 'Sending Audit Email...' : '✉️ Send Monthly Report Email Now' }}
+          </button>
+          <button class="btn btn-ghost btn-sm" (click)="sendTestBillReminder()" [disabled]="sendingTestBillReminder()">
             {{ sendingTestBillReminder() ? 'Sending Bill Reminder...' : '📅 Test Bill Reminder Email' }}
-          </button> -->
+          </button>
           <button class="btn btn-ghost btn-sm" (click)="processBillRemindersNow()" [disabled]="processingBillReminders()">
             {{ processingBillReminders() ? 'Processing...' : '🔄 Check Due Reminders Now' }}
           </button>
